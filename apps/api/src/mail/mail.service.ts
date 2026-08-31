@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import { AppEnv } from '../config/env';
@@ -51,16 +51,28 @@ export class MailService {
   private async send(message: { to: string; subject: string; text: string }) {
     if (!this.transport) {
       if (this.production) {
-        throw new InternalServerErrorException('SMTP is not configured.');
+        throw new ServiceUnavailableException(
+          'El servicio de correo no esta configurado.',
+        );
       }
 
       this.logger.warn(`Mail disabled. ${message.subject}: ${message.text}`);
       return;
     }
 
-    await this.transport.sendMail({
-      from: this.from,
-      ...message
-    });
+    try {
+      await this.transport.sendMail({
+        from: this.from,
+        ...message
+      });
+    } catch (error) {
+      this.logger.error(
+        `Email delivery failed for ${message.to}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw new ServiceUnavailableException(
+        'No pudimos enviar el email. Revisa la configuracion SMTP.',
+      );
+    }
   }
 }

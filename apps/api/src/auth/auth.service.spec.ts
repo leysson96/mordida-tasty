@@ -8,6 +8,10 @@ describe("AuthService", () => {
     user: {
       findUnique: jest.fn(),
       findUniqueOrThrow: jest.fn(),
+      create: jest.fn(),
+    },
+    emailVerificationToken: {
+      create: jest.fn(),
     },
   };
 
@@ -15,7 +19,9 @@ describe("AuthService", () => {
     signAsync: jest.fn(),
   };
 
-  const mailService = {};
+  const mailService = {
+    sendVerificationEmail: jest.fn(),
+  };
 
   const configService = {
     get: jest.fn((key: string) => (key === "JWT_EXPIRES_IN" ? "7d" : "12h")),
@@ -53,6 +59,8 @@ describe("AuthService", () => {
     jest.spyOn(argon2, "verify").mockResolvedValue(true);
     prisma.user.findUnique.mockResolvedValue(disabledUser);
     prisma.user.findUniqueOrThrow.mockResolvedValue(disabledUser);
+    prisma.emailVerificationToken.create.mockResolvedValue({});
+    mailService.sendVerificationEmail.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -115,5 +123,42 @@ describe("AuthService", () => {
         email: "cliente@mordida.test",
       }),
     });
+  });
+
+  it("resends verification for an existing unverified client registration", async () => {
+    const unverifiedClient = {
+      ...activeClient,
+      emailVerifiedAt: null,
+    };
+    prisma.user.findUnique.mockResolvedValue(unverifiedClient);
+
+    await expect(
+      service().register({
+        name: "Cliente",
+        email: " CLIENTE@MORDIDA.TEST ",
+        phone: "611111111",
+        password: "Temporal123",
+        acceptLegal: true,
+      }),
+    ).resolves.toEqual({
+      user: expect.objectContaining({
+        id: "client-1",
+        email: "cliente@mordida.test",
+      }),
+      verificationToken: expect.any(String),
+    });
+
+    expect(prisma.user.create).not.toHaveBeenCalled();
+    expect(prisma.emailVerificationToken.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: "client-1",
+        tokenHash: expect.any(String),
+        expiresAt: expect.any(Date),
+      }),
+    });
+    expect(mailService.sendVerificationEmail).toHaveBeenCalledWith(
+      "cliente@mordida.test",
+      expect.any(String),
+    );
   });
 });

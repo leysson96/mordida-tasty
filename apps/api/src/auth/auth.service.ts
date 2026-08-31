@@ -38,6 +38,16 @@ export class AuthService {
     const existing = await this.prisma.user.findUnique({ where: { email } });
 
     if (existing) {
+      if (existing.role === Role.CLIENTE && !existing.emailVerifiedAt) {
+        const token = await this.createEmailToken(existing.id);
+        await this.mailService.sendVerificationEmail(existing.email, token);
+
+        return {
+          user: this.safeUser(existing),
+          ...(this.isProduction() ? {} : { verificationToken: token }),
+        };
+      }
+
       throw new ConflictException("Email is already registered.");
     }
 
