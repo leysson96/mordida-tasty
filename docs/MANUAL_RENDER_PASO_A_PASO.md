@@ -535,6 +535,10 @@ API no arranca:
 - Revisa `DATABASE_URL`.
 - Revisa logs de Render.
 - Comprueba que `NODE_VERSION` sea `22.19.0`.
+- Si el build dice que no encuentra `../uploads/uploads.service` o
+  `../uploads/uploads.module`, confirma que estas usando el commit posterior a
+  la correccion de `.gitignore`; ese error ocurria porque Git estaba ignorando
+  por accidente el modulo de subidas de imagenes del backend.
 
 Web no carga datos:
 
