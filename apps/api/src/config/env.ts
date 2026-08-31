@@ -6,7 +6,6 @@ const requiredInProduction = [
   "API_PUBLIC_URL",
   "STRIPE_SECRET_KEY",
   "STRIPE_WEBHOOK_SECRET",
-  "SMTP_HOST",
   "SMTP_FROM",
   "UPLOAD_DIR",
 ] as const;
@@ -35,6 +34,8 @@ export interface AppEnv {
   SMTP_PASSWORD?: string;
   SMTP_FROM: string;
   SMTP_TIMEOUT_MS: number;
+  BREVO_API_KEY?: string;
+  BREVO_API_URL: string;
   UPLOAD_DIR: string;
   UPLOAD_MAX_BYTES: number;
 }
@@ -96,6 +97,12 @@ export function validateEnvironment(env: RawEnv): AppEnv {
         "JWT_SECRET must contain at least 32 characters in production.",
       );
     }
+
+    if (!env.BREVO_API_KEY && !env.SMTP_HOST) {
+      throw new Error(
+        "Configure BREVO_API_KEY or SMTP_HOST in production.",
+      );
+    }
   }
 
   return {
@@ -128,6 +135,9 @@ export function validateEnvironment(env: RawEnv): AppEnv {
       10_000,
       "SMTP_TIMEOUT_MS",
     ),
+    BREVO_API_KEY: env.BREVO_API_KEY,
+    BREVO_API_URL:
+      env.BREVO_API_URL ?? "https://api.brevo.com/v3/smtp/email",
     UPLOAD_DIR: env.UPLOAD_DIR ?? "uploads",
     UPLOAD_MAX_BYTES: parsePositiveInteger(
       env.UPLOAD_MAX_BYTES,

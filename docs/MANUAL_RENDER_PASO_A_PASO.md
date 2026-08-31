@@ -175,6 +175,8 @@ SMTP_USER=usuario_smtp
 SMTP_PASSWORD=password_smtp
 SMTP_FROM=Mordida Tasty <no-reply@tudominio.es>
 SMTP_TIMEOUT_MS=10000
+BREVO_API_KEY=clave_api_brevo_recomendada_en_render_gratis
+BREVO_API_URL=https://api.brevo.com/v3/smtp/email
 UPLOAD_DIR=/opt/render/project/src/uploads
 UPLOAD_MAX_BYTES=5242880
 MORDIDA_SEED_ADMIN_EMAIL=tu_email_admin_real
@@ -310,19 +312,33 @@ Si luego pones dominio propio para la API, crea o actualiza el webhook a:
 https://api.tudominio.es/payments/webhook
 ```
 
-## 10. Configurar SMTP real
+## 10. Configurar correo real
 
 Necesitas un servicio de correo transaccional. Puede ser Brevo, SendGrid,
 Mailgun, SMTP2GO, Amazon SES u otro similar.
+
+En Render gratuito, evita SMTP si puedes. Render puede bloquear conexiones
+salientes a puertos SMTP como `25`, `465` y `587`, lo que provoca errores tipo
+`Connection timeout` aunque las credenciales parezcan correctas. Para Brevo, lo
+mas estable en Render es usar su API HTTPS.
 
 Para empezar de forma sencilla, una opcion practica es Brevo:
 
 1. Crea una cuenta en `https://www.brevo.com`.
 2. Entra al panel de Brevo.
 3. Verifica tu remitente o, mejor, autentica tu dominio.
-4. Ve a la zona de SMTP/transaccional.
-5. Crea o copia tus credenciales SMTP.
+4. Ve a la zona de SMTP/API.
+5. Crea una clave API.
 6. Usa estos valores en Render, dentro del servicio API:
+
+```text
+BREVO_API_KEY=tu_clave_api_de_brevo
+BREVO_API_URL=https://api.brevo.com/v3/smtp/email
+SMTP_FROM=Mordida Tasty <no-reply@tudominio.es>
+SMTP_TIMEOUT_MS=10000
+```
+
+Si prefieres SMTP porque tienes un plan/servidor que lo permite, usa:
 
 ```text
 SMTP_HOST=smtp-relay.brevo.com
@@ -334,7 +350,8 @@ SMTP_FROM=Mordida Tasty <no-reply@tudominio.es>
 SMTP_TIMEOUT_MS=10000
 ```
 
-Importante: en Brevo se usa clave SMTP para SMTP, no la API key normal.
+Importante: en Brevo la clave API y la clave SMTP no son lo mismo. Para Render
+gratuito usa `BREVO_API_KEY`. Para SMTP usa las credenciales SMTP.
 Si todavia no tienes dominio, puedes verificar un remitente temporal, pero para
 produccion real conviene autenticar el dominio para mejorar entregabilidad.
 

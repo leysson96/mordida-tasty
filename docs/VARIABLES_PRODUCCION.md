@@ -71,6 +71,10 @@ Eventos necesarios:
 
 ## SMTP
 
+- `BREVO_API_KEY`: clave API de Brevo para enviar correo por HTTPS. En Render
+  gratuito es la opcion recomendada porque no depende de puertos SMTP.
+- `BREVO_API_URL`: mantener `https://api.brevo.com/v3/smtp/email` salvo que
+  Brevo indique otro endpoint.
 - `SMTP_HOST`: servidor SMTP real.
 - `SMTP_PORT`: normalmente `587` con STARTTLS o `465` con SSL.
 - `SMTP_SECURE`: `false` para 587, `true` para 465.
@@ -81,8 +85,8 @@ Eventos necesarios:
 - `SMTP_TIMEOUT_MS`: tiempo maximo de espera para conectar/enviar correo.
   Valor recomendado: `10000`.
 
-Sin SMTP real no se verifican correos ni recuperacion de contrasena en
-produccion.
+En produccion debes configurar `BREVO_API_KEY` o SMTP real. Sin uno de esos dos
+metodos no se verifican correos ni recuperacion de contrasena.
 
 ## Imagenes y subidas
 

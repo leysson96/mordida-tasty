@@ -1,4 +1,4 @@
-# Copia este archivo a render.yaml solo cuando tengas dominio, Stripe live y SMTP real.
+# Copia este archivo a render.yaml solo cuando tengas dominio, Stripe live y correo real.
 # En este monorepo los comandos se ejecutan desde la raiz para que npm workspaces
 # pueda ver package-lock.json y las dos apps.
 
@@ -55,6 +55,10 @@ services:
         value: /seguimiento/{ORDER_NUMBER}?t={TRACKING_TOKEN}
       - key: STRIPE_CANCEL_PATH
         value: /checkout?cancelled=1
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_API_URL
+        value: https://api.brevo.com/v3/smtp/email
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
@@ -67,6 +71,8 @@ services:
         sync: false
       - key: SMTP_FROM
         value: Mordida Tasty <no-reply@tudominio.es>
+      - key: SMTP_TIMEOUT_MS
+        value: 10000
       - key: UPLOAD_DIR
         value: /opt/render/project/src/uploads
       - key: UPLOAD_MAX_BYTES

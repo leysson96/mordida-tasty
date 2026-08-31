@@ -1,7 +1,7 @@
 import { validateEnvironment } from "./env";
 
 describe("environment validation", () => {
-  it("requires Stripe and SMTP settings in production", () => {
+  it("requires email delivery settings in production", () => {
     expect(() =>
       validateEnvironment({
         NODE_ENV: "production",
@@ -11,9 +11,28 @@ describe("environment validation", () => {
         API_PUBLIC_URL: "https://api.mordidatasty.es",
         STRIPE_SECRET_KEY: "sk_live_example",
         STRIPE_WEBHOOK_SECRET: "whsec_example",
+        SMTP_FROM: "Mordida Tasty <hola@mordidatasty.es>",
         UPLOAD_DIR: "/app/uploads",
       }),
-    ).toThrow("Missing required environment variable: SMTP_HOST");
+    ).toThrow("Configure BREVO_API_KEY or SMTP_HOST in production.");
+  });
+
+  it("accepts Brevo API email delivery in production", () => {
+    const env = validateEnvironment({
+      NODE_ENV: "production",
+      DATABASE_URL: "postgresql://example",
+      JWT_SECRET: "a".repeat(40),
+      FRONTEND_URL: "https://mordidatasty.es",
+      API_PUBLIC_URL: "https://api.mordidatasty.es",
+      STRIPE_SECRET_KEY: "sk_live_example",
+      STRIPE_WEBHOOK_SECRET: "whsec_example",
+      SMTP_FROM: "Mordida Tasty <hola@mordidatasty.es>",
+      BREVO_API_KEY: "xkeysib-example",
+      UPLOAD_DIR: "/app/uploads",
+    });
+
+    expect(env.BREVO_API_KEY).toBe("xkeysib-example");
+    expect(env.BREVO_API_URL).toBe("https://api.brevo.com/v3/smtp/email");
   });
 
   it("requires the public API URL and upload directory in production", () => {
