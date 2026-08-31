@@ -314,6 +314,28 @@ https://api.tudominio.es/payments/webhook
 Necesitas un servicio de correo transaccional. Puede ser Brevo, SendGrid,
 Mailgun, SMTP2GO, Amazon SES u otro similar.
 
+Para empezar de forma sencilla, una opcion practica es Brevo:
+
+1. Crea una cuenta en `https://www.brevo.com`.
+2. Entra al panel de Brevo.
+3. Verifica tu remitente o, mejor, autentica tu dominio.
+4. Ve a la zona de SMTP/transaccional.
+5. Crea o copia tus credenciales SMTP.
+6. Usa estos valores en Render, dentro del servicio API:
+
+```text
+SMTP_HOST=smtp-relay.brevo.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=tu_login_smtp_de_brevo
+SMTP_PASSWORD=tu_clave_smtp_de_brevo
+SMTP_FROM=Mordida Tasty <no-reply@tudominio.es>
+```
+
+Importante: en Brevo se usa clave SMTP para SMTP, no la API key normal.
+Si todavia no tienes dominio, puedes verificar un remitente temporal, pero para
+produccion real conviene autenticar el dominio para mejorar entregabilidad.
+
 Datos que necesitas:
 
 ```text
