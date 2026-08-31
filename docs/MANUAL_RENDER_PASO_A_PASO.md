@@ -555,6 +555,9 @@ API no arranca:
 
 - Revisa variables obligatorias.
 - Revisa `DATABASE_URL`.
+- `DATABASE_URL` debe ser la URL completa de PostgreSQL, no el nombre de la
+  base ni el nombre del servicio. Tiene que empezar por `postgresql://` o
+  `postgres://`.
 - Revisa logs de Render.
 - Comprueba que `NODE_VERSION` sea `22.19.0`.
 - Si el build dice que no encuentra `../uploads/uploads.service` o

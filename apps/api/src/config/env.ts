@@ -70,6 +70,16 @@ function parsePositiveInteger(
   return parsed;
 }
 
+function parseDatabaseUrl(value: string) {
+  if (!value.startsWith("postgresql://") && !value.startsWith("postgres://")) {
+    throw new Error(
+      "DATABASE_URL must start with postgresql:// or postgres://.",
+    );
+  }
+
+  return value;
+}
+
 export function validateEnvironment(env: RawEnv): AppEnv {
   for (const key of requiredInAllEnvironments) {
     requireValue(env, key);
@@ -94,7 +104,7 @@ export function validateEnvironment(env: RawEnv): AppEnv {
     FRONTEND_URL: env.FRONTEND_URL ?? "http://localhost:3000",
     API_PUBLIC_URL: env.API_PUBLIC_URL ?? "http://localhost:4000",
     CORS_ORIGIN: env.CORS_ORIGIN ?? env.FRONTEND_URL ?? "http://localhost:3000",
-    DATABASE_URL: env.DATABASE_URL!,
+    DATABASE_URL: parseDatabaseUrl(env.DATABASE_URL!),
     JWT_SECRET: env.JWT_SECRET!,
     JWT_EXPIRES_IN: env.JWT_EXPIRES_IN ?? "7d",
     ADMIN_JWT_EXPIRES_IN: env.ADMIN_JWT_EXPIRES_IN ?? "12h",

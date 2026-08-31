@@ -98,4 +98,13 @@ describe("environment validation", () => {
       validateEnvironment({ ...baseEnv, UPLOAD_MAX_BYTES: "-1" }),
     ).toThrow("UPLOAD_MAX_BYTES must be a positive integer.");
   });
+
+  it("rejects database URLs that are not PostgreSQL connection strings", () => {
+    expect(() =>
+      validateEnvironment({
+        DATABASE_URL: "mordida-tasty-db",
+        JWT_SECRET: "a".repeat(40),
+      }),
+    ).toThrow("DATABASE_URL must start with postgresql:// or postgres://.");
+  });
 });
