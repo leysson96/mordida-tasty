@@ -21,10 +21,17 @@ export class MailService {
     this.production = this.configService.get('NODE_ENV', { infer: true }) === 'production';
 
     if (host) {
+      const timeoutMs = this.configService.get('SMTP_TIMEOUT_MS', {
+        infer: true,
+      });
+
       this.transport = nodemailer.createTransport({
         host,
         port: this.configService.get('SMTP_PORT', { infer: true }),
         secure: this.configService.get('SMTP_SECURE', { infer: true }),
+        connectionTimeout: timeoutMs,
+        greetingTimeout: timeoutMs,
+        socketTimeout: timeoutMs,
         ...(user && password ? { auth: { user, pass: password } } : {})
       });
     }

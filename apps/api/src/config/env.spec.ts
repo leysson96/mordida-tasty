@@ -65,6 +65,15 @@ describe("environment validation", () => {
     expect(env.ADMIN_JWT_EXPIRES_IN).toBe("12h");
   });
 
+  it("uses a bounded default SMTP timeout", () => {
+    const env = validateEnvironment({
+      DATABASE_URL: "postgresql://example",
+      JWT_SECRET: "a".repeat(40),
+    });
+
+    expect(env.SMTP_TIMEOUT_MS).toBe(10_000);
+  });
+
   it("validates configurable cookie same-site policy", () => {
     const env = validateEnvironment({
       DATABASE_URL: "postgresql://example",
@@ -94,6 +103,9 @@ describe("environment validation", () => {
     expect(() => validateEnvironment({ ...baseEnv, SMTP_PORT: "0" })).toThrow(
       "SMTP_PORT must be a positive integer.",
     );
+    expect(() =>
+      validateEnvironment({ ...baseEnv, SMTP_TIMEOUT_MS: "-1" }),
+    ).toThrow("SMTP_TIMEOUT_MS must be a positive integer.");
     expect(() =>
       validateEnvironment({ ...baseEnv, UPLOAD_MAX_BYTES: "-1" }),
     ).toThrow("UPLOAD_MAX_BYTES must be a positive integer.");

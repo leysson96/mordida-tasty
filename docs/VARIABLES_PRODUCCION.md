@@ -78,6 +78,8 @@ Eventos necesarios:
 - `SMTP_PASSWORD`: clave SMTP.
 - `SMTP_FROM`: remitente verificado. Ejemplo:
   `Mordida Tasty <no-reply@mordidatasty.es>`.
+- `SMTP_TIMEOUT_MS`: tiempo maximo de espera para conectar/enviar correo.
+  Valor recomendado: `10000`.
 
 Sin SMTP real no se verifican correos ni recuperacion de contrasena en
 produccion.

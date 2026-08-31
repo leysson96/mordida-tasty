@@ -174,6 +174,7 @@ SMTP_SECURE=false
 SMTP_USER=usuario_smtp
 SMTP_PASSWORD=password_smtp
 SMTP_FROM=Mordida Tasty <no-reply@tudominio.es>
+SMTP_TIMEOUT_MS=10000
 UPLOAD_DIR=/opt/render/project/src/uploads
 UPLOAD_MAX_BYTES=5242880
 MORDIDA_SEED_ADMIN_EMAIL=tu_email_admin_real
@@ -330,6 +331,7 @@ SMTP_SECURE=false
 SMTP_USER=tu_login_smtp_de_brevo
 SMTP_PASSWORD=tu_clave_smtp_de_brevo
 SMTP_FROM=Mordida Tasty <no-reply@tudominio.es>
+SMTP_TIMEOUT_MS=10000
 ```
 
 Importante: en Brevo se usa clave SMTP para SMTP, no la API key normal.

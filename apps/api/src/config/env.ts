@@ -34,6 +34,7 @@ export interface AppEnv {
   SMTP_USER?: string;
   SMTP_PASSWORD?: string;
   SMTP_FROM: string;
+  SMTP_TIMEOUT_MS: number;
   UPLOAD_DIR: string;
   UPLOAD_MAX_BYTES: number;
 }
@@ -122,6 +123,11 @@ export function validateEnvironment(env: RawEnv): AppEnv {
     SMTP_USER: env.SMTP_USER,
     SMTP_PASSWORD: env.SMTP_PASSWORD,
     SMTP_FROM: env.SMTP_FROM ?? "Mordida Tasty <no-reply@mordidatasty.es>",
+    SMTP_TIMEOUT_MS: parsePositiveInteger(
+      env.SMTP_TIMEOUT_MS,
+      10_000,
+      "SMTP_TIMEOUT_MS",
+    ),
     UPLOAD_DIR: env.UPLOAD_DIR ?? "uploads",
     UPLOAD_MAX_BYTES: parsePositiveInteger(
       env.UPLOAD_MAX_BYTES,
