@@ -1,0 +1,390 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CLIENTE
+  ADMIN
+  KITCHEN
+}
+
+enum DeliveryMethod {
+  DELIVERY
+  PICKUP
+}
+
+enum OrderStatus {
+  CREATED
+  PENDING_PAYMENT
+  PAID
+  CONFIRMED
+  PREPARING
+  READY
+  DELIVERED
+  CANCELLED
+  PAYMENT_FAILED
+  EXPIRED
+}
+
+enum PaymentProvider {
+  STRIPE
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  EXPIRED
+  REFUNDED
+}
+
+model User {
+  id                  String                   @id @default(uuid())
+  email               String                   @unique
+  passwordHash        String
+  name                String
+  phone               String?
+  role                Role                     @default(CLIENTE)
+  active              Boolean                  @default(true)
+  disabledAt          DateTime?
+  emailVerifiedAt     DateTime?
+  twoFactorSecret     String?
+  twoFactorEnabled    Boolean                  @default(false)
+  acceptedLegalAt     DateTime?
+  legalVersion        String?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  addresses           CustomerAddress[]
+  orders              Order[]
+  auditLogs           AuditLog[]               @relation("AuditActor")
+  statusChanges       OrderStatusHistory[]     @relation("StatusChangedBy")
+  removedOrderItems   OrderItem[]              @relation("OrderItemRemovedBy")
+  emailTokens         EmailVerificationToken[]
+  passwordResetTokens PasswordResetToken[]
+  createdClosures     SpecialClosure[]         @relation("ClosureCreatedBy")
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model CustomerAddress {
+  id            String   @id @default(uuid())
+  userId        String
+  label         String
+  recipientName String
+  phone         String
+  street        String
+  city          String
+  postalCode    String
+  notes         String?
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Category {
+  id        String    @id @default(uuid())
+  name      String
+  slug      String    @unique
+  sortOrder Int       @default(0)
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+}
+
+model Product {
+  id           String               @id @default(uuid())
+  categoryId   String
+  name         String
+  slug         String               @unique
+  description  String
+  priceCents   Int
+  imageUrl     String?
+  active       Boolean              @default(true)
+  available    Boolean              @default(true)
+  sortOrder    Int                  @default(0)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  category     Category             @relation(fields: [categoryId], references: [id])
+  orderItems   OrderItem[]
+  optionGroups ProductOptionGroup[]
+
+  @@index([categoryId])
+  @@index([active, available])
+}
+
+model ProductOptionGroup {
+  id         String                @id @default(uuid())
+  productId  String
+  name       String
+  required   Boolean               @default(false)
+  minChoices Int                   @default(0)
+  maxChoices Int                   @default(1)
+  active     Boolean               @default(true)
+  sortOrder  Int                   @default(0)
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
+  product    Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
+  choices    ProductOptionChoice[]
+
+  @@index([productId, active, sortOrder])
+}
+
+model ProductOptionChoice {
+  id         String             @id @default(uuid())
+  groupId    String
+  name       String
+  priceCents Int                @default(0)
+  active     Boolean            @default(true)
+  sortOrder  Int                @default(0)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  group      ProductOptionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId, active, sortOrder])
+}
+
+model DeliveryZone {
+  id                String   @id @default(uuid())
+  name              String
+  postalCodes       Json
+  deliveryFeeCents  Int
+  minimumOrderCents Int      @default(0)
+  active            Boolean  @default(true)
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([active, sortOrder])
+}
+
+model Order {
+  id                    String               @id @default(uuid())
+  orderNumber           String               @unique
+  trackingToken         String               @unique
+  userId                String?
+  customerEmail         String
+  customerName          String
+  customerPhone         String
+  deliveryMethod        DeliveryMethod
+  deliveryName          String?
+  deliveryPhone         String?
+  deliveryStreet        String?
+  deliveryCity          String?
+  deliveryPostalCode    String?
+  deliveryNotes         String?
+  status                OrderStatus          @default(CREATED)
+  subtotalCents         Int
+  discountCents         Int                  @default(0)
+  deliveryFeeCents      Int                  @default(0)
+  taxCents              Int
+  totalCents            Int
+  taxRate               Decimal              @db.Decimal(5, 4)
+  currency              String               @default("eur")
+  idempotencyKey        String?              @unique
+  stripeSessionId       String?              @unique
+  stripePaymentIntentId String?              @unique
+  acceptedLegalAt       DateTime?
+  legalVersion          String?
+  paidAt                DateTime?
+  expiresAt             DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  user                  User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items                 OrderItem[]
+  statusHistory         OrderStatusHistory[]
+  payments              Payment[]
+  refunds               PaymentRefund[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id             String            @id @default(uuid())
+  orderId        String
+  productId      String?
+  productName    String
+  unitPriceCents Int
+  quantity       Int
+  lineTotalCents Int
+  removedAt      DateTime?
+  removedReason  String?
+  removedById    String?
+  refundedCents  Int               @default(0)
+  stripeRefundId String?           @unique
+  createdAt      DateTime          @default(now())
+  order          Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product        Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  removedBy      User?             @relation("OrderItemRemovedBy", fields: [removedById], references: [id], onDelete: SetNull)
+  refunds        PaymentRefund[]
+  options        OrderItemOption[]
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([removedAt])
+  @@index([removedById])
+}
+
+model OrderItemOption {
+  id          String    @id @default(uuid())
+  orderItemId String
+  groupName   String
+  choiceName  String
+  priceCents  Int       @default(0)
+  createdAt   DateTime  @default(now())
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@index([orderItemId])
+}
+
+model OrderStatusHistory {
+  id          String       @id @default(uuid())
+  orderId     String
+  fromStatus  OrderStatus?
+  toStatus    OrderStatus
+  changedById String?
+  note        String?
+  createdAt   DateTime     @default(now())
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  changedBy   User?        @relation("StatusChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([createdAt])
+}
+
+model Payment {
+  id                    String          @id @default(uuid())
+  orderId               String
+  provider              PaymentProvider @default(STRIPE)
+  status                PaymentStatus   @default(PENDING)
+  amountCents           Int
+  currency              String          @default("eur")
+  stripeSessionId       String?         @unique
+  stripePaymentIntentId String?         @unique
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  order                 Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  refunds               PaymentRefund[]
+
+  @@index([orderId])
+  @@index([status])
+}
+
+model PaymentRefund {
+  id                    String          @id @default(uuid())
+  orderId               String
+  orderItemId           String?
+  paymentId             String?
+  provider              PaymentProvider @default(STRIPE)
+  amountCents           Int
+  currency              String          @default("eur")
+  stripeRefundId        String?         @unique
+  stripePaymentIntentId String?
+  reason                String?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  order                 Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem             OrderItem?      @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  payment               Payment?        @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([orderItemId])
+  @@index([paymentId])
+  @@index([stripePaymentIntentId])
+}
+
+model StripeEvent {
+  id          String    @id
+  type        String
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model SpecialClosure {
+  id          String   @id @default(uuid())
+  startsAt    DateTime
+  endsAt      DateTime
+  reason      String
+  active      Boolean  @default(true)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   User?    @relation("ClosureCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([active, startsAt, endsAt])
+  @@index([createdById])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String?
+  action    String
+  entity    String
+  entityId  String?
+  metadata  Json?
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  actor     User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+model DataDeletionRequest {
+  id         String    @id @default(uuid())
+  email      String
+  message    String?
+  resolved   Boolean   @default(false)
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([email])
+  @@index([resolved])
+  @@index([createdAt])
+}
+
+model SequenceCounter {
+  key       String   @id
+  value     Int
+  updatedAt DateTime @updatedAt
+}

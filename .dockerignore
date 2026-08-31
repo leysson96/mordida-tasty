@@ -1,0 +1,12 @@
+node_modules
+apps/api/dist
+apps/web/.next
+coverage
+tmp
+.env
+.env.*
+!.env.example
+!.env.production.example
+*.log
+.git
+.DS_Store

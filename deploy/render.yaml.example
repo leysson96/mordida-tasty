@@ -1,0 +1,89 @@
+# Copia este archivo a render.yaml solo cuando tengas dominio, Stripe live y SMTP real.
+# En este monorepo los comandos se ejecutan desde la raiz para que npm workspaces
+# pueda ver package-lock.json y las dos apps.
+
+databases:
+  - name: mordida-tasty-db
+    databaseName: mordida_tasty
+    user: mordida
+
+services:
+  - type: web
+    name: mordida-tasty-api
+    runtime: node
+    buildCommand: npm ci && npm run prisma:generate:prod -w @mordida/api && npm run build -w @mordida/api
+    preDeployCommand: npm run prisma:deploy -w @mordida/api
+    startCommand: npm run start -w @mordida/api
+    healthCheckPath: /health
+    disk:
+      name: mordida-tasty-uploads
+      mountPath: /app/uploads
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_TIMEZONE
+        value: Europe/Madrid
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mordida-tasty-db
+          property: connectionString
+      - key: FRONTEND_URL
+        value: https://www.tudominio.es
+      - key: API_PUBLIC_URL
+        value: https://api.tudominio.es
+      - key: CORS_ORIGIN
+        value: https://www.tudominio.es,https://tudominio.es
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: ADMIN_JWT_EXPIRES_IN
+        value: 12h
+      - key: SESSION_COOKIE_DOMAIN
+        value: ""
+      - key: SESSION_COOKIE_SAME_SITE
+        value: lax
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_SUCCESS_PATH
+        value: /seguimiento/{ORDER_NUMBER}?t={TRACKING_TOKEN}
+      - key: STRIPE_CANCEL_PATH
+        value: /checkout?cancelled=1
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_SECURE
+        value: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        value: Mordida Tasty <no-reply@tudominio.es>
+      - key: UPLOAD_DIR
+        value: /app/uploads
+      - key: UPLOAD_MAX_BYTES
+        value: 5242880
+      - key: MORDIDA_SEED_ADMIN_EMAIL
+        value: admin@tudominio.es
+      - key: MORDIDA_SEED_ADMIN_PASSWORD
+        sync: false
+      - key: MORDIDA_SEED_KITCHEN_EMAIL
+        value: cocina@tudominio.es
+      - key: MORDIDA_SEED_KITCHEN_PASSWORD
+        sync: false
+
+  - type: web
+    name: mordida-tasty-web
+    runtime: node
+    buildCommand: npm ci && npm run build -w @mordida/web
+    startCommand: npm run start -w @mordida/web
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        value: https://api.tudominio.es

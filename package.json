@@ -1,0 +1,39 @@
+{
+  "name": "mordida-tasty",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w @mordida/api\" \"npm run dev -w @mordida/web\"",
+    "build": "npm run build -w @mordida/api && npm run build -w @mordida/web",
+    "lint": "npm run lint -w @mordida/api && npm run lint -w @mordida/web",
+    "test": "npm run test -w @mordida/api",
+    "start:api": "npm run start -w @mordida/api",
+    "start:web": "npm run start -w @mordida/web",
+    "format": "prettier --write \"apps/**/*.{ts,tsx,css,md,json,prisma}\"",
+    "db:up": "docker compose up -d postgres mailpit",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres",
+    "prisma:generate": "npm run prisma:generate -w @mordida/api",
+    "prisma:generate:prod": "npm run prisma:generate:prod -w @mordida/api",
+    "prisma:migrate": "npm run prisma:migrate -w @mordida/api",
+    "prisma:deploy": "npm run prisma:deploy -w @mordida/api",
+    "seed": "npm run seed -w @mordida/api",
+    "seed:prod": "npm run seed:prod -w @mordida/api",
+    "admin:reset-2fa": "node scripts/admin-reset-2fa.mjs"
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.2"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0",
+    "prettier": "^3.3.3"
+  }
+}
