@@ -129,7 +129,7 @@ Region: Frankfurt
 Branch: main
 Root Directory: dejar vacio
 Build Command:
-npm ci && npm run prisma:generate:prod -w @mordida/api && npm run build -w @mordida/api
+npm ci --include=dev && npm run prisma:generate:prod -w @mordida/api && npm run build -w @mordida/api && npm prune --omit=dev
 
 Pre-Deploy Command:
 npm run prisma:deploy -w @mordida/api
@@ -211,7 +211,7 @@ Region: Frankfurt
 Branch: main
 Root Directory: dejar vacio
 Build Command:
-npm ci && npm run build -w @mordida/web
+npm ci --include=dev && npm run build -w @mordida/web && npm prune --omit=dev
 
 Start Command:
 npm run start -w @mordida/web
@@ -227,6 +227,21 @@ NEXT_PUBLIC_API_URL=https://mordida-tasty-api.onrender.com
 
 Importante: `NEXT_PUBLIC_API_URL` queda metida dentro del build de Next.js.
 Si cambias esa variable, usa `Save, rebuild, and deploy`, no solo reiniciar.
+
+Si Render muestra un error diciendo que falta `@types/react`, el origen es que
+el servicio esta construyendo con `NODE_ENV=production` y `npm ci` omitio las
+dependencias de desarrollo. Solucion: confirma que el `Build Command` de la web
+usa exactamente:
+
+```text
+npm ci --include=dev && npm run build -w @mordida/web && npm prune --omit=dev
+```
+
+Haz el mismo ajuste en la API:
+
+```text
+npm ci --include=dev && npm run prisma:generate:prod -w @mordida/api && npm run build -w @mordida/api && npm prune --omit=dev
+```
 
 ## 8. Revisar que API y web se ven
 

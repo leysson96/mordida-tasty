@@ -9,9 +9,10 @@ SMTP, almacenamiento persistente de imagenes y textos legales finales.
 Build completo:
 
 ```bash
-npm ci
+npm ci --include=dev
 npm run prisma:generate:prod -w @mordida/api
 npm run build
+npm prune --omit=dev
 ```
 
 Migraciones:
@@ -50,7 +51,7 @@ API:
 
 ```bash
 Build Command:
-npm ci && npm run prisma:generate:prod -w @mordida/api && npm run build -w @mordida/api
+npm ci --include=dev && npm run prisma:generate:prod -w @mordida/api && npm run build -w @mordida/api && npm prune --omit=dev
 
 Pre-Deploy Command:
 npm run prisma:deploy -w @mordida/api
@@ -77,11 +78,16 @@ Web:
 
 ```bash
 Build Command:
-npm ci && npm run build -w @mordida/web
+npm ci --include=dev && npm run build -w @mordida/web && npm prune --omit=dev
 
 Start Command:
 npm run start -w @mordida/web
 ```
+
+Si Render muestra que faltan paquetes como `@types/react`, no significa que
+falten en el repositorio. Significa que `NODE_ENV=production` hizo que `npm ci`
+omitiera las dependencias de desarrollo. Mantener `--include=dev` en el build
+lo corrige; `npm prune --omit=dev` limpia despues de compilar.
 
 La plantilla `deploy/render.yaml.example` deja esos comandos preparados, pero
 hay que cambiar los dominios `tudominio.es` por los reales antes de usarla.

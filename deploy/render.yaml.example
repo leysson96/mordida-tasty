@@ -12,7 +12,7 @@ services:
     name: mordida-tasty-api
     runtime: node
     region: frankfurt
-    buildCommand: npm ci && npm run prisma:generate:prod -w @mordida/api && npm run build -w @mordida/api
+    buildCommand: npm ci --include=dev && npm run prisma:generate:prod -w @mordida/api && npm run build -w @mordida/api && npm prune --omit=dev
     preDeployCommand: npm run prisma:deploy -w @mordida/api
     startCommand: npm run start -w @mordida/api
     healthCheckPath: /health
@@ -84,7 +84,7 @@ services:
     name: mordida-tasty-web
     runtime: node
     region: frankfurt
-    buildCommand: npm ci && npm run build -w @mordida/web
+    buildCommand: npm ci --include=dev && npm run build -w @mordida/web && npm prune --omit=dev
     startCommand: npm run start -w @mordida/web
     envVars:
       - key: NODE_ENV
