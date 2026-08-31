@@ -70,6 +70,7 @@ Estado actualizado: 2026-08-31
 - [x] Auditoria de codigo 2026-08-31: login publico limitado a clientes, clientes sin email verificado bloqueados, variables numericas de entorno validadas y formato de extras centralizado.
 - [x] Build de Render corregido: instala dependencias de compilacion con `npm ci --include=dev` aunque `NODE_ENV=production` y limpia despues con `npm prune --omit=dev`.
 - [x] Modulo backend de subidas incluido en Git: `.gitignore` ahora ignora solo `/uploads/` de runtime y no `apps/api/src/uploads`.
+- [x] Seed de produccion corregido para ejecutarse compilado en Render con importacion CommonJS segura de `argon2`.
 - [x] Validacion actual: `npm run test -w @mordida/api` (12 suites, 81 tests), `npm run lint` y `npm run build`.
 
 ## En curso

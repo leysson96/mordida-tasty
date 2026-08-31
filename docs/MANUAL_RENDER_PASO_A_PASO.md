@@ -564,6 +564,9 @@ API no arranca:
   `../uploads/uploads.module`, confirma que estas usando el commit posterior a
   la correccion de `.gitignore`; ese error ocurria porque Git estaba ignorando
   por accidente el modulo de subidas de imagenes del backend.
+- Si `seed:prod` muestra `Cannot read properties of undefined (reading 'hash')`,
+  despliega un commit posterior a la correccion de la importacion de `argon2` en
+  `apps/api/prisma/seed.ts`.
 
 Web no carga datos:
 
