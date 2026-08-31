@@ -85,7 +85,8 @@ produccion.
 ## Imagenes y subidas
 
 - `UPLOAD_DIR`: carpeta donde la API guarda las fotos subidas desde admin.
-  En Docker usa una ruta persistente, por ejemplo `/app/uploads`.
+  En Render con runtime Node usa `/opt/render/project/src/uploads`. En Docker
+  usa una ruta persistente, por ejemplo `/app/uploads`.
 - `UPLOAD_MAX_BYTES`: tamano maximo por imagen. Valor actual recomendado:
   `5242880` para 5 MB.
 

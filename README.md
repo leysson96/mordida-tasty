@@ -89,6 +89,7 @@ Antes de produccion faltan decisiones externas al codigo: dominio, claves Stripe
 Documentacion operativa:
 
 - Hoja de ruta: `docs/HOJA_RUTA_PRODUCCION.md`
+- Manual Render paso a paso: `docs/MANUAL_RENDER_PASO_A_PASO.md`
 - Variables reales: `docs/VARIABLES_PRODUCCION.md`
 - Despliegue: `docs/DESPLIEGUE_PRODUCCION.md`
 - Diseno y marca: `docs/DISENO_MARCA.md`

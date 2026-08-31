@@ -39,7 +39,9 @@ Usar tres recursos:
 - PostgreSQL gestionado.
 - Servicio web Node para `mordida-tasty-api`.
 - Servicio web Node para `mordida-tasty-web`.
-- Persistent Disk para las imagenes subidas por admin, montado en `/app/uploads`.
+- Persistent Disk para las imagenes subidas por admin, montado en
+  `/opt/render/project/src/uploads` si usas el runtime Node nativo de Render.
+  Si despliegas con Docker, usa `/app/uploads`.
 
 Como este repositorio usa npm workspaces, deja el root directory en la raiz del
 repositorio y usa comandos filtrados por workspace.
@@ -59,6 +61,17 @@ npm run start -w @mordida/api
 Health Check Path:
 /health
 ```
+
+Disco persistente de la API:
+
+```bash
+Mount Path:
+/opt/render/project/src/uploads
+```
+
+Nota: el disco persistente y el pre-deploy command requieren servicio compatible
+de pago en Render. No recomiendo lanzar produccion real en un plan sin disco,
+porque las fotos subidas desde admin se perderian al redeplegar.
 
 Web:
 

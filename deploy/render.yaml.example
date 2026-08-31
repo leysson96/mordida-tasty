@@ -11,17 +11,20 @@ services:
   - type: web
     name: mordida-tasty-api
     runtime: node
+    region: frankfurt
     buildCommand: npm ci && npm run prisma:generate:prod -w @mordida/api && npm run build -w @mordida/api
     preDeployCommand: npm run prisma:deploy -w @mordida/api
     startCommand: npm run start -w @mordida/api
     healthCheckPath: /health
     disk:
       name: mordida-tasty-uploads
-      mountPath: /app/uploads
+      mountPath: /opt/render/project/src/uploads
       sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: 22.19.0
       - key: APP_TIMEZONE
         value: Europe/Madrid
       - key: DATABASE_URL
@@ -65,7 +68,7 @@ services:
       - key: SMTP_FROM
         value: Mordida Tasty <no-reply@tudominio.es>
       - key: UPLOAD_DIR
-        value: /app/uploads
+        value: /opt/render/project/src/uploads
       - key: UPLOAD_MAX_BYTES
         value: 5242880
       - key: MORDIDA_SEED_ADMIN_EMAIL
@@ -80,10 +83,13 @@ services:
   - type: web
     name: mordida-tasty-web
     runtime: node
+    region: frankfurt
     buildCommand: npm ci && npm run build -w @mordida/web
     startCommand: npm run start -w @mordida/web
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: 22.19.0
       - key: NEXT_PUBLIC_API_URL
         value: https://api.tudominio.es
