@@ -1,5 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
-import { OrderStatus, PaymentStatus } from "@prisma/client";
+import { OrderPaymentMethod, OrderStatus, PaymentStatus } from "@prisma/client";
 import { PaymentsService } from "./payments.service";
 
 describe("PaymentsService", () => {
@@ -333,6 +333,22 @@ describe("PaymentsService", () => {
       service().createCheckoutSession({ orderId: "order-1" }),
     ).rejects.toThrow(BadRequestException);
 
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects Stripe checkout for cash orders", async () => {
+    ordersService.getForCheckout.mockResolvedValue({
+      id: "order-1",
+      status: OrderStatus.CREATED,
+      paymentMethod: OrderPaymentMethod.CASH,
+      items: [{ removedAt: null }],
+    });
+
+    await expect(
+      service().createCheckoutSession({ orderId: "order-1" }),
+    ).rejects.toThrow("Este pedido se pagara en efectivo");
+
+    expect(ordersService.transitionOrder).not.toHaveBeenCalled();
     expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
   });
 

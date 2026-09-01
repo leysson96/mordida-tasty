@@ -5,7 +5,12 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { OrderStatus, PaymentStatus, Prisma } from "@prisma/client";
+import {
+  OrderPaymentMethod,
+  OrderStatus,
+  PaymentStatus,
+  Prisma,
+} from "@prisma/client";
 import { Request } from "express";
 import Stripe from "stripe";
 import { AppEnv } from "../config/env";
@@ -72,9 +77,14 @@ export class PaymentsService {
   }
 
   async createCheckoutSession(dto: CreateCheckoutSessionDto) {
-    const stripe = this.requireStripe();
     const order = await this.ordersService.getForCheckout(dto.orderId);
     const payableItems = order.items.filter((item) => !item.removedAt);
+
+    if (order.paymentMethod === OrderPaymentMethod.CASH) {
+      throw new BadRequestException(
+        "Este pedido se pagara en efectivo y no necesita Stripe.",
+      );
+    }
 
     if (paidOrBeyondStatuses.includes(order.status)) {
       throw new BadRequestException("Order is already paid.");
@@ -83,6 +93,8 @@ export class PaymentsService {
     if (payableItems.length === 0) {
       throw new BadRequestException("El pedido no tiene productos activos.");
     }
+
+    const stripe = this.requireStripe();
 
     await this.ordersService.transitionOrder(
       order.id,
@@ -184,6 +196,12 @@ export class PaymentsService {
 
     if (!order) {
       throw new NotFoundException("Order not found.");
+    }
+
+    if (order.paymentMethod === OrderPaymentMethod.CASH) {
+      throw new BadRequestException(
+        "Los pedidos en efectivo no tienen reembolso de Stripe.",
+      );
     }
 
     if (!removableOrderItemStatuses.includes(order.status)) {
@@ -396,6 +414,12 @@ export class PaymentsService {
 
     if (!order) {
       throw new NotFoundException("Order not found.");
+    }
+
+    if (order.paymentMethod === OrderPaymentMethod.CASH) {
+      throw new BadRequestException(
+        "Los pedidos en efectivo no tienen reembolso de Stripe.",
+      );
     }
 
     const existingFullRefund = order.refunds.find(

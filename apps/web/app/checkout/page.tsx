@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { CreditCard, MapPin, Store } from "lucide-react";
+import { Banknote, CreditCard, MapPin, Store } from "lucide-react";
 import { ApiError, api, formatMoney } from "../../lib/api";
 import {
   Address,
   DeliveryMethod,
   DeliveryQuote,
+  OrderPaymentMethod,
   OrderSummary,
   PublicSettings,
   User,
@@ -20,9 +21,11 @@ interface CheckoutSessionResponse {
 }
 
 export default function CheckoutPage() {
-  const { items, subtotalCents } = useCart();
+  const { items, subtotalCents, clear } = useCart();
   const [deliveryMethod, setDeliveryMethod] =
     useState<DeliveryMethod>("PICKUP");
+  const [paymentMethod, setPaymentMethod] =
+    useState<OrderPaymentMethod>("CARD");
   const [publicSettings, setPublicSettings] = useState<PublicSettings>();
   const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState("");
@@ -35,6 +38,7 @@ export default function CheckoutPage() {
   const [city, setCity] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [notes, setNotes] = useState("");
+  const [cashTenderedEuros, setCashTenderedEuros] = useState("");
   const [deliveryQuote, setDeliveryQuote] = useState<DeliveryQuote>();
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string>();
@@ -174,6 +178,19 @@ export default function CheckoutPage() {
     () => subtotalCents + deliveryFeeCents,
     [deliveryFeeCents, subtotalCents],
   );
+  const cashTenderedCents = useMemo(
+    () => parseMoneyInputCents(cashTenderedEuros),
+    [cashTenderedEuros],
+  );
+  const cashChangeCents =
+    paymentMethod === "CASH" && cashTenderedCents !== undefined
+      ? cashTenderedCents - totalCents
+      : undefined;
+  const cashNeedsTender =
+    paymentMethod === "CASH" && deliveryMethod === "DELIVERY";
+  const cashBlocked =
+    cashNeedsTender &&
+    (cashTenderedCents === undefined || cashTenderedCents < totalCents);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -215,6 +232,20 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (paymentMethod === "CASH" && deliveryMethod === "DELIVERY") {
+      if (cashTenderedCents === undefined) {
+        setError(
+          "Indica con cuanto pagara el cliente para preparar el cambio.",
+        );
+        return;
+      }
+
+      if (cashTenderedCents !== undefined && cashTenderedCents < totalCents) {
+        setError("El importe en efectivo debe cubrir el total del pedido.");
+        return;
+      }
+    }
+
     const form = new FormData(event.currentTarget);
     const idempotencyKey = crypto.randomUUID();
     setLoading(true);
@@ -228,6 +259,11 @@ export default function CheckoutPage() {
           customerEmail: String(form.get("customerEmail")),
           customerPhone: String(form.get("customerPhone")),
           deliveryMethod,
+          paymentMethod,
+          cashTenderedCents:
+            paymentMethod === "CASH" && deliveryMethod === "DELIVERY"
+              ? cashTenderedCents
+              : undefined,
           address:
             deliveryMethod === "DELIVERY"
               ? {
@@ -248,6 +284,18 @@ export default function CheckoutPage() {
         }),
       });
 
+      if (paymentMethod === "CASH") {
+        if (!order.trackingToken) {
+          throw new Error("No se pudo abrir el seguimiento del pedido.");
+        }
+
+        clear();
+        window.location.href = `/seguimiento/${encodeURIComponent(
+          order.orderNumber,
+        )}?t=${encodeURIComponent(order.trackingToken)}`;
+        return;
+      }
+
       const checkout = await api<CheckoutSessionResponse>(
         "/payments/checkout",
         {
@@ -265,7 +313,7 @@ export default function CheckoutPage() {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "No se pudo crear el pago.",
+          : "No se pudo crear el pedido.",
       );
       setLoading(false);
     }
@@ -468,6 +516,71 @@ export default function CheckoutPage() {
             </div>
           )}
 
+          <section className="payment-method-panel">
+            <div className="payment-method-head">
+              <h2>Pago</h2>
+              <strong>{formatMoney(totalCents)}</strong>
+            </div>
+            <div className="payment-choice-grid">
+              <button
+                type="button"
+                className={paymentMethod === "CARD" ? "active" : ""}
+                onClick={() => setPaymentMethod("CARD")}
+              >
+                <CreditCard aria-hidden="true" size={17} />
+                Tarjeta
+              </button>
+              <button
+                type="button"
+                className={paymentMethod === "CASH" ? "active" : ""}
+                onClick={() => setPaymentMethod("CASH")}
+              >
+                <Banknote aria-hidden="true" size={18} />
+                Efectivo
+              </button>
+            </div>
+
+            {paymentMethod === "CASH" && (
+              <div className="cash-payment-panel">
+                {deliveryMethod === "DELIVERY" ? (
+                  <>
+                    <label>
+                      Paga con
+                      <input
+                        name="cashTenderedEuros"
+                        inputMode="decimal"
+                        placeholder={formatMoney(totalCents)}
+                        value={cashTenderedEuros}
+                        onChange={(event) =>
+                          setCashTenderedEuros(event.target.value)
+                        }
+                      />
+                    </label>
+                    <p
+                      className={
+                        cashChangeCents !== undefined && cashChangeCents < 0
+                          ? "form-error"
+                          : "cash-change-preview"
+                      }
+                    >
+                      {cashTenderedCents === undefined
+                        ? "Indica el importe para preparar cambio."
+                        : cashChangeCents !== undefined && cashChangeCents < 0
+                          ? `Faltan ${formatMoney(Math.abs(cashChangeCents))}.`
+                          : `Cambio a preparar: ${formatMoney(
+                              cashChangeCents ?? 0,
+                            )}`}
+                    </p>
+                  </>
+                ) : (
+                  <p className="cash-change-preview">
+                    Pagas en caja al recoger tu pedido.
+                  </p>
+                )}
+              </div>
+            )}
+          </section>
+
           <label className="checkbox-label legal-consent">
             <input type="checkbox" name="acceptLegal" required />
             <span>
@@ -531,11 +644,22 @@ export default function CheckoutPage() {
               (deliveryMethod === "DELIVERY" && !publicSettings) ||
               deliveryBlocked ||
               quoteLoading ||
-              deliveryNeedsQuote
+              deliveryNeedsQuote ||
+              cashBlocked
             }
           >
-            <CreditCard aria-hidden="true" size={18} />
-            {loading ? "Abriendo pago" : "Pagar"}
+            {paymentMethod === "CASH" ? (
+              <Banknote aria-hidden="true" size={18} />
+            ) : (
+              <CreditCard aria-hidden="true" size={18} />
+            )}
+            {loading
+              ? paymentMethod === "CASH"
+                ? "Confirmando"
+                : "Abriendo pago"
+              : paymentMethod === "CASH"
+                ? "Confirmar pedido"
+                : "Pagar"}
           </button>
         </aside>
       </form>
@@ -559,4 +683,18 @@ function cartItemOptionsPayload(
     groupId,
     choiceIds,
   }));
+}
+
+function parseMoneyInputCents(value: string) {
+  const normalized = value.trim().replace(",", ".");
+  if (!normalized) {
+    return undefined;
+  }
+
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount < 0) {
+    return undefined;
+  }
+
+  return Math.round(amount * 100);
 }

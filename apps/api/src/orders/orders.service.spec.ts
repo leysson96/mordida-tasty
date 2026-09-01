@@ -1,5 +1,11 @@
 import { BadRequestException } from "@nestjs/common";
-import { DeliveryMethod, OrderStatus } from "@prisma/client";
+import {
+  DeliveryMethod,
+  OrderPaymentMethod,
+  OrderStatus,
+  PaymentProvider,
+  PaymentStatus,
+} from "@prisma/client";
 import { OrdersService } from "./orders.service";
 
 describe("OrdersService", () => {
@@ -238,6 +244,140 @@ describe("OrdersService", () => {
         }),
       }),
     );
+  });
+
+  it("creates cash delivery orders as confirmed and stores change details", async () => {
+    const productId = "00000000-0000-4000-8000-000000000001";
+    prisma.product.findMany.mockResolvedValue([
+      {
+        id: productId,
+        name: "Mordida Smash",
+        priceCents: 1190,
+        available: true,
+        optionGroups: [],
+      },
+    ]);
+
+    const tx = {
+      sequenceCounter: {
+        upsert: jest.fn().mockResolvedValue({ value: 9 }),
+      },
+      order: {
+        create: jest.fn(({ data }) => ({
+          id: "order-cash",
+          orderNumber: data.orderNumber,
+          status: data.status,
+          paymentMethod: data.paymentMethod,
+          cashTenderedCents: data.cashTenderedCents,
+          cashChangeCents: data.cashChangeCents,
+          totalCents: data.totalCents,
+          items: [],
+          statusHistory: [],
+        })),
+      },
+    };
+    prisma.$transaction.mockImplementation((callback) => callback(tx));
+
+    await expect(
+      service().createOrder(
+        {
+          customerName: "Cliente Test",
+          customerEmail: "cliente@example.com",
+          customerPhone: "+34611752804",
+          deliveryMethod: DeliveryMethod.DELIVERY,
+          paymentMethod: OrderPaymentMethod.CASH,
+          cashTenderedCents: 2000,
+          address: {
+            name: "Cliente Test",
+            phone: "+34611752804",
+            street: "Calle Real 1",
+            city: "A Coruna",
+            postalCode: "15001",
+          },
+          items: [{ productId, quantity: 1 }],
+          acceptLegal: true,
+        },
+        "checkout-cash-key",
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        status: OrderStatus.CONFIRMED,
+        paymentMethod: OrderPaymentMethod.CASH,
+        cashTenderedCents: 2000,
+        cashChangeCents: 560,
+        totalCents: 1440,
+      }),
+    );
+
+    expect(tx.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: OrderStatus.CONFIRMED,
+          paymentMethod: OrderPaymentMethod.CASH,
+          cashTenderedCents: 2000,
+          cashChangeCents: 560,
+          payments: {
+            create: {
+              provider: PaymentProvider.CASH,
+              status: PaymentStatus.PENDING,
+              amountCents: 1440,
+              currency: "eur",
+            },
+          },
+          statusHistory: {
+            create: expect.arrayContaining([
+              expect.objectContaining({
+                toStatus: OrderStatus.CREATED,
+              }),
+              expect.objectContaining({
+                fromStatus: OrderStatus.CREATED,
+                toStatus: OrderStatus.CONFIRMED,
+              }),
+            ]),
+          },
+        }),
+      }),
+    );
+  });
+
+  it("rejects cash delivery orders when the tendered amount is too low", async () => {
+    const productId = "00000000-0000-4000-8000-000000000001";
+    prisma.product.findMany.mockResolvedValue([
+      {
+        id: productId,
+        name: "Mordida Smash",
+        priceCents: 1190,
+        available: true,
+        optionGroups: [],
+      },
+    ]);
+
+    await expect(
+      service().createOrder(
+        {
+          customerName: "Cliente Test",
+          customerEmail: "cliente@example.com",
+          customerPhone: "+34611752804",
+          deliveryMethod: DeliveryMethod.DELIVERY,
+          paymentMethod: OrderPaymentMethod.CASH,
+          cashTenderedCents: 1000,
+          address: {
+            name: "Cliente Test",
+            phone: "+34611752804",
+            street: "Calle Real 1",
+            city: "A Coruna",
+            postalCode: "15001",
+          },
+          items: [{ productId, quantity: 1 }],
+          acceptLegal: true,
+        },
+        "checkout-cash-low-key",
+      ),
+    ).rejects.toThrow(
+      "El importe en efectivo debe cubrir el total del pedido.",
+    );
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("adds selected option prices and saves option snapshots on order items", async () => {

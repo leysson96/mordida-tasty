@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import {
+  Banknote,
   CheckCircle2,
   Clock3,
   CookingPot,
+  CreditCard,
   PackageCheck,
   ReceiptText,
   RefreshCw,
@@ -18,6 +20,7 @@ import {
   trackingProgressStatuses,
 } from "../lib/order-state";
 import { formatOrderItemOptions } from "../lib/order-format";
+import { paymentMethodLabel, paymentSummaryText } from "../lib/payment-format";
 import type { OrderStatus, OrderSummary } from "../lib/types";
 import { useCart } from "./cart-provider";
 
@@ -116,6 +119,7 @@ export function TrackingClient({
       ? "Entrega a domicilio"
       : "Recogida en local";
   const MethodIcon = order.deliveryMethod === "DELIVERY" ? Truck : Store;
+  const PaymentIcon = order.paymentMethod === "CASH" ? Banknote : CreditCard;
 
   return (
     <main className="page-shell tracking-page">
@@ -133,6 +137,10 @@ export function TrackingClient({
           <span>
             <RefreshCw aria-hidden="true" size={17} />
             Actualiza cada 10s
+          </span>
+          <span>
+            <PaymentIcon aria-hidden="true" size={17} />
+            {paymentMethodLabel(order)}
           </span>
         </div>
       </section>
@@ -167,8 +175,8 @@ export function TrackingClient({
                   )}
                 </span>
                 <span className="tracking-step-copy">
-                  <strong>{orderStatusLabels[status]}</strong>
-                  <small>{trackingStepDescriptions[status]}</small>
+                  <strong>{trackingStepLabel(order, status)}</strong>
+                  <small>{trackingStepDescription(order, status)}</small>
                 </span>
               </div>
             );
@@ -184,6 +192,10 @@ export function TrackingClient({
         <article>
           <span>Creado</span>
           <strong>{formatTrackingDate(order.createdAt)}</strong>
+        </article>
+        <article>
+          <span>Pago</span>
+          <strong>{paymentSummaryText(order)}</strong>
         </article>
         <article className="wide">
           <span>{deliveryLabel}</span>
@@ -235,4 +247,22 @@ function formatTrackingDate(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function trackingStepLabel(order: OrderSummary, status: OrderStatus) {
+  if (order.paymentMethod === "CASH" && status === "PAID") {
+    return "Pedido recibido";
+  }
+
+  return orderStatusLabels[status];
+}
+
+function trackingStepDescription(order: OrderSummary, status: OrderStatus) {
+  if (order.paymentMethod === "CASH" && status === "PAID") {
+    return order.deliveryMethod === "DELIVERY"
+      ? "Pago en efectivo al recibir"
+      : "Pago en caja al recoger";
+  }
+
+  return trackingStepDescriptions[status];
 }

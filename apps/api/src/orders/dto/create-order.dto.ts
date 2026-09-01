@@ -18,7 +18,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from "class-validator";
-import { DeliveryMethod } from "@prisma/client";
+import { DeliveryMethod, OrderPaymentMethod } from "@prisma/client";
 
 export class CreateOrderItemOptionDto {
   @IsUUID()
@@ -92,6 +92,16 @@ export class CreateOrderDto {
 
   @IsEnum(DeliveryMethod)
   deliveryMethod!: DeliveryMethod;
+
+  @IsOptional()
+  @IsEnum(OrderPaymentMethod)
+  paymentMethod?: OrderPaymentMethod;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100000)
+  cashTenderedCents?: number;
 
   @ValidateIf(
     (value: CreateOrderDto) => value.deliveryMethod === DeliveryMethod.DELIVERY,

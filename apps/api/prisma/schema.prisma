@@ -33,6 +33,7 @@ enum OrderStatus {
 
 enum PaymentProvider {
   STRIPE
+  CASH
 }
 
 enum PaymentStatus {
@@ -41,6 +42,11 @@ enum PaymentStatus {
   FAILED
   EXPIRED
   REFUNDED
+}
+
+enum OrderPaymentMethod {
+  CARD
+  CASH
 }
 
 model User {
@@ -204,6 +210,7 @@ model Order {
   deliveryPostalCode    String?
   deliveryNotes         String?
   status                OrderStatus          @default(CREATED)
+  paymentMethod         OrderPaymentMethod   @default(CARD)
   subtotalCents         Int
   discountCents         Int                  @default(0)
   deliveryFeeCents      Int                  @default(0)
@@ -214,6 +221,8 @@ model Order {
   idempotencyKey        String?              @unique
   stripeSessionId       String?              @unique
   stripePaymentIntentId String?              @unique
+  cashTenderedCents     Int?
+  cashChangeCents       Int?
   acceptedLegalAt       DateTime?
   legalVersion          String?
   paidAt                DateTime?
@@ -228,6 +237,7 @@ model Order {
 
   @@index([userId])
   @@index([status])
+  @@index([paymentMethod])
   @@index([createdAt])
 }
 

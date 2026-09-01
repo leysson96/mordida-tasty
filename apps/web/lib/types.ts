@@ -4,6 +4,8 @@ export type Role = "CLIENTE" | "ADMIN" | "KITCHEN";
 
 export type DeliveryMethod = "DELIVERY" | "PICKUP";
 
+export type OrderPaymentMethod = "CARD" | "CASH";
+
 export type OrderStatus =
   | "CREATED"
   | "PENDING_PAYMENT"
@@ -109,6 +111,7 @@ export interface OrderSummary {
   trackingToken?: string;
   status: OrderStatus;
   deliveryMethod: DeliveryMethod;
+  paymentMethod?: OrderPaymentMethod;
   customerName?: string;
   customerEmail?: string;
   customerPhone?: string;
@@ -121,6 +124,8 @@ export interface OrderSummary {
   subtotalCents?: number;
   deliveryFeeCents?: number;
   taxCents?: number;
+  cashTenderedCents?: number | null;
+  cashChangeCents?: number | null;
   totalCents: number;
   createdAt: string;
   updatedAt?: string;

@@ -4,8 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
+  Banknote,
   Check,
   ChefHat,
+  CreditCard,
   LogOut,
   PackageCheck,
   Printer,
@@ -26,6 +28,7 @@ import {
   SiteContent,
   User,
 } from "../lib/types";
+import { paymentSummaryText } from "../lib/payment-format";
 import { logoutAdmin } from "./admin-auth";
 import { KitchenAlarm } from "./kitchen-alarm";
 
@@ -213,11 +216,29 @@ export function AdminKitchenClient() {
                     )}
                   </div>
 
+                  <div
+                    className={`payment-chip ${
+                      order.paymentMethod === "CASH" ? "cash" : ""
+                    }`}
+                  >
+                    {order.paymentMethod === "CASH" ? (
+                      <Banknote aria-hidden="true" size={16} />
+                    ) : (
+                      <CreditCard aria-hidden="true" size={16} />
+                    )}
+                    <span>{paymentSummaryText(order)}</span>
+                  </div>
+
                   <ul>
                     {order.items
                       .filter((item) => !item.removedAt)
                       .map((item, itemIndex) => (
-                        <li key={item.id ?? `${order.id}-${item.productName}-${itemIndex}`}>
+                        <li
+                          key={
+                            item.id ??
+                            `${order.id}-${item.productName}-${itemIndex}`
+                          }
+                        >
                           <span>{item.quantity}x</span>
                           <div className="kitchen-line-copy">
                             <strong>{item.productName}</strong>
@@ -259,11 +280,14 @@ export function AdminKitchenClient() {
             <h1>{siteContent.name}</h1>
             <p>{printingOrder.orderNumber}</p>
             <p>{new Date(printingOrder.createdAt).toLocaleString("es-ES")}</p>
+            <p>{paymentSummaryText(printingOrder)}</p>
             <hr />
             {printingOrder.items
               .filter((item) => !item.removedAt)
               .map((item, itemIndex) => (
-                <div key={`kitchen-print-${item.id ?? `${item.productName}-${itemIndex}`}`}>
+                <div
+                  key={`kitchen-print-${item.id ?? `${item.productName}-${itemIndex}`}`}
+                >
                   <span>
                     {item.quantity} x {item.productName}
                     {item.options && item.options.length > 0 && (

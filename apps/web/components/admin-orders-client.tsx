@@ -3,11 +3,13 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  Banknote,
   BarChart3,
   CalendarOff,
   ChevronLeft,
   ChevronRight,
   Clock,
+  CreditCard,
   Euro,
   Filter,
   X,
@@ -54,6 +56,7 @@ import {
   SiteContent,
   SpecialClosure,
 } from "../lib/types";
+import { isCardPayment, paymentSummaryText } from "../lib/payment-format";
 import { logoutAdmin } from "./admin-auth";
 import { KitchenAlarm } from "./kitchen-alarm";
 
@@ -202,13 +205,14 @@ export function AdminOrdersClient() {
     return (
       Boolean(item.id) &&
       !item.removedAt &&
+      isCardPayment(order) &&
       removableOrderItemStatuses.has(order.status) &&
       activeOrderItems(order).length > 1
     );
   }
 
   function canCancelOrderWithRefund(order: OrderSummary) {
-    return fullRefundStatuses.has(order.status);
+    return isCardPayment(order) && fullRefundStatuses.has(order.status);
   }
 
   function applyOrderFilters(event: FormEvent<HTMLFormElement>) {
@@ -765,6 +769,18 @@ export function AdminOrdersClient() {
                     <Printer aria-hidden="true" size={19} />
                   </button>
                 </div>
+                <div
+                  className={`payment-chip ${
+                    order.paymentMethod === "CASH" ? "cash" : ""
+                  }`}
+                >
+                  {order.paymentMethod === "CASH" ? (
+                    <Banknote aria-hidden="true" size={16} />
+                  ) : (
+                    <CreditCard aria-hidden="true" size={16} />
+                  )}
+                  <span>{paymentSummaryText(order)}</span>
+                </div>
                 <ul>
                   {order.items.map((item, itemIndex) => (
                     <li
@@ -1240,6 +1256,7 @@ export function AdminOrdersClient() {
             <h1>{siteContent.name}</h1>
             <p>{printingOrder.orderNumber}</p>
             <p>{new Date(printingOrder.createdAt).toLocaleString("es-ES")}</p>
+            <p>{paymentSummaryText(printingOrder)}</p>
             <hr />
             {printingOrder.items
               .filter((item) => !item.removedAt)

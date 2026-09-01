@@ -5,7 +5,14 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { DeliveryMethod, OrderStatus, Prisma } from "@prisma/client";
+import {
+  DeliveryMethod,
+  OrderPaymentMethod,
+  OrderStatus,
+  PaymentProvider,
+  PaymentStatus,
+  Prisma,
+} from "@prisma/client";
 import { randomBytes } from "node:crypto";
 import { AuthenticatedUser } from "../common/decorators/current-user.decorator";
 import { AppEnv } from "../config/env";
@@ -156,6 +163,63 @@ export class OrdersService {
     const totalCents = subtotalCents + deliveryFeeCents - discountCents;
     const taxRate = await this.settingsService.getTaxRate();
     const taxCents = this.includedTaxCents(totalCents, taxRate);
+    const paymentMethod = dto.paymentMethod ?? OrderPaymentMethod.CARD;
+    const cashTenderedCents =
+      paymentMethod === OrderPaymentMethod.CASH &&
+      dto.cashTenderedCents !== undefined
+        ? dto.cashTenderedCents
+        : null;
+
+    if (
+      paymentMethod === OrderPaymentMethod.CASH &&
+      dto.deliveryMethod === DeliveryMethod.DELIVERY &&
+      cashTenderedCents === null
+    ) {
+      throw new BadRequestException(
+        "Indica con cuanto pagara el cliente para preparar el cambio.",
+      );
+    }
+
+    if (
+      paymentMethod === OrderPaymentMethod.CASH &&
+      cashTenderedCents !== null &&
+      cashTenderedCents < totalCents
+    ) {
+      throw new BadRequestException(
+        "El importe en efectivo debe cubrir el total del pedido.",
+      );
+    }
+
+    const cashChangeCents =
+      paymentMethod === OrderPaymentMethod.CASH && cashTenderedCents !== null
+        ? cashTenderedCents - totalCents
+        : null;
+    const initialStatus =
+      paymentMethod === OrderPaymentMethod.CASH
+        ? OrderStatus.CONFIRMED
+        : OrderStatus.CREATED;
+    const statusHistoryCreate =
+      paymentMethod === OrderPaymentMethod.CASH
+        ? [
+            {
+              toStatus: OrderStatus.CREATED,
+              changedById: user?.id,
+              note: "Order created",
+            },
+            {
+              fromStatus: OrderStatus.CREATED,
+              toStatus: OrderStatus.CONFIRMED,
+              changedById: user?.id,
+              note: "Pago en efectivo seleccionado",
+            },
+          ]
+        : [
+            {
+              toStatus: OrderStatus.CREATED,
+              changedById: user?.id,
+              note: "Order created",
+            },
+          ];
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -175,12 +239,16 @@ export class OrdersService {
             deliveryCity: dto.address?.city.trim(),
             deliveryPostalCode: dto.address?.postalCode.trim(),
             deliveryNotes: dto.address?.notes?.trim(),
+            status: initialStatus,
+            paymentMethod,
             subtotalCents,
             discountCents,
             deliveryFeeCents,
             taxCents,
             totalCents,
             taxRate,
+            cashTenderedCents,
+            cashChangeCents,
             idempotencyKey,
             acceptedLegalAt: new Date(),
             legalVersion: LEGAL_VERSION,
@@ -197,12 +265,19 @@ export class OrdersService {
                     : undefined,
               })),
             },
+            payments:
+              paymentMethod === OrderPaymentMethod.CASH
+                ? {
+                    create: {
+                      provider: PaymentProvider.CASH,
+                      status: PaymentStatus.PENDING,
+                      amountCents: totalCents,
+                      currency: "eur",
+                    },
+                  }
+                : undefined,
             statusHistory: {
-              create: {
-                toStatus: OrderStatus.CREATED,
-                changedById: user?.id,
-                note: "Order created",
-              },
+              create: statusHistoryCreate,
             },
           },
           include: orderInclude,
@@ -243,7 +318,21 @@ export class OrdersService {
       orderNumber: order.orderNumber,
       status: order.status,
       deliveryMethod: order.deliveryMethod,
+      paymentMethod: order.paymentMethod,
       customerName: order.customerName,
+      customerEmail: order.customerEmail,
+      customerPhone: order.customerPhone,
+      deliveryName: order.deliveryName,
+      deliveryPhone: order.deliveryPhone,
+      deliveryStreet: order.deliveryStreet,
+      deliveryCity: order.deliveryCity,
+      deliveryPostalCode: order.deliveryPostalCode,
+      deliveryNotes: order.deliveryNotes,
+      subtotalCents: order.subtotalCents,
+      deliveryFeeCents: order.deliveryFeeCents,
+      taxCents: order.taxCents,
+      cashTenderedCents: order.cashTenderedCents,
+      cashChangeCents: order.cashChangeCents,
       totalCents: order.totalCents,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
