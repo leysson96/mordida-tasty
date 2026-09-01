@@ -30,6 +30,17 @@ En Render, agrega `NEXT_PUBLIC_GA_MEASUREMENT_ID` en el servicio web
 `mordida-tasty-web`, no en la API. Despues de guardarla, ejecuta un nuevo deploy
 porque las variables `NEXT_PUBLIC_*` se integran en el build de Next.js.
 
+## Cabeceras de seguridad
+
+La web aplica cabeceras defensivas desde `apps/web/next.config.ts`: HSTS en
+produccion, ocultacion de `x-powered-by`, proteccion contra iframes externos,
+`nosniff`, `Referrer-Policy`, `Permissions-Policy` y una CSP compatible con la
+API, Google Analytics y Stripe.
+
+No actives `preload` en `Strict-Transport-Security` hasta confirmar que el
+dominio raiz y todos los subdominios que se vayan a usar funcionan siempre con
+HTTPS. Una vez activado y enviado a listas de preload, revertirlo puede tardar.
+
 ## Base de datos
 
 - `DATABASE_URL`: conexion PostgreSQL real. Debe usar un usuario con permisos
