@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import {
+  Gift,
   LogOut,
   MapPin,
   Pencil,
@@ -10,17 +11,24 @@ import {
   ReceiptText,
   Save,
   Trash2,
+  Trophy,
   UserRound,
   X,
 } from "lucide-react";
 import { ApiError, api, formatMoney } from "../../lib/api";
-import { Address, OrderSummary, User } from "../../lib/types";
+import {
+  Address,
+  CustomerLoyaltyProgress,
+  OrderSummary,
+  User,
+} from "../../lib/types";
 
 export default function AccountPage() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [user, setUser] = useState<User>();
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [orders, setOrders] = useState<OrderSummary[]>([]);
+  const [loyalty, setLoyalty] = useState<CustomerLoyaltyProgress>();
   const [error, setError] = useState<string>();
   const [addressMessage, setAddressMessage] = useState<string>();
   const [addressBusy, setAddressBusy] = useState(false);
@@ -33,14 +41,16 @@ export default function AccountPage() {
       api<User>("/auth/me"),
       api<Address[]>("/customers/addresses"),
       api<OrderSummary[]>("/orders/mine"),
+      api<CustomerLoyaltyProgress>("/customers/loyalty").catch(() => undefined),
     ])
-      .then(([me, savedAddresses, savedOrders]) => {
+      .then(([me, savedAddresses, savedOrders, loyaltyProgress]) => {
         if (!active) {
           return;
         }
         setUser(me);
         setAddresses(savedAddresses);
         setOrders(savedOrders);
+        setLoyalty(loyaltyProgress);
         setAuthenticated(true);
       })
       .catch((requestError: Error) => {
@@ -206,6 +216,41 @@ export default function AccountPage() {
       </section>
 
       {error && <div className="empty-state error">{error}</div>}
+
+      {loyalty?.program.enabled && (
+        <section className="loyalty-panel">
+          <div className="loyalty-copy">
+            <span className="loyalty-badge">
+              <Trophy aria-hidden="true" size={17} />
+              {loyalty.rewardReady ? "Premio desbloqueado" : "En progreso"}
+            </span>
+            <h2>{loyalty.program.title}</h2>
+            <p>{loyalty.program.description}</p>
+          </div>
+          <div className="loyalty-progress-card">
+            <div className="loyalty-progress-head">
+              <span>
+                {loyalty.progressOrders}/{loyalty.program.goalOrders} pedidos
+              </span>
+              <strong>{loyalty.rewardLabel}</strong>
+            </div>
+            <div className="loyalty-meter" aria-hidden="true">
+              <span style={{ width: `${loyalty.progressPercent}%` }} />
+            </div>
+            <div className="loyalty-progress-foot">
+              <span>{loyalty.completedOrders} entregados</span>
+              <span>
+                {loyalty.rewardReady
+                  ? `${loyalty.earnedRewards} premio${
+                      loyalty.earnedRewards === 1 ? "" : "s"
+                    } conseguido${loyalty.earnedRewards === 1 ? "" : "s"}`
+                  : `Faltan ${loyalty.ordersRemaining}`}
+              </span>
+            </div>
+          </div>
+          <Gift className="loyalty-watermark" aria-hidden="true" size={96} />
+        </section>
+      )}
 
       <section className="account-grid">
         <form

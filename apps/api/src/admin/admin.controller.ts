@@ -50,6 +50,7 @@ import {
   CreateSpecialClosureDto,
   UpdateDeliveryZoneDto,
   UpdateDeliveryFeeDto,
+  UpdateLoyaltyProgramDto,
   UpdateOpeningHoursDto,
   UpdateOrdersPauseDto,
   UpdateSiteContentDto,
@@ -477,6 +478,7 @@ export class AdminController {
       deliveryFeeCents,
       serviceStatus,
       siteContent,
+      loyaltyProgram,
       ordersPause,
       specialClosures,
       deliveryZones,
@@ -486,6 +488,7 @@ export class AdminController {
       this.settingsService.getDeliveryFeeCents(),
       this.settingsService.getServiceStatus(),
       this.settingsService.getSiteContent(),
+      this.settingsService.getLoyaltyProgram(),
       this.settingsService.getOrdersPause(),
       this.settingsService.listSpecialClosures(),
       this.deliveryZonesService.listAdminZones(),
@@ -499,6 +502,7 @@ export class AdminController {
       openNow: serviceStatus.openNow,
       serviceStatus,
       siteContent,
+      loyaltyProgram,
       ordersPause,
       specialClosures,
     };
@@ -612,6 +616,25 @@ export class AdminController {
       userAgent: request.headers["user-agent"],
     });
     return { ordersPause, serviceStatus, openNow: serviceStatus.openNow };
+  }
+
+  @Patch("settings/loyalty")
+  async updateLoyaltyProgram(
+    @Body() dto: UpdateLoyaltyProgramDto,
+    @CurrentUser() user: { id: string },
+    @Req() request: Request,
+  ) {
+    const loyaltyProgram = await this.settingsService.setLoyaltyProgram(dto);
+    await this.auditService.log({
+      actorId: user.id,
+      action: "settings.loyalty.update",
+      entity: "setting",
+      entityId: "loyalty_program",
+      metadata: loyaltyProgram as unknown as Prisma.InputJsonObject,
+      ip: request.ip,
+      userAgent: request.headers["user-agent"],
+    });
+    return loyaltyProgram;
   }
 
   @Get("special-closures")

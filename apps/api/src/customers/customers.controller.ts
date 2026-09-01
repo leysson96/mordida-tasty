@@ -14,6 +14,11 @@ export class CustomersController {
     return this.customersService.listAddresses(user.id);
   }
 
+  @Get('loyalty')
+  loyalty(@CurrentUser() user: { id: string }) {
+    return this.customersService.getLoyaltyProgress(user.id);
+  }
+
   @Post('addresses')
   createAddress(@CurrentUser() user: { id: string }, @Body() dto: UpsertAddressDto) {
     return this.customersService.createAddress(user.id, dto);

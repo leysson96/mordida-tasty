@@ -2,6 +2,7 @@ import {
   ArrayMinSize,
   IsBoolean,
   IsArray,
+  IsIn,
   IsISO8601,
   IsInt,
   IsNumber,
@@ -42,6 +43,43 @@ export class UpdateOrdersPauseDto {
   @IsString()
   @MaxLength(180)
   reason?: string;
+}
+
+export class UpdateLoyaltyProgramDto {
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(2)
+  @Max(20)
+  goalOrders?: number;
+
+  @IsOptional()
+  @IsIn(["DISCOUNT_PERCENT", "FREE_PRODUCT"])
+  rewardType?: "DISCOUNT_PERCENT" | "FREE_PRODUCT";
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  discountPercent?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  freeProductName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  description?: string;
 }
 
 export class CreateSpecialClosureDto {

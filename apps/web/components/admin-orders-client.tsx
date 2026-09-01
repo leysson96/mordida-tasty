@@ -12,6 +12,7 @@ import {
   CreditCard,
   Euro,
   Filter,
+  Gift,
   X,
   LogOut,
   Plus,
@@ -48,6 +49,8 @@ import {
 import { formatOrderItemOptions } from "../lib/order-format";
 import {
   DeliveryMethod,
+  LoyaltyProgram,
+  LoyaltyRewardType,
   OrderItem,
   OrderStatus,
   OrderSummary,
@@ -75,6 +78,7 @@ interface SettingsResponse {
   ordersPause: OrdersPause;
   specialClosures: SpecialClosure[];
   siteContent: SiteContent;
+  loyaltyProgram: LoyaltyProgram;
 }
 
 interface TwoFactorSetupResponse {
@@ -84,7 +88,7 @@ interface TwoFactorSetupResponse {
 
 type StatusFilter = OrderStatus | "ACTIVE" | "ALL";
 type DeliveryMethodFilter = DeliveryMethod | "ALL";
-type SettingsSection = "service" | "business" | "hours" | "security";
+type SettingsSection = "service" | "business" | "loyalty" | "hours" | "security";
 
 interface OrderFilters {
   q: string;
@@ -109,6 +113,16 @@ const fullRefundStatuses = new Set<OrderStatus>([
   "PREPARING",
   "READY",
 ]);
+const defaultLoyaltyProgram: LoyaltyProgram = {
+  enabled: true,
+  goalOrders: 5,
+  rewardType: "DISCOUNT_PERCENT",
+  discountPercent: 10,
+  freeProductName: "Mordida Smash",
+  title: "Mordida Club",
+  description:
+    "Completa pedidos entregados y desbloquea una recompensa para tu proxima visita.",
+};
 
 export function AdminOrdersClient() {
   const [orders, setOrders] = useState<OrderSummary[]>([]);
@@ -130,6 +144,9 @@ export function AdminOrdersClient() {
   });
   const [specialClosures, setSpecialClosures] = useState<SpecialClosure[]>([]);
   const [siteContent, setSiteContent] = useState<SiteContent>(brandConfig);
+  const [loyaltyProgram, setLoyaltyProgram] = useState<LoyaltyProgram>(
+    defaultLoyaltyProgram,
+  );
   const [error, setError] = useState<string>();
   const [settingsMessage, setSettingsMessage] = useState<string>();
   const [printingOrderId, setPrintingOrderId] = useState<string>();
@@ -169,6 +186,10 @@ export function AdminOrdersClient() {
           );
           setSpecialClosures(settingsData.specialClosures ?? []);
           setSiteContent({ ...brandConfig, ...settingsData.siteContent });
+          setLoyaltyProgram({
+            ...defaultLoyaltyProgram,
+            ...settingsData.loyaltyProgram,
+          });
           setError(undefined);
         }
       } catch (requestError) {
@@ -291,6 +312,34 @@ export function AdminOrdersClient() {
       setSettingsMessage("Ajustes guardados.");
     } catch (requestError) {
       handleAdminError(requestError, "No se pudo guardar.");
+    }
+  }
+
+  async function saveLoyaltySettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const rewardType = String(
+      form.get("rewardType") ?? "DISCOUNT_PERCENT",
+    ) as LoyaltyRewardType;
+
+    try {
+      const response = await api<LoyaltyProgram>("/admin/settings/loyalty", {
+        method: "PATCH",
+        body: JSON.stringify({
+          enabled: form.get("enabled") === "on",
+          goalOrders: Number(form.get("goalOrders")),
+          rewardType,
+          discountPercent: Number(form.get("discountPercent")),
+          freeProductName: String(form.get("freeProductName") ?? ""),
+          title: String(form.get("title") ?? ""),
+          description: String(form.get("description") ?? ""),
+        }),
+      });
+      setLoyaltyProgram(response);
+      setSettingsMessage("Fidelidad guardada.");
+      setError(undefined);
+    } catch (requestError) {
+      handleAdminError(requestError, "No se pudo guardar fidelidad.");
     }
   }
 
@@ -890,6 +939,14 @@ export function AdminOrdersClient() {
             </button>
             <button
               type="button"
+              className={settingsSection === "loyalty" ? "active" : ""}
+              onClick={() => setSettingsSection("loyalty")}
+            >
+              <Gift aria-hidden="true" size={18} />
+              Fidelidad
+            </button>
+            <button
+              type="button"
               className={settingsSection === "hours" ? "active" : ""}
               onClick={() => setSettingsSection("hours")}
             >
@@ -1109,6 +1166,145 @@ export function AdminOrdersClient() {
                 <button className="button primary full" type="submit">
                   <Euro aria-hidden="true" size={18} />
                   Guardar importes
+                </button>
+              </form>
+            </section>
+          )}
+
+          {settingsSection === "loyalty" && (
+            <section className="settings-section">
+              <div className="settings-section-head">
+                <h3>
+                  <Gift aria-hidden="true" size={18} />
+                  Fidelidad
+                </h3>
+                <span>{loyaltyProgram.enabled ? "Activo" : "Pausado"}</span>
+              </div>
+              <form
+                onSubmit={saveLoyaltySettings}
+                className="inline-form loyalty-settings-form"
+              >
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    name="enabled"
+                    checked={loyaltyProgram.enabled}
+                    onChange={(event) =>
+                      setLoyaltyProgram((current) => ({
+                        ...current,
+                        enabled: event.target.checked,
+                      }))
+                    }
+                  />
+                  Activar programa
+                </label>
+                <label>
+                  Nombre del club
+                  <input
+                    name="title"
+                    maxLength={60}
+                    value={loyaltyProgram.title}
+                    onChange={(event) =>
+                      setLoyaltyProgram((current) => ({
+                        ...current,
+                        title: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Mensaje
+                  <textarea
+                    name="description"
+                    rows={3}
+                    maxLength={180}
+                    value={loyaltyProgram.description}
+                    onChange={(event) =>
+                      setLoyaltyProgram((current) => ({
+                        ...current,
+                        description: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Pedidos para premio
+                  <input
+                    type="number"
+                    name="goalOrders"
+                    min="2"
+                    max="20"
+                    step="1"
+                    value={loyaltyProgram.goalOrders}
+                    onChange={(event) =>
+                      setLoyaltyProgram((current) => ({
+                        ...current,
+                        goalOrders: Number(event.target.value),
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Tipo de premio
+                  <select
+                    name="rewardType"
+                    value={loyaltyProgram.rewardType}
+                    onChange={(event) =>
+                      setLoyaltyProgram((current) => ({
+                        ...current,
+                        rewardType: event.target.value as LoyaltyRewardType,
+                      }))
+                    }
+                  >
+                    <option value="DISCOUNT_PERCENT">Descuento</option>
+                    <option value="FREE_PRODUCT">Producto gratis</option>
+                  </select>
+                </label>
+                <label>
+                  Descuento %
+                  <input
+                    type="number"
+                    name="discountPercent"
+                    min="1"
+                    max="100"
+                    step="1"
+                    value={loyaltyProgram.discountPercent}
+                    onChange={(event) =>
+                      setLoyaltyProgram((current) => ({
+                        ...current,
+                        discountPercent: Number(event.target.value),
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Producto gratis
+                  <input
+                    name="freeProductName"
+                    maxLength={80}
+                    value={loyaltyProgram.freeProductName}
+                    onChange={(event) =>
+                      setLoyaltyProgram((current) => ({
+                        ...current,
+                        freeProductName: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <div className="loyalty-preview">
+                  <span>Vista cliente</span>
+                  <strong>
+                    {loyaltyProgram.rewardType === "DISCOUNT_PERCENT"
+                      ? `${loyaltyProgram.discountPercent}% de descuento`
+                      : loyaltyProgram.freeProductName}
+                  </strong>
+                  <small>
+                    Meta: {loyaltyProgram.goalOrders} pedidos entregados
+                  </small>
+                </div>
+                <button className="button primary full" type="submit">
+                  <Gift aria-hidden="true" size={18} />
+                  Guardar fidelidad
                 </button>
               </form>
             </section>

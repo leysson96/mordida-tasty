@@ -18,6 +18,7 @@ export class SettingsController {
       openingHours,
       serviceStatus,
       siteContent,
+      loyaltyProgram,
       deliveryZones,
     ] = await Promise.all([
       this.settingsService.getTaxRate(),
@@ -25,6 +26,7 @@ export class SettingsController {
       this.settingsService.getOpeningHours(),
       this.settingsService.getServiceStatus(),
       this.settingsService.getSiteContent(),
+      this.settingsService.getLoyaltyProgram(),
       this.deliveryZonesService.listPublicZones(),
     ]);
 
@@ -36,6 +38,7 @@ export class SettingsController {
       openNow: serviceStatus.openNow,
       serviceStatus,
       siteContent,
+      loyaltyProgram,
       legalVersion: LEGAL_VERSION,
     };
   }

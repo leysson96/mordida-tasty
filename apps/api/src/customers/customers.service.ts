@@ -1,10 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
 import { UpsertAddressDto } from './dto/address.dto';
 
 @Injectable()
 export class CustomersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly settingsService: SettingsService,
+  ) {}
 
   listAddresses(userId: string) {
     return this.prisma.customerAddress.findMany({
@@ -57,6 +62,44 @@ export class CustomersService {
     await this.ensureOwnedAddress(userId, addressId);
     await this.prisma.customerAddress.delete({ where: { id: addressId } });
     return { ok: true };
+  }
+
+  async getLoyaltyProgress(userId: string) {
+    const [program, completedOrders] = await Promise.all([
+      this.settingsService.getLoyaltyProgram(),
+      this.prisma.order.count({
+        where: {
+          userId,
+          status: OrderStatus.DELIVERED,
+        },
+      }),
+    ]);
+    const rawProgress = completedOrders % program.goalOrders;
+    const rewardReady = program.enabled && completedOrders >= program.goalOrders;
+    const progressOrders =
+      rawProgress === 0 && completedOrders > 0 ? program.goalOrders : rawProgress;
+    const progressPercent = program.enabled
+      ? Math.round((progressOrders / program.goalOrders) * 100)
+      : 0;
+
+    return {
+      program,
+      completedOrders,
+      progressOrders: program.enabled ? progressOrders : 0,
+      progressPercent,
+      ordersRemaining:
+        program.enabled && !rewardReady
+          ? Math.max(0, program.goalOrders - progressOrders)
+          : 0,
+      earnedRewards: program.enabled
+        ? Math.floor(completedOrders / program.goalOrders)
+        : 0,
+      rewardReady,
+      rewardLabel:
+        program.rewardType === "DISCOUNT_PERCENT"
+          ? `${program.discountPercent}% de descuento`
+          : program.freeProductName,
+    };
   }
 
   private async ensureOwnedAddress(userId: string, addressId: string) {

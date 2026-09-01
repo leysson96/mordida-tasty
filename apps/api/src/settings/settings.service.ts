@@ -34,6 +34,18 @@ export interface OrdersPause {
   reason: string;
 }
 
+export type LoyaltyRewardType = "DISCOUNT_PERCENT" | "FREE_PRODUCT";
+
+export interface LoyaltyProgram {
+  enabled: boolean;
+  goalOrders: number;
+  rewardType: LoyaltyRewardType;
+  discountPercent: number;
+  freeProductName: string;
+  title: string;
+  description: string;
+}
+
 export interface PublicSpecialClosure {
   startsAt: Date;
   endsAt: Date;
@@ -138,6 +150,30 @@ export class SettingsService {
     });
 
     return this.normalizeSiteContent(setting?.value);
+  }
+
+  async getLoyaltyProgram() {
+    const setting = await this.prisma.setting.findUnique({
+      where: { key: "loyalty_program" },
+    });
+
+    return this.normalizeLoyaltyProgram(setting?.value);
+  }
+
+  async setLoyaltyProgram(value: Partial<LoyaltyProgram>) {
+    const current = await this.getLoyaltyProgram();
+    const next = this.normalizeLoyaltyProgram({ ...current, ...value });
+
+    return this.prisma.setting
+      .upsert({
+        where: { key: "loyalty_program" },
+        update: { value: next as unknown as Prisma.InputJsonValue },
+        create: {
+          key: "loyalty_program",
+          value: next as unknown as Prisma.InputJsonValue,
+        },
+      })
+      .then(() => next);
   }
 
   async setSiteContent(value: Partial<SiteContent>) {
@@ -449,6 +485,72 @@ export class SettingsService {
         'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif',
       instagramUrl: "",
       whatsappPhone: "",
+    };
+  }
+
+  private defaultLoyaltyProgram(): LoyaltyProgram {
+    return {
+      enabled: true,
+      goalOrders: 5,
+      rewardType: "DISCOUNT_PERCENT",
+      discountPercent: 10,
+      freeProductName: "Mordida Smash",
+      title: "Mordida Club",
+      description:
+        "Completa pedidos entregados y desbloquea una recompensa para tu proxima visita.",
+    };
+  }
+
+  private normalizeLoyaltyProgram(value: unknown): LoyaltyProgram {
+    const defaults = this.defaultLoyaltyProgram();
+    const source = isRecord(value) ? value : {};
+    const goalOrders = Number(source.goalOrders ?? defaults.goalOrders);
+    const discountPercent = Number(
+      source.discountPercent ?? defaults.discountPercent,
+    );
+    const rewardType = cleanText(
+      source.rewardType,
+      defaults.rewardType,
+    ) as LoyaltyRewardType;
+
+    if (!Number.isInteger(goalOrders) || goalOrders < 2 || goalOrders > 20) {
+      throw new BadRequestException(
+        "La meta de fidelidad debe estar entre 2 y 20 pedidos.",
+      );
+    }
+
+    if (
+      rewardType !== "DISCOUNT_PERCENT" &&
+      rewardType !== "FREE_PRODUCT"
+    ) {
+      throw new BadRequestException("Tipo de recompensa no valido.");
+    }
+
+    if (
+      !Number.isInteger(discountPercent) ||
+      discountPercent < 1 ||
+      discountPercent > 100
+    ) {
+      throw new BadRequestException(
+        "El descuento de fidelidad debe estar entre 1 y 100.",
+      );
+    }
+
+    return {
+      enabled:
+        typeof source.enabled === "boolean" ? source.enabled : defaults.enabled,
+      goalOrders,
+      rewardType,
+      discountPercent,
+      freeProductName: cleanText(
+        source.freeProductName,
+        defaults.freeProductName,
+      ).slice(0, 80),
+      title: cleanText(source.title, defaults.title).slice(0, 60),
+      description: cleanText(source.description, defaults.description).slice(
+        0,
+        180,
+      ),
     };
   }
 

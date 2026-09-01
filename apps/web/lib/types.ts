@@ -6,6 +6,8 @@ export type DeliveryMethod = "DELIVERY" | "PICKUP";
 
 export type OrderPaymentMethod = "CARD" | "CASH";
 
+export type LoyaltyRewardType = "DISCOUNT_PERCENT" | "FREE_PRODUCT";
+
 export type OrderStatus =
   | "CREATED"
   | "PENDING_PAYMENT"
@@ -163,6 +165,27 @@ export interface User {
   updatedAt?: string;
 }
 
+export interface LoyaltyProgram {
+  enabled: boolean;
+  goalOrders: number;
+  rewardType: LoyaltyRewardType;
+  discountPercent: number;
+  freeProductName: string;
+  title: string;
+  description: string;
+}
+
+export interface CustomerLoyaltyProgress {
+  program: LoyaltyProgram;
+  completedOrders: number;
+  progressOrders: number;
+  progressPercent: number;
+  ordersRemaining: number;
+  earnedRewards: number;
+  rewardReady: boolean;
+  rewardLabel: string;
+}
+
 export interface StaffUser extends User {
   role: "ADMIN" | "KITCHEN";
   active: boolean;
@@ -225,6 +248,7 @@ export interface PublicSettings {
   openNow: boolean;
   serviceStatus: ServiceStatus;
   siteContent: SiteContent;
+  loyaltyProgram: LoyaltyProgram;
   legalVersion: string;
 }
 

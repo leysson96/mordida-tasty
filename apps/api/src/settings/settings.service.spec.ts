@@ -144,6 +144,59 @@ describe("SettingsService", () => {
     );
   });
 
+  it("stores the loyalty program as a normalized setting", async () => {
+    await expect(
+      service().setLoyaltyProgram({
+        enabled: true,
+        goalOrders: 6,
+        rewardType: "FREE_PRODUCT",
+        discountPercent: 15,
+        freeProductName: "  Pizza semanal  ",
+        title: " Club Mordida ",
+        description: " Compra y gana ",
+      }),
+    ).resolves.toEqual({
+      enabled: true,
+      goalOrders: 6,
+      rewardType: "FREE_PRODUCT",
+      discountPercent: 15,
+      freeProductName: "Pizza semanal",
+      title: "Club Mordida",
+      description: "Compra y gana",
+    });
+
+    expect(prisma.setting.upsert).toHaveBeenCalledWith({
+      where: { key: "loyalty_program" },
+      update: {
+        value: expect.objectContaining({
+          goalOrders: 6,
+          rewardType: "FREE_PRODUCT",
+          freeProductName: "Pizza semanal",
+        }),
+      },
+      create: {
+        key: "loyalty_program",
+        value: expect.objectContaining({
+          goalOrders: 6,
+          rewardType: "FREE_PRODUCT",
+          freeProductName: "Pizza semanal",
+        }),
+      },
+    });
+  });
+
+  it("rejects unsafe loyalty program values", async () => {
+    await expect(
+      service().setLoyaltyProgram({ goalOrders: 1 }),
+    ).rejects.toThrow(BadRequestException);
+
+    await expect(
+      service().setLoyaltyProgram({ discountPercent: 101 }),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(prisma.setting.upsert).not.toHaveBeenCalled();
+  });
+
   it("rejects unsafe or incomplete social contact settings", async () => {
     await expect(
       service().setSiteContent({

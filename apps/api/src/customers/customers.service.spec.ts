@@ -11,7 +11,13 @@ describe("CustomersService", () => {
       update: jest.fn(),
       delete: jest.fn(),
     },
+    order: {
+      count: jest.fn(),
+    },
     $transaction: jest.fn(),
+  };
+  const settings = {
+    getLoyaltyProgram: jest.fn(),
   };
 
   const dto = {
@@ -36,10 +42,20 @@ describe("CustomersService", () => {
     prisma.customerAddress.updateMany.mockResolvedValue({ count: 1 });
     prisma.customerAddress.update.mockResolvedValue({ id: "address-1" });
     prisma.customerAddress.delete.mockResolvedValue({});
+    prisma.order.count.mockResolvedValue(0);
+    settings.getLoyaltyProgram.mockResolvedValue({
+      enabled: true,
+      goalOrders: 5,
+      rewardType: "DISCOUNT_PERCENT",
+      discountPercent: 10,
+      freeProductName: "Mordida Smash",
+      title: "Mordida Club",
+      description: "Completa pedidos y desbloquea una recompensa.",
+    });
   });
 
   function service() {
-    return new CustomersService(prisma as never);
+    return new CustomersService(prisma as never, settings as never);
   }
 
   it("lists only addresses owned by the authenticated customer", async () => {
@@ -99,5 +115,43 @@ describe("CustomersService", () => {
     expect(prisma.customerAddress.delete).toHaveBeenCalledWith({
       where: { id: "address-1" },
     });
+  });
+
+  it("calculates loyalty progress from delivered customer orders", async () => {
+    prisma.order.count.mockResolvedValue(3);
+
+    await expect(service().getLoyaltyProgress("user-1")).resolves.toEqual(
+      expect.objectContaining({
+        completedOrders: 3,
+        progressOrders: 3,
+        progressPercent: 60,
+        ordersRemaining: 2,
+        earnedRewards: 0,
+        rewardReady: false,
+        rewardLabel: "10% de descuento",
+      }),
+    );
+
+    expect(prisma.order.count).toHaveBeenCalledWith({
+      where: {
+        userId: "user-1",
+        status: "DELIVERED",
+      },
+    });
+  });
+
+  it("keeps the loyalty bar full when a reward cycle is completed", async () => {
+    prisma.order.count.mockResolvedValue(5);
+
+    await expect(service().getLoyaltyProgress("user-1")).resolves.toEqual(
+      expect.objectContaining({
+        completedOrders: 5,
+        progressOrders: 5,
+        progressPercent: 100,
+        ordersRemaining: 0,
+        earnedRewards: 1,
+        rewardReady: true,
+      }),
+    );
   });
 });
