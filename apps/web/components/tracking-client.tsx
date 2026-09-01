@@ -1,17 +1,42 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import {
+  CheckCircle2,
+  Clock3,
+  CookingPot,
+  PackageCheck,
+  ReceiptText,
+  RefreshCw,
+  Store,
+  Truck,
+  type LucideIcon,
+} from "lucide-react";
 import { api, formatMoney } from "../lib/api";
 import {
   orderStatusLabels,
   trackingProgressStatuses,
 } from "../lib/order-state";
 import { formatOrderItemOptions } from "../lib/order-format";
-import { OrderSummary } from "../lib/types";
+import type { OrderStatus, OrderSummary } from "../lib/types";
 import { useCart } from "./cart-provider";
 
 const pendingCheckoutStorageKey = "mordida_pending_checkout_order";
+const trackingStatusIcons: Partial<Record<OrderStatus, LucideIcon>> = {
+  PAID: ReceiptText,
+  CONFIRMED: CheckCircle2,
+  PREPARING: CookingPot,
+  READY: PackageCheck,
+  DELIVERED: Truck,
+};
+
+const trackingStepDescriptions: Partial<Record<OrderStatus, string>> = {
+  PAID: "Pago recibido",
+  CONFIRMED: "Pedido aceptado",
+  PREPARING: "Cocina en marcha",
+  READY: "Listo para salir",
+  DELIVERED: "Pedido completado",
+};
 
 export function TrackingClient({
   orderNumber,
@@ -81,29 +106,105 @@ export function TrackingClient({
   }
 
   const currentIndex = trackingProgressStatuses.indexOf(order.status);
+  const hasProgress = currentIndex >= 0;
+  const latestStatus =
+    order.statusHistory && order.statusHistory.length > 0
+      ? order.statusHistory[order.statusHistory.length - 1]
+      : undefined;
+  const deliveryLabel =
+    order.deliveryMethod === "DELIVERY"
+      ? "Entrega a domicilio"
+      : "Recogida en local";
+  const MethodIcon = order.deliveryMethod === "DELIVERY" ? Truck : Store;
 
   return (
-    <main className="page-shell narrow-page">
+    <main className="page-shell tracking-page">
       <section className="tracking-hero">
-        <p className="eyebrow">Pedido {order.orderNumber}</p>
-        <h1>{orderStatusLabels[order.status]}</h1>
-        <p>
-          {order.deliveryMethod === "DELIVERY"
-            ? "Entrega a domicilio"
-            : "Recogida en local"}
-        </p>
+        <div>
+          <p className="eyebrow">Pedido {order.orderNumber}</p>
+          <h1>{orderStatusLabels[order.status]}</h1>
+          <p>{deliveryLabel}</p>
+        </div>
+        <div className="tracking-hero-meta" aria-label="Detalles del pedido">
+          <span>
+            <MethodIcon aria-hidden="true" size={17} />
+            {deliveryLabel}
+          </span>
+          <span>
+            <RefreshCw aria-hidden="true" size={17} />
+            Actualiza cada 10s
+          </span>
+        </div>
       </section>
 
-      <section className="status-rail" aria-label="Estado del pedido">
-        {trackingProgressStatuses.map((status, index) => (
-          <div key={status} className={index <= currentIndex ? "done" : ""}>
-            <span>{index + 1}</span>
-            <p>{orderStatusLabels[status]}</p>
-          </div>
-        ))}
+      <section className="tracking-panel" aria-label="Estado del pedido">
+        <div className="tracking-panel-head">
+          <h2>Seguimiento</h2>
+          <span>
+            {latestStatus
+              ? formatTrackingDate(latestStatus.createdAt)
+              : formatTrackingDate(order.createdAt)}
+          </span>
+        </div>
+        <div className="tracking-steps">
+          {trackingProgressStatuses.map((status, index) => {
+            const done = hasProgress && index <= currentIndex;
+            const current = hasProgress && index === currentIndex;
+            const StepIcon = trackingStatusIcons[status] ?? Clock3;
+
+            return (
+              <div
+                key={status}
+                className={`tracking-step ${done ? "done" : ""} ${
+                  current ? "current" : ""
+                }`}
+              >
+                <span className="tracking-step-marker">
+                  {done ? (
+                    <CheckCircle2 aria-hidden="true" size={20} />
+                  ) : (
+                    <StepIcon aria-hidden="true" size={19} />
+                  )}
+                </span>
+                <span className="tracking-step-copy">
+                  <strong>{orderStatusLabels[status]}</strong>
+                  <small>{trackingStepDescriptions[status]}</small>
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </section>
 
-      <section className="summary-panel">
+      <section className="tracking-info-grid">
+        <article>
+          <span>Total</span>
+          <strong>{formatMoney(order.totalCents)}</strong>
+        </article>
+        <article>
+          <span>Creado</span>
+          <strong>{formatTrackingDate(order.createdAt)}</strong>
+        </article>
+        <article className="wide">
+          <span>{deliveryLabel}</span>
+          <strong>
+            {order.deliveryMethod === "DELIVERY"
+              ? [
+                  order.deliveryStreet,
+                  order.deliveryCity,
+                  order.deliveryPostalCode,
+                ]
+                  .filter(Boolean)
+                  .join(", ") || "Direccion pendiente"
+              : "Te avisaremos cuando este listo"}
+          </strong>
+          {order.deliveryMethod === "DELIVERY" && order.deliveryNotes && (
+            <small>{order.deliveryNotes}</small>
+          )}
+        </article>
+      </section>
+
+      <section className="summary-panel tracking-summary">
         <h2>Productos</h2>
         {order.items.map((item, itemIndex) => (
           <div key={item.id ?? `${item.productName}-${itemIndex}`}>
@@ -125,4 +226,13 @@ export function TrackingClient({
       </section>
     </main>
   );
+}
+
+function formatTrackingDate(value: string) {
+  return new Date(value).toLocaleString("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }

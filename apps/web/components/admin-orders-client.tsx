@@ -40,6 +40,7 @@ import {
 import {
   activeAdminOrderStatuses,
   adminNextStatuses,
+  orderStatusLabels,
   removableOrderItemStatuses,
 } from "../lib/order-state";
 import { formatOrderItemOptions } from "../lib/order-format";
@@ -645,9 +646,9 @@ export function AdminOrdersClient() {
           >
             <option value="ACTIVE">Activos</option>
             <option value="ALL">Todos</option>
-            {Object.keys(adminNextStatuses).map((status) => (
+            {(Object.keys(adminNextStatuses) as OrderStatus[]).map((status) => (
               <option key={status} value={status}>
-                {status}
+                {orderStatusLabels[status]}
               </option>
             ))}
           </select>
@@ -745,9 +746,14 @@ export function AdminOrdersClient() {
               >
                 <div className="order-card-head">
                   <div>
-                    <strong>{order.orderNumber}</strong>
+                    <strong className="order-number">
+                      {order.orderNumber}
+                    </strong>
                     <span>
-                      {new Date(order.createdAt).toLocaleTimeString("es-ES")}
+                      {new Date(order.createdAt).toLocaleTimeString("es-ES", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </span>
                   </div>
                   <button
@@ -762,7 +768,10 @@ export function AdminOrdersClient() {
                 <ul>
                   {order.items.map((item, itemIndex) => (
                     <li
-                      key={item.id ?? `${order.id}-${item.productName}-${itemIndex}`}
+                      key={
+                        item.id ??
+                        `${order.id}-${item.productName}-${itemIndex}`
+                      }
                       className={`order-line ${item.removedAt ? "removed" : ""}`}
                     >
                       <span>{item.quantity}x</span>
@@ -803,7 +812,7 @@ export function AdminOrdersClient() {
                   ))}
                 </ul>
                 <div className="order-card-foot">
-                  <span>{order.status}</span>
+                  <span>{orderStatusLabels[order.status]}</span>
                   <strong>{formatMoney(order.totalCents)}</strong>
                 </div>
                 <div className="status-actions">
@@ -814,7 +823,7 @@ export function AdminOrdersClient() {
                       key={status}
                       onClick={() => changeStatus(order.id, status)}
                     >
-                      {status}
+                      {orderStatusLabels[status]}
                     </button>
                   ))}
                   {canCancelOrderWithRefund(order) && (
@@ -1235,7 +1244,9 @@ export function AdminOrdersClient() {
             {printingOrder.items
               .filter((item) => !item.removedAt)
               .map((item, itemIndex) => (
-                <div key={`print-${item.id ?? `${item.productName}-${itemIndex}`}`}>
+                <div
+                  key={`print-${item.id ?? `${item.productName}-${itemIndex}`}`}
+                >
                   <span>
                     {item.quantity} x {item.productName}
                     {item.options && item.options.length > 0 && (

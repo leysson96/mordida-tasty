@@ -1063,12 +1063,29 @@ textarea {
   }
 }
 
+.tracking-page {
+  display: grid;
+  gap: 16px;
+  width: min(1020px, calc(100% - 32px));
+}
+
 .tracking-hero {
-  padding: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 18px;
+  padding: 26px;
   color: #fff;
   background:
     linear-gradient(135deg, rgba(90, 7, 11, 0.94), rgba(33, 21, 18, 0.96)),
     var(--color-ink);
+}
+
+.tracking-hero h1 {
+  margin: 7px 0;
+  color: #fff;
+  font-size: clamp(2rem, 4.5vw, 4rem);
+  line-height: 0.96;
 }
 
 .tracking-hero p {
@@ -1076,35 +1093,157 @@ textarea {
   color: #f7e8dc;
 }
 
-.status-rail {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
-  margin: 18px 0;
+.tracking-hero .eyebrow {
+  color: var(--color-gold-soft);
 }
 
-.status-rail div {
+.tracking-hero-meta {
   display: grid;
   gap: 8px;
-  justify-items: center;
-  text-align: center;
+  justify-items: end;
+}
+
+.tracking-hero-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: var(--radius-small);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.84rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.tracking-panel,
+.tracking-info-grid article,
+.tracking-summary {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: rgba(255, 250, 243, 0.96);
+  box-shadow: var(--shadow-tight);
+}
+
+.tracking-panel {
+  padding: 22px;
+}
+
+.tracking-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.tracking-panel-head h2 {
+  margin: 0;
+}
+
+.tracking-panel-head span,
+.tracking-info-grid span,
+.tracking-info-grid small {
   color: var(--color-muted);
+  font-size: 0.8rem;
+  font-weight: 900;
 }
 
-.status-rail span {
+.tracking-steps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.tracking-step {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  min-width: 0;
+  padding: 0 8px;
+  text-align: center;
+}
+
+.tracking-step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 22px;
+  left: calc(50% + 24px);
+  right: calc(-50% + 24px);
+  height: 3px;
+  border-radius: 999px;
+  background: var(--color-line);
+}
+
+.tracking-step.done:not(:last-child)::after {
+  background: var(--color-green);
+}
+
+.tracking-step-marker {
+  position: relative;
+  z-index: 1;
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--color-line);
   border-radius: var(--radius-small);
   color: var(--color-muted);
   background: var(--color-paper-strong);
-  font-weight: 950;
 }
 
-.status-rail .done span {
+.tracking-step.done .tracking-step-marker {
   color: #fff;
+  border-color: var(--color-green);
   background: var(--color-green);
+}
+
+.tracking-step.current .tracking-step-marker {
+  box-shadow: 0 0 0 5px rgba(39, 126, 96, 0.14);
+}
+
+.tracking-step-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.tracking-step-copy strong {
+  color: var(--color-ink);
+  font-size: 0.9rem;
+}
+
+.tracking-step-copy small {
+  color: var(--color-muted);
+  font-size: 0.74rem;
+  font-weight: 850;
+}
+
+.tracking-info-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tracking-info-grid article {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.tracking-info-grid article.wide {
+  grid-column: span 1;
+}
+
+.tracking-info-grid strong {
+  overflow-wrap: anywhere;
+}
+
+.tracking-summary {
+  margin-top: 0;
 }
 
 .list-card {
@@ -1319,13 +1458,15 @@ textarea {
 }
 
 .orders-board {
-  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
 }
 
 .order-card {
   display: grid;
   gap: 13px;
+  min-width: 0;
   padding: 15px;
+  overflow: hidden;
   border-top: 5px solid var(--color-blue);
   box-shadow: var(--shadow-tight);
 }
@@ -1353,8 +1494,29 @@ textarea {
   gap: 10px;
 }
 
+.order-card-foot span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.order-card-foot strong {
+  white-space: nowrap;
+}
+
 .order-card-head strong {
   font-size: 1.1rem;
+}
+
+.order-card-head > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.order-number {
+  display: block;
+  overflow-wrap: anywhere;
+  line-height: 1.12;
 }
 
 .order-card ul {
@@ -1367,13 +1529,13 @@ textarea {
 
 .order-card li {
   display: grid;
-  grid-template-columns: 40px 1fr;
   gap: 8px;
+  min-width: 0;
 }
 
 .order-line {
-  grid-template-columns: 42px minmax(0, 1fr) auto;
-  align-items: center;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: start;
 }
 
 .order-line > span:first-child {
@@ -1400,6 +1562,10 @@ textarea {
   min-width: 0;
 }
 
+.order-line-copy strong {
+  overflow-wrap: anywhere;
+}
+
 .order-line-copy small,
 .refund-chip {
   color: var(--color-muted);
@@ -1409,9 +1575,17 @@ textarea {
 
 .order-line-actions {
   display: flex;
+  grid-column: 2;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: end;
+  justify-content: space-between;
   gap: 8px;
+  min-width: 0;
+}
+
+.order-line-actions strong,
+.refund-chip {
+  white-space: nowrap;
 }
 
 .refund-chip {
@@ -1556,6 +1730,8 @@ textarea {
 }
 
 .status-actions .button {
+  flex: 1 1 118px;
+  min-width: 0;
   min-height: 36px;
   padding: 0 10px;
   font-size: 0.78rem;
@@ -2670,8 +2846,58 @@ code {
     justify-self: start;
   }
 
-  .status-rail {
+  .tracking-page {
+    width: min(100%, calc(100% - 24px));
+    gap: 14px;
+  }
+
+  .tracking-hero {
     grid-template-columns: 1fr;
+    align-items: start;
+    padding: 22px;
+  }
+
+  .tracking-hero h1 {
+    font-size: 2.4rem;
+  }
+
+  .tracking-hero-meta {
+    justify-items: start;
+  }
+
+  .tracking-hero-meta span {
+    width: 100%;
+    justify-content: center;
+    white-space: normal;
+  }
+
+  .tracking-panel {
+    padding: 18px;
+  }
+
+  .tracking-panel-head {
+    align-items: flex-start;
+  }
+
+  .tracking-steps,
+  .tracking-info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tracking-step {
+    grid-template-columns: 44px minmax(0, 1fr);
+    justify-items: start;
+    padding: 10px 0;
+    text-align: left;
+  }
+
+  .tracking-step:not(:last-child)::after {
+    top: 54px;
+    bottom: -10px;
+    left: 21px;
+    right: auto;
+    width: 3px;
+    height: auto;
   }
 
   .admin-metrics {

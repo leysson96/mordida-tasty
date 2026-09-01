@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { CreditCard, MapPin, Store } from "lucide-react";
-import { api, formatMoney } from "../../lib/api";
+import { ApiError, api, formatMoney } from "../../lib/api";
 import {
+  Address,
   DeliveryMethod,
   DeliveryQuote,
   OrderSummary,
   PublicSettings,
+  User,
 } from "../../lib/types";
 import { useCart } from "../../components/cart-provider";
 
@@ -22,7 +24,17 @@ export default function CheckoutPage() {
   const [deliveryMethod, setDeliveryMethod] =
     useState<DeliveryMethod>("PICKUP");
   const [publicSettings, setPublicSettings] = useState<PublicSettings>();
+  const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [addressName, setAddressName] = useState("");
+  const [addressPhone, setAddressPhone] = useState("");
+  const [street, setStreet] = useState("");
+  const [city, setCity] = useState("");
   const [postalCode, setPostalCode] = useState("");
+  const [notes, setNotes] = useState("");
   const [deliveryQuote, setDeliveryQuote] = useState<DeliveryQuote>();
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string>();
@@ -39,6 +51,44 @@ export default function CheckoutPage() {
         }
       })
       .catch((requestError: Error) => setError(requestError.message));
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    Promise.all([api<User>("/auth/me"), api<Address[]>("/customers/addresses")])
+      .then(([user, addresses]) => {
+        if (!active) {
+          return;
+        }
+
+        setCustomerName((current) => current || user.name || "");
+        setCustomerEmail((current) => current || user.email || "");
+        setCustomerPhone((current) => current || user.phone || "");
+        setSavedAddresses(addresses);
+
+        const defaultAddress =
+          addresses.find((address) => address.isDefault) ?? addresses[0];
+        if (defaultAddress) {
+          setSelectedAddressId(defaultAddress.id);
+          applySavedAddress(defaultAddress);
+        }
+      })
+      .catch((requestError: Error) => {
+        if (!active) {
+          return;
+        }
+
+        if (requestError instanceof ApiError && requestError.status === 401) {
+          return;
+        }
+
+        setError(requestError.message);
+      });
 
     return () => {
       active = false;
@@ -221,6 +271,23 @@ export default function CheckoutPage() {
     }
   }
 
+  function applySavedAddress(address: Address) {
+    setAddressName(address.recipientName);
+    setAddressPhone(address.phone);
+    setStreet(address.street);
+    setCity(address.city);
+    setPostalCode(address.postalCode);
+    setNotes(address.notes ?? "");
+  }
+
+  function selectSavedAddress(addressId: string) {
+    setSelectedAddressId(addressId);
+    const address = savedAddresses.find((item) => item.id === addressId);
+    if (address) {
+      applySavedAddress(address);
+    }
+  }
+
   return (
     <main className="page-shell checkout-page">
       <section className="page-title-row">
@@ -260,6 +327,8 @@ export default function CheckoutPage() {
                 required
                 minLength={2}
                 autoComplete="name"
+                value={customerName}
+                onChange={(event) => setCustomerName(event.target.value)}
               />
             </label>
             <label>
@@ -269,6 +338,8 @@ export default function CheckoutPage() {
                 required
                 type="email"
                 autoComplete="email"
+                value={customerEmail}
+                onChange={(event) => setCustomerEmail(event.target.value)}
               />
             </label>
             <label>
@@ -278,12 +349,31 @@ export default function CheckoutPage() {
                 required
                 autoComplete="tel"
                 placeholder="+34..."
+                value={customerPhone}
+                onChange={(event) => setCustomerPhone(event.target.value)}
               />
             </label>
           </div>
 
           {deliveryMethod === "DELIVERY" && (
             <div className="form-grid address-grid">
+              {savedAddresses.length > 0 && (
+                <label className="full-field checkout-address-picker">
+                  Direccion guardada
+                  <select
+                    value={selectedAddressId}
+                    onChange={(event) => selectSavedAddress(event.target.value)}
+                  >
+                    {savedAddresses.map((address) => (
+                      <option key={address.id} value={address.id}>
+                        {address.label}
+                        {address.isDefault ? " - predeterminada" : ""} -{" "}
+                        {address.street}, {address.postalCode}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <label>
                 Nombre entrega
                 <input
@@ -291,6 +381,8 @@ export default function CheckoutPage() {
                   required
                   minLength={2}
                   autoComplete="name"
+                  value={addressName}
+                  onChange={(event) => setAddressName(event.target.value)}
                 />
               </label>
               <label>
@@ -300,6 +392,8 @@ export default function CheckoutPage() {
                   required
                   autoComplete="tel"
                   placeholder="+34..."
+                  value={addressPhone}
+                  onChange={(event) => setAddressPhone(event.target.value)}
                 />
               </label>
               <label className="full-field">
@@ -309,6 +403,8 @@ export default function CheckoutPage() {
                   required
                   minLength={4}
                   autoComplete="street-address"
+                  value={street}
+                  onChange={(event) => setStreet(event.target.value)}
                 />
               </label>
               <label>
@@ -318,6 +414,8 @@ export default function CheckoutPage() {
                   required
                   minLength={2}
                   autoComplete="address-level2"
+                  value={city}
+                  onChange={(event) => setCity(event.target.value)}
                 />
               </label>
               <label>
@@ -360,7 +458,12 @@ export default function CheckoutPage() {
               )}
               <label className="full-field">
                 Notas
-                <textarea name="notes" rows={3} />
+                <textarea
+                  name="notes"
+                  rows={3}
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                />
               </label>
             </div>
           )}
