@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -17,6 +18,7 @@ import { randomBytes } from "node:crypto";
 import { AuthenticatedUser } from "../common/decorators/current-user.decorator";
 import { AppEnv } from "../config/env";
 import { LEGAL_VERSION } from "../legal/legal-version";
+import { MailService } from "../mail/mail.service";
 import { DeliveryZonesService } from "../settings/delivery-zones.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { SettingsService } from "../settings/settings.service";
@@ -58,6 +60,10 @@ type CheckoutProduct = Prisma.ProductGetPayload<{
   include: typeof checkoutProductInclude;
 }>;
 
+type OrderWithDetails = Prisma.OrderGetPayload<{
+  include: typeof orderInclude;
+}>;
+
 interface AdminOrderListOptions {
   status?: OrderStatus;
   today?: boolean;
@@ -71,10 +77,13 @@ interface AdminOrderListOptions {
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly settingsService: SettingsService,
     private readonly deliveryZonesService: DeliveryZonesService,
+    private readonly mailService: MailService,
     private readonly configService: ConfigService<AppEnv, true>,
   ) {}
 
@@ -222,7 +231,7 @@ export class OrdersService {
           ];
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      const createdOrder = await this.prisma.$transaction(async (tx) => {
         const orderNumber = await this.nextOrderNumber(tx);
         const order = await tx.order.create({
           data: {
@@ -285,6 +294,12 @@ export class OrdersService {
 
         return order;
       });
+
+      if (paymentMethod === OrderPaymentMethod.CASH) {
+        await this.sendOrderReceiptSafely(createdOrder);
+      }
+
+      return createdOrder;
     } catch (error) {
       if (this.isUniqueError(error)) {
         return this.prisma.order.findUniqueOrThrow({
@@ -293,6 +308,17 @@ export class OrdersService {
         });
       }
       throw error;
+    }
+  }
+
+  private async sendOrderReceiptSafely(order: OrderWithDetails) {
+    try {
+      await this.mailService.sendOrderReceiptEmail(order);
+    } catch (error) {
+      this.logger.error(
+        `Order receipt email failed for ${order.orderNumber}`,
+        error instanceof Error ? error.stack : undefined,
+      );
     }
   }
 

@@ -38,6 +38,10 @@ describe("PaymentsService", () => {
     transitionOrder: jest.fn(),
   };
 
+  const mailService = {
+    sendOrderReceiptEmail: jest.fn(),
+  };
+
   const stripe = {
     checkout: {
       sessions: {
@@ -98,6 +102,7 @@ describe("PaymentsService", () => {
     const paymentsService = new PaymentsService(
       prisma as never,
       ordersService as never,
+      mailService as never,
       config as never,
     );
     (paymentsService as unknown as { stripe: typeof stripe }).stripe = stripe;
@@ -193,6 +198,30 @@ describe("PaymentsService", () => {
       totalCents: 1440,
       currency: "eur",
     });
+    prisma.order.findUniqueOrThrow.mockResolvedValue({
+      id: "order-1",
+      orderNumber: "MT-0001",
+      trackingToken: "track_123",
+      customerEmail: "cliente@example.com",
+      customerName: "Cliente Test",
+      customerPhone: "+34611752804",
+      deliveryMethod: "PICKUP",
+      paymentMethod: "CARD",
+      subtotalCents: 1440,
+      discountCents: 0,
+      deliveryFeeCents: 0,
+      taxCents: 131,
+      totalCents: 1440,
+      createdAt: new Date("2026-08-31T20:00:00.000Z"),
+      items: [
+        {
+          productName: "Mordida Smash",
+          quantity: 1,
+          lineTotalCents: 1440,
+          options: [],
+        },
+      ],
+    });
 
     await service().handleWebhook(signedStripeRequest() as never);
 
@@ -201,6 +230,12 @@ describe("PaymentsService", () => {
       OrderStatus.PAID,
       undefined,
       "Stripe checkout completed: cs_paid",
+    );
+    expect(mailService.sendOrderReceiptEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderNumber: "MT-0001",
+        customerEmail: "cliente@example.com",
+      }),
     );
   });
 

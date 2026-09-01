@@ -159,6 +159,7 @@ describe("AuthService", () => {
     expect(mailService.sendVerificationEmail).toHaveBeenCalledWith(
       "cliente@mordida.test",
       expect.any(String),
+      "Admin",
     );
   });
 });

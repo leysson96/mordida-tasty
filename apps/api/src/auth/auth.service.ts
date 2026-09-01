@@ -40,7 +40,11 @@ export class AuthService {
     if (existing) {
       if (existing.role === Role.CLIENTE && !existing.emailVerifiedAt) {
         const token = await this.createEmailToken(existing.id);
-        await this.mailService.sendVerificationEmail(existing.email, token);
+        await this.mailService.sendVerificationEmail(
+          existing.email,
+          token,
+          existing.name,
+        );
 
         return {
           user: this.safeUser(existing),
@@ -64,7 +68,7 @@ export class AuthService {
     });
 
     const token = await this.createEmailToken(user.id);
-    await this.mailService.sendVerificationEmail(user.email, token);
+    await this.mailService.sendVerificationEmail(user.email, token, user.name);
 
     return {
       user: this.safeUser(user),

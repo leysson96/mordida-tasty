@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -19,6 +20,7 @@ import {
   removableOrderItemStatuses,
 } from "../orders/order-state";
 import { OrdersService } from "../orders/orders.service";
+import { MailService } from "../mail/mail.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateCheckoutSessionDto } from "./dto/create-checkout-session.dto";
 
@@ -61,11 +63,13 @@ const fullyRefundableOrderStatuses: OrderStatus[] = [
 
 @Injectable()
 export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
   private readonly stripe?: Stripe;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly ordersService: OrdersService,
+    private readonly mailService: MailService,
     private readonly configService: ConfigService<AppEnv, true>,
   ) {
     const secretKey = this.configService.get("STRIPE_SECRET_KEY", {
@@ -706,6 +710,7 @@ export class PaymentsService {
         undefined,
         `Stripe checkout completed: ${session.id}`,
       );
+      await this.sendOrderReceiptSafely(order.id);
     }
   }
 
@@ -830,6 +835,18 @@ export class PaymentsService {
       where: { id: orderId },
       include: orderSummaryInclude,
     });
+  }
+
+  private async sendOrderReceiptSafely(orderId: string) {
+    try {
+      const order = await this.getOrderSummary(orderId);
+      await this.mailService.sendOrderReceiptEmail(order);
+    } catch (error) {
+      this.logger.error(
+        `Order receipt email failed for ${orderId}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
   }
 
   private includedTaxCents(totalCents: number, taxRate: number) {

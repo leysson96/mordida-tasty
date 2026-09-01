@@ -29,6 +29,10 @@ describe("OrdersService", () => {
     quoteDelivery: jest.fn(),
   };
 
+  const mailService = {
+    sendOrderReceiptEmail: jest.fn(),
+  };
+
   const config = {
     get: jest.fn((key: string) =>
       key === "APP_TIMEZONE" ? "Europe/Madrid" : undefined,
@@ -59,6 +63,7 @@ describe("OrdersService", () => {
       prisma as never,
       settings as never,
       deliveryZones as never,
+      mailService as never,
       config as never,
     );
   }
@@ -338,6 +343,13 @@ describe("OrdersService", () => {
         }),
       }),
     );
+    expect(mailService.sendOrderReceiptEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderNumber: expect.stringMatching(/^MT-/),
+        paymentMethod: OrderPaymentMethod.CASH,
+        totalCents: 1440,
+      }),
+    );
   });
 
   it("rejects cash delivery orders when the tendered amount is too low", async () => {
@@ -378,6 +390,7 @@ describe("OrdersService", () => {
     );
 
     expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(mailService.sendOrderReceiptEmail).not.toHaveBeenCalled();
   });
 
   it("adds selected option prices and saves option snapshots on order items", async () => {
