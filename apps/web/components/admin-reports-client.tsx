@@ -2,7 +2,15 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, BarChart3, CalendarDays, RefreshCw } from "lucide-react";
+import {
+  ArrowLeft,
+  BarChart3,
+  CalendarDays,
+  PackageCheck,
+  ReceiptText,
+  RefreshCw,
+  Trophy,
+} from "lucide-react";
 import { api, formatMoney } from "../lib/api";
 import {
   readableErrorMessage,
@@ -97,10 +105,29 @@ export function AdminReportsClient() {
     loadReport(range.from, range.to);
   }
 
+  const activeSalesDays =
+    report?.salesByDay.filter(
+      (day) => day.revenueCents > 0 || day.orderCount > 0,
+    ) ?? [];
+  const chartDays =
+    activeSalesDays.length > 0
+      ? activeSalesDays
+      : (report?.salesByDay.slice(-7) ?? []);
   const maxRevenue = Math.max(
-    ...(report?.salesByDay.map((day) => day.revenueCents) ?? [0]),
+    ...(chartDays.map((day) => day.revenueCents) ?? [0]),
     0,
   );
+  const maxProductRevenue = Math.max(
+    ...(report?.topProducts.map((product) => product.revenueCents) ?? [0]),
+    0,
+  );
+  const bestDay = activeSalesDays.reduce<
+    SalesReportResponse["salesByDay"][number] | undefined
+  >(
+    (best, day) => (!best || day.revenueCents > best.revenueCents ? day : best),
+    undefined,
+  );
+  const topProduct = report?.topProducts[0];
 
   return (
     <main className="page-shell admin-page admin-report-page">
@@ -174,22 +201,57 @@ export function AdminReportsClient() {
         <article>
           <span>Ingresos</span>
           <strong>{formatMoney(report?.totalRevenueCents ?? 0)}</strong>
+          <small>Ventas cobradas</small>
         </article>
         <article>
           <span>Pedidos</span>
           <strong>{report?.orderCount ?? 0}</strong>
+          <small>{activeSalesDays.length} dias con venta</small>
         </article>
         <article>
           <span>Ticket medio</span>
           <strong>{formatMoney(report?.averageTicketCents ?? 0)}</strong>
+          <small>Promedio por pedido</small>
         </article>
       </section>
+
+      {report && (
+        <section className="report-insights">
+          <article>
+            <CalendarDays aria-hidden="true" size={20} />
+            <div>
+              <span>Rango</span>
+              <strong>
+                {formatReportDate(report.from)} - {formatReportDate(report.to)}
+              </strong>
+            </div>
+          </article>
+          <article>
+            <Trophy aria-hidden="true" size={20} />
+            <div>
+              <span>Mejor dia</span>
+              <strong>
+                {bestDay ? formatReportDate(bestDay.date) : "Sin ventas"}
+              </strong>
+              {bestDay && <small>{formatMoney(bestDay.revenueCents)}</small>}
+            </div>
+          </article>
+          <article>
+            <PackageCheck aria-hidden="true" size={20} />
+            <div>
+              <span>Producto lider</span>
+              <strong>{topProduct?.productName ?? "Sin ventas"}</strong>
+              {topProduct && <small>{topProduct.quantity} uds.</small>}
+            </div>
+          </article>
+        </section>
+      )}
 
       <section className="report-grid">
         <section className="form-panel">
           <h2>
             <BarChart3 aria-hidden="true" size={20} />
-            Ventas por dia
+            Actividad diaria
           </h2>
           {!report || loading ? (
             <div className="empty-state">
@@ -198,20 +260,26 @@ export function AdminReportsClient() {
             </div>
           ) : (
             <div className="trend-chart">
-              {report.salesByDay.map((day) => {
+              {chartDays.map((day) => {
                 const height =
                   maxRevenue > 0
-                    ? Math.max(8, (day.revenueCents / maxRevenue) * 150)
+                    ? Math.max(8, (day.revenueCents / maxRevenue) * 100)
                     : 8;
                 return (
-                  <div className="trend-day" key={day.date}>
-                    <div
-                      className="trend-bar"
-                      style={{ height }}
-                      title={formatMoney(day.revenueCents)}
-                    />
-                    <span>{day.date.slice(5)}</span>
-                  </div>
+                  <article className="trend-day" key={day.date}>
+                    <div className="trend-day-label">
+                      <strong>{formatReportDate(day.date)}</strong>
+                      <span>{day.orderCount} ped.</span>
+                    </div>
+                    <div className="trend-bar-track">
+                      <span
+                        className="trend-bar"
+                        style={{ height: `${height}%` }}
+                        title={formatMoney(day.revenueCents)}
+                      />
+                    </div>
+                    <strong>{formatMoney(day.revenueCents)}</strong>
+                  </article>
                 );
               })}
             </div>
@@ -219,21 +287,38 @@ export function AdminReportsClient() {
         </section>
 
         <section className="form-panel">
-          <h2>Productos mas vendidos</h2>
-          <div className="report-table">
-            <div className="report-table-head">
-              <span>Producto</span>
-              <span>Uds.</span>
-              <span>Ingresos</span>
-            </div>
+          <h2>
+            <ReceiptText aria-hidden="true" size={20} />
+            Productos mas vendidos
+          </h2>
+          <div className="report-product-list">
             {report?.topProducts.length ? (
-              report.topProducts.map((product) => (
-                <div className="report-table-row" key={product.productName}>
-                  <strong>{product.productName}</strong>
-                  <span>{product.quantity}</span>
-                  <span>{formatMoney(product.revenueCents)}</span>
-                </div>
-              ))
+              report.topProducts.map((product, index) => {
+                const width =
+                  maxProductRevenue > 0
+                    ? Math.max(
+                        8,
+                        (product.revenueCents / maxProductRevenue) * 100,
+                      )
+                    : 8;
+
+                return (
+                  <article
+                    className="report-product-row"
+                    key={product.productName}
+                  >
+                    <span className="report-product-rank">{index + 1}</span>
+                    <div>
+                      <strong>{product.productName}</strong>
+                      <small>{product.quantity} uds.</small>
+                      <span className="report-product-meter">
+                        <span style={{ width: `${width}%` }} />
+                      </span>
+                    </div>
+                    <strong>{formatMoney(product.revenueCents)}</strong>
+                  </article>
+                );
+              })
             ) : (
               <p className="muted">Sin ventas en este rango.</p>
             )}
@@ -242,4 +327,11 @@ export function AdminReportsClient() {
       </section>
     </main>
   );
+}
+
+function formatReportDate(value: string) {
+  return new Date(`${value}T00:00:00`).toLocaleDateString("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+  });
 }
