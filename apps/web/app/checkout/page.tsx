@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Banknote, CreditCard, MapPin, Store } from "lucide-react";
+import {
+  Banknote,
+  CheckCircle2,
+  CreditCard,
+  MapPin,
+  Pencil,
+  Store,
+  UserRound,
+} from "lucide-react";
 import { ApiError, api, formatMoney } from "../../lib/api";
 import {
   Address,
@@ -39,6 +47,8 @@ export default function CheckoutPage() {
   const [postalCode, setPostalCode] = useState("");
   const [notes, setNotes] = useState("");
   const [cashTenderedEuros, setCashTenderedEuros] = useState("");
+  const [customerDetailsOpen, setCustomerDetailsOpen] = useState(true);
+  const [deliveryDetailsOpen, setDeliveryDetailsOpen] = useState(true);
   const [deliveryQuote, setDeliveryQuote] = useState<DeliveryQuote>();
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string>();
@@ -73,6 +83,9 @@ export default function CheckoutPage() {
         setCustomerName((current) => current || user.name || "");
         setCustomerEmail((current) => current || user.email || "");
         setCustomerPhone((current) => current || user.phone || "");
+        setAddressName((current) => current || user.name || "");
+        setAddressPhone((current) => current || user.phone || "");
+        setCustomerDetailsOpen(!(user.name && user.email && user.phone));
         setSavedAddresses(addresses);
 
         const defaultAddress =
@@ -80,6 +93,7 @@ export default function CheckoutPage() {
         if (defaultAddress) {
           setSelectedAddressId(defaultAddress.id);
           applySavedAddress(defaultAddress);
+          setDeliveryDetailsOpen(false);
         }
       })
       .catch((requestError: Error) => {
@@ -191,6 +205,19 @@ export default function CheckoutPage() {
   const cashBlocked =
     cashNeedsTender &&
     (cashTenderedCents === undefined || cashTenderedCents < totalCents);
+  const selectedAddress = savedAddresses.find(
+    (address) => address.id === selectedAddressId,
+  );
+  const hasCustomerDetails = Boolean(
+    customerName.trim() && customerEmail.trim() && customerPhone.trim(),
+  );
+  const hasDeliveryDetails = Boolean(
+    addressName.trim() &&
+    addressPhone.trim() &&
+    street.trim() &&
+    city.trim() &&
+    postalCode.trim(),
+  );
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -333,6 +360,7 @@ export default function CheckoutPage() {
     const address = savedAddresses.find((item) => item.id === addressId);
     if (address) {
       applySavedAddress(address);
+      setDeliveryDetailsOpen(false);
     }
   }
 
@@ -360,51 +388,88 @@ export default function CheckoutPage() {
             <button
               type="button"
               className={deliveryMethod === "DELIVERY" ? "active" : ""}
-              onClick={() => setDeliveryMethod("DELIVERY")}
+              onClick={() => {
+                setDeliveryMethod("DELIVERY");
+                setDeliveryDetailsOpen(!hasDeliveryDetails);
+              }}
             >
               <MapPin aria-hidden="true" size={17} />
               Envio
             </button>
           </div>
 
-          <div className="form-grid">
-            <label>
-              Nombre
-              <input
-                name="customerName"
-                required
-                minLength={2}
-                autoComplete="name"
-                value={customerName}
-                onChange={(event) => setCustomerName(event.target.value)}
-              />
-            </label>
-            <label>
-              Email
-              <input
-                name="customerEmail"
-                required
-                type="email"
-                autoComplete="email"
-                value={customerEmail}
-                onChange={(event) => setCustomerEmail(event.target.value)}
-              />
-            </label>
-            <label>
-              Telefono
-              <input
-                name="customerPhone"
-                required
-                autoComplete="tel"
-                placeholder="+34..."
-                value={customerPhone}
-                onChange={(event) => setCustomerPhone(event.target.value)}
-              />
-            </label>
-          </div>
+          {hasCustomerDetails && (
+            <section className="checkout-saved-strip">
+              <UserRound aria-hidden="true" size={20} />
+              <div>
+                <span>Cliente</span>
+                <strong>{customerName}</strong>
+                <small>
+                  {customerEmail} - {customerPhone}
+                </small>
+              </div>
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => setCustomerDetailsOpen((current) => !current)}
+              >
+                <Pencil aria-hidden="true" size={16} />
+                Editar
+              </button>
+            </section>
+          )}
+
+          <details
+            className="checkout-details"
+            open={customerDetailsOpen}
+            onToggle={(event) =>
+              setCustomerDetailsOpen(event.currentTarget.open)
+            }
+          >
+            <summary>
+              {hasCustomerDetails
+                ? "Editar datos de contacto"
+                : "Datos de contacto"}
+            </summary>
+            <div className="form-grid">
+              <label>
+                Nombre
+                <input
+                  name="customerName"
+                  required
+                  minLength={2}
+                  autoComplete="name"
+                  value={customerName}
+                  onChange={(event) => setCustomerName(event.target.value)}
+                />
+              </label>
+              <label>
+                Email
+                <input
+                  name="customerEmail"
+                  required
+                  type="email"
+                  autoComplete="email"
+                  value={customerEmail}
+                  onChange={(event) => setCustomerEmail(event.target.value)}
+                />
+              </label>
+              <label>
+                Telefono
+                <input
+                  name="customerPhone"
+                  required
+                  autoComplete="tel"
+                  placeholder="+34..."
+                  value={customerPhone}
+                  onChange={(event) => setCustomerPhone(event.target.value)}
+                />
+              </label>
+            </div>
+          </details>
 
           {deliveryMethod === "DELIVERY" && (
-            <div className="form-grid address-grid">
+            <section className="checkout-delivery-section">
               {savedAddresses.length > 0 && (
                 <label className="full-field checkout-address-picker">
                   Direccion guardada
@@ -422,98 +487,141 @@ export default function CheckoutPage() {
                   </select>
                 </label>
               )}
-              <label>
-                Nombre entrega
-                <input
-                  name="addressName"
-                  required
-                  minLength={2}
-                  autoComplete="name"
-                  value={addressName}
-                  onChange={(event) => setAddressName(event.target.value)}
-                />
-              </label>
-              <label>
-                Telefono entrega
-                <input
-                  name="addressPhone"
-                  required
-                  autoComplete="tel"
-                  placeholder="+34..."
-                  value={addressPhone}
-                  onChange={(event) => setAddressPhone(event.target.value)}
-                />
-              </label>
-              <label className="full-field">
-                Direccion
-                <input
-                  name="street"
-                  required
-                  minLength={4}
-                  autoComplete="street-address"
-                  value={street}
-                  onChange={(event) => setStreet(event.target.value)}
-                />
-              </label>
-              <label>
-                Ciudad
-                <input
-                  name="city"
-                  required
-                  minLength={2}
-                  autoComplete="address-level2"
-                  value={city}
-                  onChange={(event) => setCity(event.target.value)}
-                />
-              </label>
-              <label>
-                Codigo postal
-                <input
-                  name="postalCode"
-                  required
-                  minLength={4}
-                  autoComplete="postal-code"
-                  value={postalCode}
-                  onChange={(event) => setPostalCode(event.target.value)}
-                />
-              </label>
-              {hasDeliveryZones && (
-                <div
-                  className={`delivery-quote full-field ${
-                    quoteError || deliveryQuote?.available === false
-                      ? "blocked"
-                      : ""
-                  }`}
-                >
-                  {quoteLoading || deliveryNeedsQuote ? (
-                    <span>Calculando zona de reparto...</span>
-                  ) : quoteError ? (
-                    <span>{quoteError}</span>
-                  ) : deliveryQuote?.available ? (
-                    <span>
-                      {deliveryQuote.zone?.name ?? "Zona general"} - Envio{" "}
-                      {formatMoney(deliveryQuote.deliveryFeeCents)}
-                      {deliveryQuote.minimumOrderCents > 0
-                        ? ` - Pedido minimo ${formatMoney(
-                            deliveryQuote.minimumOrderCents,
-                          )}`
-                        : ""}
-                    </span>
-                  ) : (
-                    <span>Introduce tu codigo postal para calcular envio.</span>
-                  )}
-                </div>
+
+              {hasDeliveryDetails && (
+                <section className="checkout-saved-strip delivery">
+                  <CheckCircle2 aria-hidden="true" size={20} />
+                  <div>
+                    <span>Entrega</span>
+                    <strong>
+                      {selectedAddress?.label ?? "Direccion de entrega"}
+                    </strong>
+                    <small>
+                      {[street, city, postalCode].filter(Boolean).join(", ")}
+                    </small>
+                  </div>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() =>
+                      setDeliveryDetailsOpen((current) => !current)
+                    }
+                  >
+                    <Pencil aria-hidden="true" size={16} />
+                    Editar
+                  </button>
+                </section>
               )}
-              <label className="full-field">
-                Notas
-                <textarea
-                  name="notes"
-                  rows={3}
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                />
-              </label>
-            </div>
+
+              <details
+                className="checkout-details"
+                open={deliveryDetailsOpen}
+                onToggle={(event) =>
+                  setDeliveryDetailsOpen(event.currentTarget.open)
+                }
+              >
+                <summary>
+                  {hasDeliveryDetails
+                    ? "Editar datos de entrega"
+                    : "Datos de entrega"}
+                </summary>
+                <div className="form-grid address-grid">
+                  <label>
+                    Nombre entrega
+                    <input
+                      name="addressName"
+                      required
+                      minLength={2}
+                      autoComplete="name"
+                      value={addressName}
+                      onChange={(event) => setAddressName(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Telefono entrega
+                    <input
+                      name="addressPhone"
+                      required
+                      autoComplete="tel"
+                      placeholder="+34..."
+                      value={addressPhone}
+                      onChange={(event) => setAddressPhone(event.target.value)}
+                    />
+                  </label>
+                  <label className="full-field">
+                    Direccion
+                    <input
+                      name="street"
+                      required
+                      minLength={4}
+                      autoComplete="street-address"
+                      value={street}
+                      onChange={(event) => setStreet(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Ciudad
+                    <input
+                      name="city"
+                      required
+                      minLength={2}
+                      autoComplete="address-level2"
+                      value={city}
+                      onChange={(event) => setCity(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Codigo postal
+                    <input
+                      name="postalCode"
+                      required
+                      minLength={4}
+                      autoComplete="postal-code"
+                      value={postalCode}
+                      onChange={(event) => setPostalCode(event.target.value)}
+                    />
+                  </label>
+                  {hasDeliveryZones && (
+                    <div
+                      className={`delivery-quote full-field ${
+                        quoteError || deliveryQuote?.available === false
+                          ? "blocked"
+                          : ""
+                      }`}
+                    >
+                      {quoteLoading || deliveryNeedsQuote ? (
+                        <span>Calculando zona de reparto...</span>
+                      ) : quoteError ? (
+                        <span>{quoteError}</span>
+                      ) : deliveryQuote?.available ? (
+                        <span>
+                          {deliveryQuote.zone?.name ?? "Zona general"} - Envio{" "}
+                          {formatMoney(deliveryQuote.deliveryFeeCents)}
+                          {deliveryQuote.minimumOrderCents > 0
+                            ? ` - Pedido minimo ${formatMoney(
+                                deliveryQuote.minimumOrderCents,
+                              )}`
+                            : ""}
+                        </span>
+                      ) : (
+                        <span>
+                          Introduce tu codigo postal para calcular envio.
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <label className="full-field">
+                    Notas
+                    <textarea
+                      name="notes"
+                      rows={3}
+                      value={notes}
+                      onChange={(event) => setNotes(event.target.value)}
+                    />
+                  </label>
+                </div>
+              </details>
+            </section>
           )}
 
           <section className="payment-method-panel">

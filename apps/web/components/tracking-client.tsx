@@ -110,10 +110,17 @@ export function TrackingClient({
 
   const currentIndex = trackingProgressStatuses.indexOf(order.status);
   const hasProgress = currentIndex >= 0;
+  const progressPercent = hasProgress
+    ? Math.round(
+        (currentIndex / Math.max(1, trackingProgressStatuses.length - 1)) * 100,
+      )
+    : 0;
   const latestStatus =
     order.statusHistory && order.statusHistory.length > 0
       ? order.statusHistory[order.statusHistory.length - 1]
       : undefined;
+  const currentDescription =
+    trackingStepDescription(order, order.status) ?? "Revisa el detalle abajo.";
   const deliveryLabel =
     order.deliveryMethod === "DELIVERY"
       ? "Entrega a domicilio"
@@ -127,7 +134,7 @@ export function TrackingClient({
         <div>
           <p className="eyebrow">Pedido {order.orderNumber}</p>
           <h1>{orderStatusLabels[order.status]}</h1>
-          <p>{deliveryLabel}</p>
+          <p>{currentDescription}</p>
         </div>
         <div className="tracking-hero-meta" aria-label="Detalles del pedido">
           <span>
@@ -147,12 +154,22 @@ export function TrackingClient({
 
       <section className="tracking-panel" aria-label="Estado del pedido">
         <div className="tracking-panel-head">
-          <h2>Seguimiento</h2>
+          <div>
+            <h2>Seguimiento</h2>
+            <p>
+              {hasProgress
+                ? `Paso ${currentIndex + 1} de ${trackingProgressStatuses.length}`
+                : "Estado del pedido"}
+            </p>
+          </div>
           <span>
             {latestStatus
               ? formatTrackingDate(latestStatus.createdAt)
               : formatTrackingDate(order.createdAt)}
           </span>
+        </div>
+        <div className="tracking-progress-meter" aria-hidden="true">
+          <span style={{ width: `${progressPercent}%` }} />
         </div>
         <div className="tracking-steps">
           {trackingProgressStatuses.map((status, index) => {
