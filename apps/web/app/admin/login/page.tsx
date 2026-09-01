@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
+import { PasswordField } from '../../../components/password-field';
 import { api } from '../../../lib/api';
 import { User } from '../../../lib/types';
 
@@ -50,10 +51,7 @@ export default function AdminLoginPage() {
           Email
           <input name="email" type="email" required autoComplete="email" />
         </label>
-        <label>
-          Contrasena
-          <input name="password" type="password" required autoComplete="current-password" />
-        </label>
+        <PasswordField label="Contrasena" name="password" required autoComplete="current-password" />
         <label>
           Codigo 2FA
           <input name="totpCode" inputMode="numeric" maxLength={6} placeholder="Opcional" />

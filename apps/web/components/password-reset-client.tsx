@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { KeyRound } from 'lucide-react';
 import { api } from '../lib/api';
+import { PasswordField } from './password-field';
 
 export function PasswordResetClient({ token }: { token: string }) {
   const [message, setMessage] = useState<string>();
@@ -43,26 +44,20 @@ export function PasswordResetClient({ token }: { token: string }) {
         <p className="eyebrow">Cuenta</p>
         <h1>Nueva contrasena</h1>
         {!token && <p className="form-error">El enlace no es valido.</p>}
-        <label>
-          Contrasena
-          <input
-            name="password"
-            type="password"
-            required
-            minLength={10}
-            autoComplete="new-password"
-          />
-        </label>
-        <label>
-          Confirmar contrasena
-          <input
-            name="confirmPassword"
-            type="password"
-            required
-            minLength={10}
-            autoComplete="new-password"
-          />
-        </label>
+        <PasswordField
+          label="Contrasena"
+          name="password"
+          required
+          minLength={10}
+          autoComplete="new-password"
+        />
+        <PasswordField
+          label="Confirmar contrasena"
+          name="confirmPassword"
+          required
+          minLength={10}
+          autoComplete="new-password"
+        />
         {message && <p className="form-success">{message}</p>}
         {error && <p className="form-error">{error}</p>}
         <button className="button primary full" disabled={loading || !token} type="submit">

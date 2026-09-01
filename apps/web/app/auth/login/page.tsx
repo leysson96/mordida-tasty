@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { LogIn } from 'lucide-react';
+import { PasswordField } from '../../../components/password-field';
 import { api } from '../../../lib/api';
 import { User } from '../../../lib/types';
 
@@ -44,10 +45,7 @@ export default function LoginPage() {
           Email
           <input name="email" type="email" required autoComplete="email" />
         </label>
-        <label>
-          Contrasena
-          <input name="password" type="password" required autoComplete="current-password" />
-        </label>
+        <PasswordField label="Contrasena" name="password" required autoComplete="current-password" />
         {error && <p className="form-error">{error}</p>}
         <button className="button primary full" disabled={loading} type="submit">
           <LogIn aria-hidden="true" size={18} />

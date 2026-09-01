@@ -19,6 +19,7 @@ import {
   redirectOnAdminAuthError,
 } from "../lib/admin-errors";
 import { Role, StaffUser, User } from "../lib/types";
+import { PasswordField } from "./password-field";
 
 type StaffRole = "ADMIN" | "KITCHEN";
 type RoleFilter = StaffRole | "ALL";
@@ -267,16 +268,14 @@ export function AdminStaffClient() {
               Telefono
               <input name="phone" placeholder="+34..." />
             </label>
-            <label className="full-field">
-              Contrasena temporal
-              <input
-                name="password"
-                type="password"
-                minLength={10}
-                maxLength={120}
-                required
-              />
-            </label>
+            <PasswordField
+              className="full-field"
+              label="Contrasena temporal"
+              name="password"
+              minLength={10}
+              maxLength={120}
+              required
+            />
           </div>
           <button
             className="button primary"

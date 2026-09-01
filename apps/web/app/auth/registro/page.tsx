@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { UserPlus } from "lucide-react";
+import { PasswordField } from "../../../components/password-field";
 import { api } from "../../../lib/api";
 
 interface RegisterResponse {
@@ -74,16 +75,13 @@ export default function RegisterPage() {
             placeholder="+34..."
           />
         </label>
-        <label>
-          Contrasena
-          <input
-            name="password"
-            type="password"
-            required
-            minLength={10}
-            autoComplete="new-password"
-          />
-        </label>
+        <PasswordField
+          label="Contrasena"
+          name="password"
+          required
+          minLength={10}
+          autoComplete="new-password"
+        />
         <label className="checkbox-label legal-consent">
           <input type="checkbox" name="acceptLegal" required />
           <span>
