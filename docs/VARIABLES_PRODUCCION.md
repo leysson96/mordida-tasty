@@ -13,10 +13,22 @@ Cloudflare o el proveedor elegido.
 - `NEXT_PUBLIC_API_URL`: URL publica de la API usada por Next.js. Importante:
   esta variable se necesita durante el build de la web porque queda incluida en
   el JavaScript del navegador.
+- `NEXT_PUBLIC_GA_MEASUREMENT_ID`: ID de medicion de Google Analytics 4 para la
+  web. Tiene formato `G-XXXXXXXXXX`. Si se deja vacia, Analytics no se carga.
 
 Recomendacion: usar dominio propio con web y API bajo el mismo dominio raiz:
 `www.mordidatasty.es` y `api.mordidatasty.es`. Asi las cookies `httpOnly` son
 mas fiables que usando dominios temporales distintos de proveedores.
+
+## Analitica
+
+Google Analytics se carga solo en la parte publica de la web y solo cuando el
+usuario acepta la medicion en el banner de cookies. El panel `/admin` queda fuera
+para no mezclar visitas internas del restaurante con clientes reales.
+
+En Render, agrega `NEXT_PUBLIC_GA_MEASUREMENT_ID` en el servicio web
+`mordida-tasty-web`, no en la API. Despues de guardarla, ejecuta un nuevo deploy
+porque las variables `NEXT_PUBLIC_*` se integran en el build de Next.js.
 
 ## Base de datos
 

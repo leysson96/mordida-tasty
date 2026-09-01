@@ -2658,6 +2658,19 @@ code {
   font-weight: 900;
 }
 
+.cookie-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cookie-actions .button {
+  min-height: 40px;
+  padding: 0 12px;
+  font-size: 0.8rem;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -2943,6 +2956,14 @@ code {
 
   .cookie-banner {
     grid-template-columns: 1fr;
+  }
+
+  .cookie-actions {
+    justify-content: stretch;
+  }
+
+  .cookie-actions .button {
+    flex: 1 1 150px;
   }
 }
 

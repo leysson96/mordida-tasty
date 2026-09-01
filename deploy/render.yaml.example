@@ -99,3 +99,5 @@ services:
         value: 22.19.0
       - key: NEXT_PUBLIC_API_URL
         value: https://api.tudominio.es
+      - key: NEXT_PUBLIC_GA_MEASUREMENT_ID
+        value: G-XXXXXXXXXX
