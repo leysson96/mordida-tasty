@@ -89,27 +89,31 @@ export function MenuClient() {
             >
               Ver {siteContent.featuredProductName}
             </Link>
-            {whatsappUrl && (
-              <a
-                href={whatsappUrl}
-                className="button ghost"
-                target="_blank"
-                rel="noreferrer"
-              >
-                <MessageCircle aria-hidden="true" size={18} />
-                WhatsApp
-              </a>
-            )}
-            {siteContent.instagramUrl && (
-              <a
-                href={siteContent.instagramUrl}
-                className="button ghost"
-                target="_blank"
-                rel="noreferrer"
-              >
-                <Instagram aria-hidden="true" size={18} />
-                Instagram
-              </a>
+            {(whatsappUrl || siteContent.instagramUrl) && (
+              <div className="hero-social-actions">
+                {whatsappUrl && (
+                  <a
+                    href={whatsappUrl}
+                    className="button ghost"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <MessageCircle aria-hidden="true" size={18} />
+                    WhatsApp
+                  </a>
+                )}
+                {siteContent.instagramUrl && (
+                  <a
+                    href={siteContent.instagramUrl}
+                    className="button ghost"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Instagram aria-hidden="true" size={18} />
+                    Instagram
+                  </a>
+                )}
+              </div>
             )}
           </div>
           <dl className="hero-service">
