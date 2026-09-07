@@ -47,6 +47,7 @@ function contentSecurityPolicy() {
     [
       "connect-src 'self'",
       apiUrlOrigin,
+      "https://www.googletagmanager.com",
       "https://www.google-analytics.com",
       "https://region1.google-analytics.com",
       "https://analytics.google.com",
@@ -59,7 +60,7 @@ function contentSecurityPolicy() {
     ].join(" "),
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self' data:",
-    "frame-src https://js.stripe.com https://hooks.stripe.com",
+    "frame-src https://js.stripe.com https://hooks.stripe.com https://www.googletagmanager.com",
     production ? "upgrade-insecure-requests" : "",
   ]
     .filter(Boolean)

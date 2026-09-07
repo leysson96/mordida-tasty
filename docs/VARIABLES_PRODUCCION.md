@@ -13,8 +13,12 @@ Cloudflare o el proveedor elegido.
 - `NEXT_PUBLIC_API_URL`: URL publica de la API usada por Next.js. Importante:
   esta variable se necesita durante el build de la web porque queda incluida en
   el JavaScript del navegador.
+- `NEXT_PUBLIC_GTM_ID`: ID del contenedor de Google Tag Manager. Tiene formato
+  `GTM-XXXXXXX`. Si existe, la web carga GTM y no carga Analytics directo para
+  evitar doble medicion.
 - `NEXT_PUBLIC_GA_MEASUREMENT_ID`: ID de medicion de Google Analytics 4 para la
-  web. Tiene formato `G-XXXXXXXXXX`. Si se deja vacia, Analytics no se carga.
+  web. Tiene formato `G-XXXXXXXXXX`. Se usa solo si `NEXT_PUBLIC_GTM_ID` esta
+  vacio.
 
 Recomendacion: usar dominio propio con web y API bajo el mismo dominio raiz:
 `www.mordidatasty.es` y `api.mordidatasty.es`. Asi las cookies `httpOnly` son
@@ -22,13 +26,42 @@ mas fiables que usando dominios temporales distintos de proveedores.
 
 ## Analitica
 
-Google Analytics se carga solo en la parte publica de la web y solo cuando el
-usuario acepta la medicion en el banner de cookies. El panel `/admin` queda fuera
-para no mezclar visitas internas del restaurante con clientes reales.
+Google Tag Manager o Google Analytics se cargan solo en la parte publica de la
+web y solo cuando el usuario acepta la medicion en el banner de cookies. El panel
+`/admin` queda fuera para no mezclar visitas internas del restaurante con
+clientes reales.
 
-En Render, agrega `NEXT_PUBLIC_GA_MEASUREMENT_ID` en el servicio web
-`mordida-tasty-web`, no en la API. Despues de guardarla, ejecuta un nuevo deploy
-porque las variables `NEXT_PUBLIC_*` se integran en el build de Next.js.
+En Render, agrega `NEXT_PUBLIC_GTM_ID` o `NEXT_PUBLIC_GA_MEASUREMENT_ID` en el
+servicio web `mordida-tasty-web`, no en la API. Despues de guardarla, ejecuta un
+nuevo deploy porque las variables `NEXT_PUBLIC_*` se integran en el build de
+Next.js.
+
+No configures a la vez una etiqueta GA4 directa y otra GA4 dentro de GTM con la
+misma propiedad, porque contaria visitas duplicadas. La recomendacion actual es:
+usar `NEXT_PUBLIC_GTM_ID` y administrar GA4 desde Google Tag Manager.
+
+Para probar Tag Manager con el boton de Google, abre la web publica, acepta
+"Aceptar medicion" en el banner de cookies y vuelve a ejecutar la prueba. Si no
+aceptas medicion, el sitio no carga la etiqueta por privacidad.
+
+## Contenido editable sin tocar codigo
+
+Estos cambios se hacen desde `/admin/menu`, pestaña `Portada`, y se guardan en
+la base de datos:
+
+- Nombre visible, iniciales del logo, frase superior, titulo, texto y foto de
+  portada.
+- Producto destacado, texto sobre la carta, WhatsApp e Instagram.
+- Ubicacion: titulo, texto, direccion visible, ciudad, codigo postal y enlace
+  exacto de Google Maps.
+- Apartado Nosotros: titulo y texto.
+
+El campo `Enlace exacto Google Maps` tiene prioridad sobre la direccion escrita.
+Usalo para evitar que Google envie al cliente a otro negocio con una direccion
+parecida. La forma recomendada es abrir la ubicacion correcta en Google Maps,
+usar `Compartir` -> `Copiar enlace`, pegar ese enlace en `/admin/menu` y guardar.
+Si ese campo queda vacio, la web genera la ruta usando la direccion visible como
+respaldo.
 
 ## Cabeceras de seguridad
 

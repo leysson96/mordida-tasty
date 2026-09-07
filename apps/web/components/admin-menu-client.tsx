@@ -582,7 +582,7 @@ export function AdminMenuClient() {
 
         {activeSection === "brand" && (
           <form
-            key={`${siteContent.name}-${siteContent.heroTitle}-${siteContent.heroImage}-${siteContent.instagramUrl}-${siteContent.whatsappPhone}-${siteContent.businessAddress}-${siteContent.aboutTitle}`}
+            key={`${siteContent.name}-${siteContent.heroTitle}-${siteContent.heroImage}-${siteContent.instagramUrl}-${siteContent.whatsappPhone}-${siteContent.locationTitle}-${siteContent.businessAddress}-${siteContent.businessCity}-${siteContent.businessPostalCode}-${siteContent.googleMapsUrl}-${siteContent.aboutTitle}-${siteContent.aboutText}`}
             className="form-panel site-content-form"
             onSubmit={saveSiteContent}
           >
@@ -740,11 +740,11 @@ export function AdminMenuClient() {
                   />
                 </label>
                 <label>
-                  Enlace Google Maps
+                  Enlace exacto Google Maps
                   <input
                     name="googleMapsUrl"
                     defaultValue={siteContent.googleMapsUrl}
-                    placeholder="https://maps.app.goo.gl/..."
+                    placeholder="https://maps.google.com/..."
                   />
                 </label>
                 <div className="form-subsection full-field">

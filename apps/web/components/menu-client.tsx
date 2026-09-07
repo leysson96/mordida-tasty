@@ -347,11 +347,17 @@ function fullBusinessAddress(siteContent: SiteContent) {
 }
 
 function buildDirectionsUrl(siteContent: SiteContent, businessAddress: string) {
+  const exactMapsUrl = siteContent.googleMapsUrl.trim();
+  if (exactMapsUrl) {
+    return exactMapsUrl;
+  }
+
+  // Free-form addresses can resolve to the wrong business in Google Maps.
   if (businessAddress) {
     return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
       businessAddress,
     )}`;
   }
 
-  return siteContent.googleMapsUrl.trim() || undefined;
+  return undefined;
 }
