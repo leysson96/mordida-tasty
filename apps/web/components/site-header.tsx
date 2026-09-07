@@ -7,16 +7,28 @@ import {
   BarChart3,
   ChefHat,
   ClipboardList,
-  LayoutDashboard,
+  LogOut,
   Menu,
   ShoppingBag,
+  Truck,
   UserRound,
+  UsersRound,
 } from 'lucide-react';
 import { api } from '../lib/api';
+import { logoutAdmin } from './admin-auth';
 import { brandConfig } from '../lib/brand';
 import type { PublicSettings, SiteContent } from '../lib/types';
 import { BrandMark } from './brand-mark';
 import { useCart } from './cart-provider';
+
+const adminLinks = [
+  { href: '/admin', label: 'Pedidos', Icon: ClipboardList },
+  { href: '/admin/menu', label: 'Menu', Icon: Menu },
+  { href: '/admin/reportes', label: 'Reportes', Icon: BarChart3 },
+  { href: '/admin/reparto', label: 'Reparto', Icon: Truck },
+  { href: '/admin/staff', label: 'Staff', Icon: UsersRound },
+  { href: '/admin/cocina', label: 'Cocina', Icon: ChefHat },
+] as const;
 
 export function SiteHeader() {
   const { totalItems } = useCart();
@@ -44,6 +56,14 @@ export function SiteHeader() {
     document.documentElement.style.setProperty('--runtime-font-sans', siteContent.fontFamily);
   }, [siteContent.fontFamily]);
 
+  async function logout() {
+    try {
+      await logoutAdmin();
+    } finally {
+      window.location.href = '/admin/login';
+    }
+  }
+
   return (
     <header className={`site-header ${isAdminRoute ? 'admin-mode' : ''}`}>
       <Link href="/" className="brand" aria-label={siteContent.name}>
@@ -52,22 +72,20 @@ export function SiteHeader() {
       <nav className="main-nav" aria-label={isAdminRoute ? 'Admin' : 'Principal'}>
         {isAdminRoute ? (
           <>
-            <Link href="/admin">
-              <ClipboardList aria-hidden="true" size={18} />
-              Pedidos
-            </Link>
-            <Link href="/admin/menu">
-              <Menu aria-hidden="true" size={18} />
-              Menu
-            </Link>
-            <Link href="/admin/reportes">
-              <BarChart3 aria-hidden="true" size={18} />
-              Reportes
-            </Link>
-            <Link href="/admin/cocina">
-              <ChefHat aria-hidden="true" size={18} />
-              Cocina
-            </Link>
+            {adminLinks.map(({ href, label, Icon }) => {
+              const active = isAdminLinkActive(pathname, href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={active ? 'active' : undefined}
+                  aria-current={active ? 'page' : undefined}
+                >
+                  <Icon aria-hidden="true" size={18} />
+                  {label}
+                </Link>
+              );
+            })}
           </>
         ) : (
           <>
@@ -87,10 +105,15 @@ export function SiteHeader() {
         )}
       </nav>
       {isAdminRoute ? (
-        <Link href="/admin" className="admin-header-link" aria-label="Panel de administracion">
-          <LayoutDashboard aria-hidden="true" size={20} />
-          <span>Admin</span>
-        </Link>
+        <button
+          type="button"
+          className="admin-header-link"
+          onClick={logout}
+          aria-label="Salir del panel"
+        >
+          <LogOut aria-hidden="true" size={20} />
+          <span>Salir</span>
+        </button>
       ) : (
         <Link href="/carrito" className="cart-link" aria-label={`Carrito con ${totalItems} productos`}>
           <ShoppingBag aria-hidden="true" size={20} />
@@ -99,4 +122,11 @@ export function SiteHeader() {
       )}
     </header>
   );
+}
+
+function isAdminLinkActive(pathname: string | null, href: string) {
+  const currentPath = pathname ?? '';
+  return href === '/admin'
+    ? currentPath === href
+    : currentPath === href || currentPath.startsWith(`${href}/`);
 }

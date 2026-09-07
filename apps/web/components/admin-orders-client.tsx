@@ -1,10 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import {
   Banknote,
-  BarChart3,
   CalendarOff,
   ChevronLeft,
   ChevronRight,
@@ -14,7 +12,6 @@ import {
   Filter,
   Gift,
   X,
-  LogOut,
   Plus,
   Printer,
   RefreshCw,
@@ -23,9 +20,6 @@ import {
   Settings,
   ShieldCheck,
   Trash2,
-  Truck,
-  Utensils,
-  UsersRound,
 } from "lucide-react";
 import { api, formatMoney } from "../lib/api";
 import {
@@ -60,7 +54,6 @@ import {
   SpecialClosure,
 } from "../lib/types";
 import { isCardPayment, paymentSummaryText } from "../lib/payment-format";
-import { logoutAdmin } from "./admin-auth";
 import { KitchenAlarm } from "./kitchen-alarm";
 import { PrintableOrderTicket } from "./printable-order-ticket";
 
@@ -280,14 +273,6 @@ export function AdminOrdersClient() {
   function printOrder(orderId: string) {
     setPrintingOrderId(orderId);
     window.setTimeout(() => window.print(), 80);
-  }
-
-  async function logout() {
-    try {
-      await logoutAdmin();
-    } finally {
-      window.location.href = "/admin/login";
-    }
   }
 
   async function saveBusinessSettings(event: FormEvent<HTMLFormElement>) {
@@ -628,36 +613,6 @@ export function AdminOrdersClient() {
         <div>
           <p className="eyebrow">Panel</p>
           <h1>Pedidos de hoy</h1>
-        </div>
-        <div className="toolbar-actions">
-          <Link href="/admin/menu" className="button secondary">
-            <Utensils aria-hidden="true" size={18} />
-            Menu
-          </Link>
-          <Link href="/admin/reportes" className="button secondary">
-            <BarChart3 aria-hidden="true" size={18} />
-            Reportes
-          </Link>
-          <Link href="/admin/reparto" className="button secondary">
-            <Truck aria-hidden="true" size={18} />
-            Reparto
-          </Link>
-          <Link href="/admin/staff" className="button secondary">
-            <UsersRound aria-hidden="true" size={18} />
-            Staff
-          </Link>
-          <Link href="/admin/cocina" className="button secondary">
-            <Utensils aria-hidden="true" size={18} />
-            Cocina
-          </Link>
-          <button
-            type="button"
-            className="icon-button"
-            onClick={logout}
-            title="Salir"
-          >
-            <LogOut aria-hidden="true" size={20} />
-          </button>
         </div>
       </section>
 
