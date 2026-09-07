@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import {
   Clock,
+  Heart,
   Instagram,
   MapPin,
   MessageCircle,
+  Navigation,
   Plus,
   RefreshCw,
   ShoppingBag,
@@ -16,7 +18,7 @@ import {
 import Link from "next/link";
 import { api, formatMoney } from "../lib/api";
 import { brandConfig } from "../lib/brand";
-import { Category, Product, PublicSettings } from "../lib/types";
+import { Category, Product, PublicSettings, SiteContent } from "../lib/types";
 import { useCart } from "./cart-provider";
 import { ProductImage } from "./product-image";
 
@@ -33,6 +35,16 @@ export function MenuClient() {
     siteContent.whatsappPhone,
     siteContent.name,
   );
+  const businessAddress = fullBusinessAddress(siteContent);
+  const directionsUrl = buildDirectionsUrl(siteContent, businessAddress);
+  const showLocation = Boolean(
+    siteContent.businessAddress.trim() ||
+      siteContent.businessCity.trim() ||
+      siteContent.businessPostalCode.trim() ||
+      siteContent.googleMapsUrl.trim(),
+  );
+  const showAbout = Boolean(siteContent.aboutText.trim());
+  const showStoryLocation = showLocation || showAbout;
 
   useEffect(() => {
     Promise.all([
@@ -148,6 +160,57 @@ export function MenuClient() {
           </dl>
         </div>
       </section>
+
+      {showStoryLocation && (
+        <section className="story-location-band" aria-label="Mordida Tasty">
+          <div className="page-shell story-location-grid">
+            {showLocation && (
+              <article className="visit-panel">
+                <div>
+                  <p className="eyebrow">Ubicacion</p>
+                  <h2>{siteContent.locationTitle}</h2>
+                  <p>{siteContent.locationText}</p>
+                </div>
+                {businessAddress && (
+                  <address>
+                    <MapPin aria-hidden="true" size={22} />
+                    <span>{businessAddress}</span>
+                  </address>
+                )}
+                <div className="visit-actions">
+                  {directionsUrl && (
+                    <a
+                      className="button primary"
+                      href={directionsUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <Navigation aria-hidden="true" size={18} />
+                      Como llegar
+                    </a>
+                  )}
+                  <a className="button secondary" href="#menu">
+                    <ShoppingBag aria-hidden="true" size={18} />
+                    Pedir para recoger
+                  </a>
+                </div>
+              </article>
+            )}
+
+            {showAbout && (
+              <article className="about-panel">
+                <p className="eyebrow">Nosotros</p>
+                <h2>{siteContent.aboutTitle}</h2>
+                <p>{siteContent.aboutText}</p>
+                <div className="about-signature">
+                  <Heart aria-hidden="true" size={18} />
+                  Hecho para pedir otra mordida
+                </div>
+              </article>
+            )}
+          </div>
+        </section>
+      )}
 
       <section className="page-shell menu-section" id="menu">
         <div className="menu-intro">
@@ -270,4 +333,25 @@ function buildWhatsAppUrl(phone: string | undefined, businessName: string) {
     `Hola ${businessName}, quiero hacer un pedido.`,
   );
   return `https://wa.me/${digits}?text=${text}`;
+}
+
+function fullBusinessAddress(siteContent: SiteContent) {
+  return [
+    siteContent.businessAddress,
+    siteContent.businessPostalCode,
+    siteContent.businessCity,
+  ]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
+function buildDirectionsUrl(siteContent: SiteContent, businessAddress: string) {
+  if (businessAddress) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+      businessAddress,
+    )}`;
+  }
+
+  return siteContent.googleMapsUrl.trim() || undefined;
 }

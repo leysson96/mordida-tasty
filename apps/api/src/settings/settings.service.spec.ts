@@ -123,11 +123,17 @@ describe("SettingsService", () => {
       service().setSiteContent({
         instagramUrl: "@mordidatasty",
         whatsappPhone: "+34 600 111 222",
+        googleMapsUrl: "https://maps.app.goo.gl/mordidatasty",
+        businessAddress: "  Rua Mordida 12  ",
+        aboutText: "  Smash hechas al momento  ",
       }),
     ).resolves.toEqual(
       expect.objectContaining({
         instagramUrl: "https://www.instagram.com/mordidatasty",
         whatsappPhone: "+34600111222",
+        googleMapsUrl: "https://maps.app.goo.gl/mordidatasty",
+        businessAddress: "Rua Mordida 12",
+        aboutText: "Smash hechas al momento",
       }),
     );
 
@@ -138,6 +144,9 @@ describe("SettingsService", () => {
           value: expect.objectContaining({
             instagramUrl: "https://www.instagram.com/mordidatasty",
             whatsappPhone: "+34600111222",
+            googleMapsUrl: "https://maps.app.goo.gl/mordidatasty",
+            businessAddress: "Rua Mordida 12",
+            aboutText: "Smash hechas al momento",
           }),
         },
       }),
@@ -207,6 +216,12 @@ describe("SettingsService", () => {
     await expect(
       service().setSiteContent({
         whatsappPhone: "611752804",
+      }),
+    ).rejects.toThrow(BadRequestException);
+
+    await expect(
+      service().setSiteContent({
+        googleMapsUrl: "javascript:alert(1)",
       }),
     ).rejects.toThrow(BadRequestException);
 

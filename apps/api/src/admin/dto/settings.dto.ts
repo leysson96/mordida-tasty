@@ -229,4 +229,44 @@ export class UpdateSiteContentDto {
   @IsString()
   @MaxLength(80)
   whatsappPhone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(90)
+  locationTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(260)
+  locationText?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  businessAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  businessCity?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  businessPostalCode?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(700)
+  googleMapsUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(90)
+  aboutTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(700)
+  aboutText?: string;
 }

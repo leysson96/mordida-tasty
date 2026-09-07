@@ -166,6 +166,14 @@ export function AdminMenuClient() {
           fontFamily: String(form.get("fontFamily")),
           instagramUrl: String(form.get("instagramUrl")),
           whatsappPhone: String(form.get("whatsappPhone")),
+          locationTitle: String(form.get("locationTitle")),
+          locationText: String(form.get("locationText")),
+          businessAddress: String(form.get("businessAddress")),
+          businessCity: String(form.get("businessCity")),
+          businessPostalCode: String(form.get("businessPostalCode")),
+          googleMapsUrl: String(form.get("googleMapsUrl")),
+          aboutTitle: String(form.get("aboutTitle")),
+          aboutText: String(form.get("aboutText")),
         }),
       });
       setSiteContent(updated);
@@ -580,7 +588,7 @@ export function AdminMenuClient() {
 
         {activeSection === "brand" && (
           <form
-            key={`${siteContent.name}-${siteContent.heroTitle}-${siteContent.heroImage}-${siteContent.instagramUrl}-${siteContent.whatsappPhone}`}
+            key={`${siteContent.name}-${siteContent.heroTitle}-${siteContent.heroImage}-${siteContent.instagramUrl}-${siteContent.whatsappPhone}-${siteContent.businessAddress}-${siteContent.aboutTitle}`}
             className="form-panel site-content-form"
             onSubmit={saveSiteContent}
           >
@@ -691,6 +699,78 @@ export function AdminMenuClient() {
                     name="instagramUrl"
                     defaultValue={siteContent.instagramUrl}
                     placeholder="@mordidatasty"
+                  />
+                </label>
+                <div className="form-subsection full-field">
+                  <span>Ubicacion</span>
+                </div>
+                <label>
+                  Titulo ubicacion
+                  <input
+                    name="locationTitle"
+                    defaultValue={siteContent.locationTitle}
+                    placeholder="Ven a por tu mordida"
+                  />
+                </label>
+                <label>
+                  Codigo postal local
+                  <input
+                    name="businessPostalCode"
+                    defaultValue={siteContent.businessPostalCode}
+                    placeholder="15000"
+                  />
+                </label>
+                <label className="full-field">
+                  Texto ubicacion
+                  <textarea
+                    name="locationText"
+                    rows={3}
+                    defaultValue={siteContent.locationText}
+                    placeholder="Recoge tu pedido caliente o abre la ruta en el movil."
+                  />
+                </label>
+                <label className="full-field">
+                  Direccion local
+                  <input
+                    name="businessAddress"
+                    defaultValue={siteContent.businessAddress}
+                    placeholder="Calle, numero, local"
+                  />
+                </label>
+                <label>
+                  Ciudad
+                  <input
+                    name="businessCity"
+                    defaultValue={siteContent.businessCity}
+                    placeholder="A Coruna"
+                  />
+                </label>
+                <label>
+                  Enlace Google Maps
+                  <input
+                    name="googleMapsUrl"
+                    defaultValue={siteContent.googleMapsUrl}
+                    placeholder="https://maps.app.goo.gl/..."
+                  />
+                </label>
+                <div className="form-subsection full-field">
+                  <span>Nosotros</span>
+                </div>
+                <label className="full-field">
+                  Titulo nosotros
+                  <input
+                    name="aboutTitle"
+                    defaultValue={siteContent.aboutTitle}
+                    placeholder="Nosotros"
+                  />
+                </label>
+                <label className="full-field">
+                  Texto nosotros
+                  <textarea
+                    name="aboutText"
+                    rows={5}
+                    defaultValue={siteContent.aboutText}
+                    placeholder="Cuenta en pocas lineas que hace especial a Mordida Tasty."
                   />
                 </label>
                 <label className="full-field">

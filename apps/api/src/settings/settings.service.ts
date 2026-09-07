@@ -27,6 +27,14 @@ export interface SiteContent {
   fontFamily: string;
   instagramUrl: string;
   whatsappPhone: string;
+  locationTitle: string;
+  locationText: string;
+  businessAddress: string;
+  businessCity: string;
+  businessPostalCode: string;
+  googleMapsUrl: string;
+  aboutTitle: string;
+  aboutText: string;
 }
 
 export interface OrdersPause {
@@ -485,6 +493,15 @@ export class SettingsService {
         'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif',
       instagramUrl: "",
       whatsappPhone: "",
+      locationTitle: "Ven a por tu mordida",
+      locationText:
+        "Recoge tu pedido caliente o abre la ruta en el movil cuando vengas de camino.",
+      businessAddress: "",
+      businessCity: "",
+      businessPostalCode: "",
+      googleMapsUrl: "",
+      aboutTitle: "Nosotros",
+      aboutText: "",
     };
   }
 
@@ -576,6 +593,32 @@ export class SettingsService {
       fontFamily: cleanText(source.fontFamily, defaults.fontFamily),
       instagramUrl: this.normalizeInstagramUrl(source.instagramUrl),
       whatsappPhone: this.normalizeWhatsAppPhone(source.whatsappPhone),
+      locationTitle: cleanText(
+        source.locationTitle,
+        defaults.locationTitle,
+      ).slice(0, 90),
+      locationText: cleanText(source.locationText, defaults.locationText).slice(
+        0,
+        260,
+      ),
+      businessAddress: cleanText(
+        source.businessAddress,
+        defaults.businessAddress,
+      ).slice(0, 180),
+      businessCity: cleanText(source.businessCity, defaults.businessCity).slice(
+        0,
+        80,
+      ),
+      businessPostalCode: cleanText(
+        source.businessPostalCode,
+        defaults.businessPostalCode,
+      ).slice(0, 20),
+      googleMapsUrl: this.normalizeGoogleMapsUrl(source.googleMapsUrl),
+      aboutTitle: cleanText(source.aboutTitle, defaults.aboutTitle).slice(
+        0,
+        90,
+      ),
+      aboutText: cleanText(source.aboutText, defaults.aboutText).slice(0, 700),
     };
 
     if (!/^[\w\s"',.-]+$/.test(content.fontFamily)) {
@@ -585,6 +628,39 @@ export class SettingsService {
     }
 
     return content;
+  }
+
+  private normalizeGoogleMapsUrl(value: unknown) {
+    const input = cleanText(value, "");
+    if (!input) {
+      return "";
+    }
+
+    try {
+      const parsed = new URL(input);
+      const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+      const isGoogleMapsHost =
+        host === "maps.app.goo.gl" ||
+        host === "goo.gl" ||
+        host.startsWith("maps.google.") ||
+        host.startsWith("google.") ||
+        host.endsWith(".google.com");
+
+      if (
+        (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+        isGoogleMapsHost
+      ) {
+        return parsed.toString();
+      }
+    } catch {
+      throw new BadRequestException(
+        "Google Maps debe ser un enlace valido de Google Maps.",
+      );
+    }
+
+    throw new BadRequestException(
+      "Google Maps debe ser un enlace valido de Google Maps.",
+    );
   }
 
   private normalizeInstagramUrl(value: unknown) {

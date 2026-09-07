@@ -268,6 +268,14 @@ export interface SiteContent {
   fontFamily: string;
   instagramUrl: string;
   whatsappPhone: string;
+  locationTitle: string;
+  locationText: string;
+  businessAddress: string;
+  businessCity: string;
+  businessPostalCode: string;
+  googleMapsUrl: string;
+  aboutTitle: string;
+  aboutText: string;
 }
 
 export interface UploadedImage {

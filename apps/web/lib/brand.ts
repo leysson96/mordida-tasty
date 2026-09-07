@@ -19,5 +19,14 @@ export const brandConfig = {
     'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif',
   instagramUrl: "",
   whatsappPhone: "",
+  locationTitle: "Ven a por tu mordida",
+  locationText:
+    "Recoge tu pedido caliente o abre la ruta en el movil cuando vengas de camino.",
+  businessAddress: "",
+  businessCity: "",
+  businessPostalCode: "",
+  googleMapsUrl: "",
+  aboutTitle: "Nosotros",
+  aboutText: "",
   supportEmail: "hola@mordidatasty.es",
 } satisfies SiteContent & { supportEmail: string };

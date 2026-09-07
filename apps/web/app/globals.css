@@ -385,6 +385,97 @@ p {
   line-height: 1.25;
 }
 
+.story-location-band {
+  background:
+    linear-gradient(180deg, rgba(255, 250, 244, 0.96), rgba(255, 245, 233, 0.82)),
+    var(--color-paper);
+}
+
+.story-location-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 18px;
+  padding-top: 26px;
+  padding-bottom: 28px;
+}
+
+.visit-panel,
+.about-panel {
+  display: grid;
+  align-content: space-between;
+  gap: 18px;
+  min-height: 260px;
+  padding: 24px;
+  border: 1px solid rgba(224, 138, 40, 0.24);
+  border-radius: var(--radius);
+  background: rgba(255, 250, 244, 0.84);
+  box-shadow: var(--shadow-soft);
+}
+
+.visit-panel {
+  background:
+    linear-gradient(145deg, rgba(53, 3, 5, 0.96), rgba(33, 21, 18, 0.92)),
+    var(--color-ink);
+  color: var(--color-surface);
+}
+
+.visit-panel .eyebrow,
+.visit-panel p {
+  color: #f4d7b2;
+}
+
+.visit-panel h2,
+.about-panel h2 {
+  margin: 0;
+  font-size: clamp(1.85rem, 4vw, 3.3rem);
+  line-height: 0.98;
+}
+
+.visit-panel address {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  font-style: normal;
+  font-size: 1.12rem;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.visit-panel address svg {
+  flex: 0 0 auto;
+  color: var(--color-gold);
+}
+
+.visit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.visit-panel .button.secondary {
+  color: var(--color-surface);
+  border-color: rgba(255, 250, 244, 0.28);
+  background: rgba(255, 250, 244, 0.08);
+}
+
+.about-panel p:not(.eyebrow) {
+  color: var(--color-muted);
+  font-size: 1.02rem;
+  line-height: 1.65;
+}
+
+.about-signature {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  width: fit-content;
+  padding: 8px 10px;
+  color: var(--color-green);
+  border: 1px solid rgba(35, 113, 90, 0.2);
+  border-radius: var(--radius);
+  font-weight: 950;
+}
+
 .menu-section {
   padding-top: 30px;
 }
@@ -1085,6 +1176,18 @@ p {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.form-subsection {
+  padding-top: 10px;
+  border-top: 1px solid var(--color-line);
+}
+
+.form-subsection span {
+  color: var(--color-brand);
+  font-size: 0.82rem;
+  font-weight: 950;
+  text-transform: uppercase;
 }
 
 .form-grid.compact {
@@ -3407,6 +3510,7 @@ code {
   .detail-layout,
   .kitchen-board,
   .site-content-grid,
+  .story-location-grid,
   .admin-section-grid,
   .category-manager-layout,
   .menu-admin-section-head,
