@@ -2,9 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import {
-  ArrowLeft,
   ChevronDown,
   ChevronRight,
   ImagePlus,
@@ -527,10 +525,6 @@ export function AdminMenuClient() {
           <p className="eyebrow">Admin</p>
           <h1>Menu</h1>
         </div>
-        <Link href="/admin" className="button secondary">
-          <ArrowLeft aria-hidden="true" size={18} />
-          Pedidos
-        </Link>
       </section>
 
       {error && <div className="empty-state error">{error}</div>}

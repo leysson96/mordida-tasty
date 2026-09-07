@@ -1,9 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import Link from "next/link";
 import {
-  ArrowLeft,
   KeyRound,
   RotateCcw,
   Save,
@@ -227,12 +225,6 @@ export function AdminStaffClient() {
         <div>
           <p className="eyebrow">Admin</p>
           <h1>Staff</h1>
-        </div>
-        <div className="toolbar-actions">
-          <Link href="/admin" className="button secondary">
-            <ArrowLeft aria-hidden="true" size={18} />
-            Pedidos
-          </Link>
         </div>
       </section>
 

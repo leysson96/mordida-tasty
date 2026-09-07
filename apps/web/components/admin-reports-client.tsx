@@ -1,9 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import {
-  ArrowLeft,
   Banknote,
   BarChart3,
   CalendarDays,
@@ -252,10 +250,6 @@ export function AdminReportsClient() {
           <p className="eyebrow">Admin</p>
           <h1>Reportes</h1>
         </div>
-        <Link href="/admin" className="button secondary">
-          <ArrowLeft aria-hidden="true" size={18} />
-          Pedidos
-        </Link>
       </section>
 
       <form className="report-controls" onSubmit={submit}>

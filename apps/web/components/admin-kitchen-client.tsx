@@ -1,14 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import {
-  ArrowLeft,
   Banknote,
   Check,
   ChefHat,
   CreditCard,
-  LogOut,
   PackageCheck,
   Printer,
   RefreshCw,
@@ -26,16 +23,13 @@ import {
   OrderSummary,
   PublicSettings,
   SiteContent,
-  User,
 } from "../lib/types";
 import { paymentSummaryText } from "../lib/payment-format";
-import { logoutAdmin } from "./admin-auth";
 import { KitchenAlarm } from "./kitchen-alarm";
 import { PrintableOrderTicket } from "./printable-order-ticket";
 
 export function AdminKitchenClient() {
   const [orders, setOrders] = useState<OrderSummary[]>([]);
-  const [user, setUser] = useState<User>();
   const [error, setError] = useState<string>();
   const [printingOrderId, setPrintingOrderId] = useState<string>();
   const [acknowledged, setAcknowledged] = useState<Set<string>>(new Set());
@@ -46,13 +40,11 @@ export function AdminKitchenClient() {
 
     async function load() {
       try {
-        const [me, data, settings] = await Promise.all([
-          api<User>("/admin/auth/me"),
+        const [data, settings] = await Promise.all([
           api<OrderSummary[]>("/admin/orders/kitchen"),
           api<PublicSettings>("/settings/public"),
         ]);
         if (active) {
-          setUser(me);
           setOrders(data);
           setSiteContent({ ...brandConfig, ...settings.siteContent });
           setError(undefined);
@@ -119,14 +111,6 @@ export function AdminKitchenClient() {
     window.setTimeout(() => window.print(), 80);
   }
 
-  async function logout() {
-    try {
-      await logoutAdmin();
-    } finally {
-      window.location.href = "/admin/login";
-    }
-  }
-
   function handleAdminError(requestError: unknown, fallback: string) {
     if (redirectOnAdminAuthError(requestError)) {
       return;
@@ -141,22 +125,6 @@ export function AdminKitchenClient() {
         <div>
           <p className="eyebrow">Cocina</p>
           <h1>Pedidos en marcha</h1>
-        </div>
-        <div className="toolbar-actions">
-          {user?.role === "ADMIN" && (
-            <Link href="/admin" className="button secondary">
-              <ArrowLeft aria-hidden="true" size={18} />
-              Panel
-            </Link>
-          )}
-          <button
-            type="button"
-            className="icon-button"
-            onClick={logout}
-            title="Salir"
-          >
-            <LogOut aria-hidden="true" size={20} />
-          </button>
         </div>
       </section>
 
