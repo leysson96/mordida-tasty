@@ -145,6 +145,7 @@ p {
 .main-nav,
 .main-nav a,
 .cart-link,
+.admin-header-link,
 .button,
 .icon-button,
 .back-link,
@@ -234,7 +235,8 @@ p {
   background: var(--color-paper);
 }
 
-.cart-link {
+.cart-link,
+.admin-header-link {
   justify-content: center;
   gap: 8px;
   min-width: 68px;
@@ -246,6 +248,10 @@ p {
   border-radius: var(--radius);
   font-weight: 950;
   box-shadow: 4px 4px 0 var(--color-accent);
+}
+
+.admin-header-link {
+  min-width: 96px;
 }
 
 .page-shell {
@@ -3338,7 +3344,8 @@ code {
     grid-row: 1;
   }
 
-  .cart-link {
+  .cart-link,
+  .admin-header-link {
     grid-column: 2;
     grid-row: 1;
   }
@@ -3359,6 +3366,10 @@ code {
   .main-nav a {
     min-width: 0;
     padding: 0 6px;
+  }
+
+  .site-header.admin-mode .main-nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .sales-hero {
