@@ -62,6 +62,7 @@ import {
 import { isCardPayment, paymentSummaryText } from "../lib/payment-format";
 import { logoutAdmin } from "./admin-auth";
 import { KitchenAlarm } from "./kitchen-alarm";
+import { PrintableOrderTicket } from "./printable-order-ticket";
 
 interface DashboardResponse {
   date: string;
@@ -1448,50 +1449,10 @@ export function AdminOrdersClient() {
 
       <section className="print-ticket">
         {printingOrder && (
-          <>
-            <h1>{siteContent.name}</h1>
-            <p>{printingOrder.orderNumber}</p>
-            <p>{new Date(printingOrder.createdAt).toLocaleString("es-ES")}</p>
-            <p>{paymentSummaryText(printingOrder)}</p>
-            <hr />
-            {printingOrder.items
-              .filter((item) => !item.removedAt)
-              .map((item, itemIndex) => (
-                <div
-                  key={`print-${item.id ?? `${item.productName}-${itemIndex}`}`}
-                >
-                  <span>
-                    {item.quantity} x {item.productName}
-                    {item.options && item.options.length > 0 && (
-                      <small>{formatOrderItemOptions(item)}</small>
-                    )}
-                  </span>
-                  <strong>{formatMoney(item.lineTotalCents)}</strong>
-                </div>
-              ))}
-            <hr />
-            {(printingOrder.discountCents ?? 0) > 0 && (
-              <div>
-                <span>Premio Mordida Club</span>
-                <strong>-{formatMoney(printingOrder.discountCents ?? 0)}</strong>
-              </div>
-            )}
-            {(printingOrder.deliveryFeeCents ?? 0) > 0 && (
-              <div>
-                <span>Envio</span>
-                <strong>{formatMoney(printingOrder.deliveryFeeCents ?? 0)}</strong>
-              </div>
-            )}
-            <div>
-              <span>Total</span>
-              <strong>{formatMoney(printingOrder.totalCents)}</strong>
-            </div>
-            <p>
-              {printingOrder.deliveryMethod === "DELIVERY"
-                ? "ENVIO"
-                : "RECOGIDA"}
-            </p>
-          </>
+          <PrintableOrderTicket
+            order={printingOrder}
+            siteName={siteContent.name}
+          />
         )}
       </section>
 

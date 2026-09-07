@@ -882,6 +882,43 @@ p {
   display: block;
 }
 
+.print-ticket-section {
+  display: grid;
+  gap: 2px;
+}
+
+.print-ticket-section h2 {
+  margin: 8px 0 3px;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.print-ticket-service {
+  padding: 5px 0;
+  border-top: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  font-weight: 950;
+  text-align: center;
+}
+
+.print-ticket-delivery {
+  padding: 6px 0;
+}
+
+.print-ticket-important {
+  font-weight: 950;
+}
+
+.print-ticket-item-row span {
+  min-width: 0;
+}
+
+.print-ticket-total {
+  padding-top: 5px;
+  border-top: 1px solid currentColor;
+  font-size: 1.05rem;
+}
+
 .total-row {
   padding-top: 13px;
   border-top: 1px solid var(--color-line);
@@ -3724,8 +3761,13 @@ code {
     font-size: 18px;
   }
 
+  .print-ticket h2 {
+    font-size: 11px;
+  }
+
   .print-ticket p {
     margin: 2px 0;
+    overflow-wrap: anywhere;
   }
 
   .print-ticket hr {
