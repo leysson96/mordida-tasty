@@ -4,18 +4,33 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
+  Banknote,
   BarChart3,
   CalendarDays,
+  CreditCard,
+  Filter,
   PackageCheck,
   ReceiptText,
   RefreshCw,
+  Search,
+  Store,
+  Truck,
   Trophy,
+  X,
 } from "lucide-react";
 import { api, formatMoney } from "../lib/api";
 import {
   readableErrorMessage,
   redirectOnAdminAuthError,
 } from "../lib/admin-errors";
+import { orderStatusLabels } from "../lib/order-state";
+import { paymentMethodLabel } from "../lib/payment-format";
+import type {
+  DeliveryMethod,
+  OrderPaymentMethod,
+  OrderStatus,
+  OrderSummary,
+} from "../lib/types";
 
 interface SalesReportResponse {
   from: string;
@@ -36,6 +51,21 @@ interface SalesReportResponse {
 }
 
 type RangePreset = "today" | "7d" | "30d" | "month";
+type HistoryStatusFilter = OrderStatus | "ALL";
+type HistoryPaymentMethodFilter = OrderPaymentMethod | "ALL";
+type HistoryDeliveryMethodFilter = DeliveryMethod | "ALL";
+
+interface OrderHistoryFilters {
+  q: string;
+  status: HistoryStatusFilter;
+  paymentMethod: HistoryPaymentMethodFilter;
+  deliveryMethod: HistoryDeliveryMethodFilter;
+  from: string;
+  to: string;
+}
+
+const historyPageSize = 100;
+const historyStatusOptions = Object.keys(orderStatusLabels) as OrderStatus[];
 
 function inputDate(date: Date) {
   const localDate = new Date(
@@ -61,6 +91,26 @@ function presetRange(preset: RangePreset) {
   return { from: inputDate(from), to: inputDate(today) };
 }
 
+function historyFiltersForRange(range: { from: string; to: string }) {
+  return {
+    q: "",
+    status: "ALL",
+    paymentMethod: "ALL",
+    deliveryMethod: "ALL",
+    from: range.from,
+    to: range.to,
+  } satisfies OrderHistoryFilters;
+}
+
+const emptyHistoryFilters: OrderHistoryFilters = {
+  q: "",
+  status: "ALL",
+  paymentMethod: "ALL",
+  deliveryMethod: "ALL",
+  from: "",
+  to: "",
+};
+
 export function AdminReportsClient() {
   const initialRange = useMemo(() => presetRange("30d"), []);
   const [from, setFrom] = useState(initialRange.from);
@@ -68,9 +118,18 @@ export function AdminReportsClient() {
   const [report, setReport] = useState<SalesReportResponse>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
+  const [historyFilters, setHistoryFilters] = useState<OrderHistoryFilters>(
+    () => historyFiltersForRange(initialRange),
+  );
+  const [appliedHistoryFilters, setAppliedHistoryFilters] =
+    useState<OrderHistoryFilters>(() => historyFiltersForRange(initialRange));
+  const [historyOrders, setHistoryOrders] = useState<OrderSummary[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string>();
 
   useEffect(() => {
     loadReport(initialRange.from, initialRange.to);
+    loadOrderHistory(historyFiltersForRange(initialRange));
   }, [initialRange.from, initialRange.to]);
 
   async function loadReport(nextFrom = from, nextTo = to) {
@@ -93,9 +152,41 @@ export function AdminReportsClient() {
     }
   }
 
+  async function loadOrderHistory(nextFilters = historyFilters) {
+    setHistoryLoading(true);
+    setHistoryError(undefined);
+
+    try {
+      const data = await api<OrderSummary[]>(
+        adminOrderHistoryPath(nextFilters),
+      );
+      setAppliedHistoryFilters(nextFilters);
+      setHistoryOrders(data);
+    } catch (requestError) {
+      if (redirectOnAdminAuthError(requestError)) {
+        return;
+      }
+      setHistoryError(
+        readableErrorMessage(requestError, "No se pudo cargar el historial."),
+      );
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     loadReport();
+  }
+
+  function submitHistory(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    loadOrderHistory(historyFilters);
+  }
+
+  function clearHistoryFilters() {
+    setHistoryFilters(emptyHistoryFilters);
+    loadOrderHistory(emptyHistoryFilters);
   }
 
   function applyPreset(preset: RangePreset) {
@@ -103,6 +194,13 @@ export function AdminReportsClient() {
     setFrom(range.from);
     setTo(range.to);
     loadReport(range.from, range.to);
+  }
+
+  function updateHistoryFilter<K extends keyof OrderHistoryFilters>(
+    key: K,
+    value: OrderHistoryFilters[K],
+  ) {
+    setHistoryFilters((current) => ({ ...current, [key]: value }));
   }
 
   const activeSalesDays =
@@ -128,6 +226,11 @@ export function AdminReportsClient() {
     undefined,
   );
   const topProduct = report?.topProducts[0];
+  const filteredHistoryOrders = historyOrders.filter(
+    (order) =>
+      appliedHistoryFilters.paymentMethod === "ALL" ||
+      (order.paymentMethod ?? "CARD") === appliedHistoryFilters.paymentMethod,
+  );
 
   return (
     <main className="page-shell admin-page admin-report-page">
@@ -325,6 +428,185 @@ export function AdminReportsClient() {
           </div>
         </section>
       </section>
+
+      <section className="form-panel order-history-panel">
+        <div className="section-heading">
+          <h2>
+            <ReceiptText aria-hidden="true" size={20} />
+            Historial de pedidos
+          </h2>
+          <span className="admin-soft-pill">
+            {filteredHistoryOrders.length} pedidos
+          </span>
+        </div>
+
+        <form className="history-filter-bar" onSubmit={submitHistory}>
+          <label className="search-field">
+            Buscar
+            <div>
+              <Search aria-hidden="true" size={18} />
+              <input
+                value={historyFilters.q}
+                onChange={(event) =>
+                  updateHistoryFilter("q", event.target.value)
+                }
+                placeholder="Pedido, cliente, email, telefono"
+              />
+            </div>
+          </label>
+          <label>
+            Estado
+            <select
+              value={historyFilters.status}
+              onChange={(event) =>
+                updateHistoryFilter(
+                  "status",
+                  event.target.value as HistoryStatusFilter,
+                )
+              }
+            >
+              <option value="ALL">Todos</option>
+              {historyStatusOptions.map((status) => (
+                <option key={status} value={status}>
+                  {orderStatusLabels[status]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Pago
+            <select
+              value={historyFilters.paymentMethod}
+              onChange={(event) =>
+                updateHistoryFilter(
+                  "paymentMethod",
+                  event.target.value as HistoryPaymentMethodFilter,
+                )
+              }
+            >
+              <option value="ALL">Todos</option>
+              <option value="CARD">Tarjeta</option>
+              <option value="CASH">Efectivo</option>
+            </select>
+          </label>
+          <label>
+            Entrega
+            <select
+              value={historyFilters.deliveryMethod}
+              onChange={(event) =>
+                updateHistoryFilter(
+                  "deliveryMethod",
+                  event.target.value as HistoryDeliveryMethodFilter,
+                )
+              }
+            >
+              <option value="ALL">Todas</option>
+              <option value="PICKUP">Recogida</option>
+              <option value="DELIVERY">Envio</option>
+            </select>
+          </label>
+          <label>
+            Desde
+            <input
+              type="date"
+              value={historyFilters.from}
+              onChange={(event) =>
+                updateHistoryFilter("from", event.target.value)
+              }
+            />
+          </label>
+          <label>
+            Hasta
+            <input
+              type="date"
+              value={historyFilters.to}
+              onChange={(event) => updateHistoryFilter("to", event.target.value)}
+            />
+          </label>
+          <div className="order-filter-actions">
+            <button className="button primary" type="submit">
+              <Filter aria-hidden="true" size={18} />
+              Filtrar
+            </button>
+            <button
+              className="button secondary"
+              type="button"
+              onClick={clearHistoryFilters}
+            >
+              <X aria-hidden="true" size={18} />
+              Limpiar
+            </button>
+          </div>
+        </form>
+
+        {historyError && <div className="empty-state error">{historyError}</div>}
+
+        {historyLoading ? (
+          <div className="empty-state">
+            <RefreshCw className="spin" aria-hidden="true" />
+            Cargando historial
+          </div>
+        ) : filteredHistoryOrders.length ? (
+          <div className="order-history-list">
+            {filteredHistoryOrders.map((order) => {
+              const DeliveryIcon =
+                order.deliveryMethod === "DELIVERY" ? Truck : Store;
+              const PaymentIcon =
+                order.paymentMethod === "CASH" ? Banknote : CreditCard;
+
+              return (
+                <article
+                  className={`order-history-row status-${order.status.toLowerCase()}`}
+                  key={order.id}
+                >
+                  <div className="history-order-main">
+                    <div>
+                      <strong className="order-number">
+                        {order.orderNumber}
+                      </strong>
+                      <time dateTime={order.createdAt}>
+                        {formatHistoryDate(order.createdAt)}
+                      </time>
+                    </div>
+                    <span
+                      className={`history-status status-${order.status.toLowerCase()}`}
+                    >
+                      {orderStatusLabels[order.status]}
+                    </span>
+                  </div>
+                  <div className="history-order-meta">
+                    <span className="history-customer">
+                      {order.customerName ??
+                        order.deliveryName ??
+                        "Cliente sin nombre"}
+                    </span>
+                    <span className="history-chip">
+                      <DeliveryIcon aria-hidden="true" size={16} />
+                      {deliveryMethodLabel(order.deliveryMethod)}
+                    </span>
+                    <span
+                      className={`history-chip ${
+                        order.paymentMethod === "CASH" ? "cash" : ""
+                      }`}
+                    >
+                      <PaymentIcon aria-hidden="true" size={16} />
+                      {paymentMethodLabel(order)}
+                    </span>
+                    <span className="history-chip">
+                      {orderItemCountLabel(order)}
+                    </span>
+                    <strong className="history-order-total">
+                      {formatMoney(order.totalCents)}
+                    </strong>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="empty-state">Sin pedidos para estos filtros.</div>
+        )}
+      </section>
     </main>
   );
 }
@@ -334,4 +616,52 @@ function formatReportDate(value: string) {
     day: "2-digit",
     month: "2-digit",
   });
+}
+
+function adminOrderHistoryPath(filters: OrderHistoryFilters) {
+  const params = new URLSearchParams();
+
+  if (filters.q.trim()) {
+    params.set("q", filters.q.trim());
+  }
+
+  if (filters.status !== "ALL") {
+    params.set("status", filters.status);
+  }
+
+  if (filters.deliveryMethod !== "ALL") {
+    params.set("deliveryMethod", filters.deliveryMethod);
+  }
+
+  if (filters.from) {
+    params.set("from", filters.from);
+  }
+
+  if (filters.to) {
+    params.set("to", filters.to);
+  }
+
+  params.set("page", "1");
+  params.set("pageSize", String(historyPageSize));
+
+  return `/admin/orders?${params.toString()}`;
+}
+
+function formatHistoryDate(value: string) {
+  return new Date(value).toLocaleString("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function deliveryMethodLabel(method: DeliveryMethod) {
+  return method === "DELIVERY" ? "Envio" : "Recogida";
+}
+
+function orderItemCountLabel(order: OrderSummary) {
+  const quantity = order.items.reduce((sum, item) => sum + item.quantity, 0);
+  return quantity === 1 ? "1 producto" : `${quantity} productos`;
 }
