@@ -161,57 +161,6 @@ export function MenuClient() {
         </div>
       </section>
 
-      {showStoryLocation && (
-        <section className="story-location-band" aria-label="Mordida Tasty">
-          <div className="page-shell story-location-grid">
-            {showLocation && (
-              <article className="visit-panel">
-                <div>
-                  <p className="eyebrow">Ubicacion</p>
-                  <h2>{siteContent.locationTitle}</h2>
-                  <p>{siteContent.locationText}</p>
-                </div>
-                {businessAddress && (
-                  <address>
-                    <MapPin aria-hidden="true" size={22} />
-                    <span>{businessAddress}</span>
-                  </address>
-                )}
-                <div className="visit-actions">
-                  {directionsUrl && (
-                    <a
-                      className="button primary"
-                      href={directionsUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <Navigation aria-hidden="true" size={18} />
-                      Como llegar
-                    </a>
-                  )}
-                  <a className="button secondary" href="#menu">
-                    <ShoppingBag aria-hidden="true" size={18} />
-                    Pedir para recoger
-                  </a>
-                </div>
-              </article>
-            )}
-
-            {showAbout && (
-              <article className="about-panel">
-                <p className="eyebrow">Nosotros</p>
-                <h2>{siteContent.aboutTitle}</h2>
-                <p>{siteContent.aboutText}</p>
-                <div className="about-signature">
-                  <Heart aria-hidden="true" size={18} />
-                  Hecho para pedir otra mordida
-                </div>
-              </article>
-            )}
-          </div>
-        </section>
-      )}
-
       <section className="page-shell menu-section" id="menu">
         <div className="menu-intro">
           <div>
@@ -313,6 +262,57 @@ export function MenuClient() {
           </>
         )}
       </section>
+
+      {showStoryLocation && (
+        <section className="story-location-band" aria-label="Mordida Tasty">
+          <div className="page-shell story-location-grid">
+            {showLocation && (
+              <article className="visit-panel">
+                <div>
+                  <p className="eyebrow">Ubicacion</p>
+                  <h2>{siteContent.locationTitle}</h2>
+                  <p>{siteContent.locationText}</p>
+                </div>
+                {businessAddress && (
+                  <address>
+                    <MapPin aria-hidden="true" size={22} />
+                    <span>{businessAddress}</span>
+                  </address>
+                )}
+                <div className="visit-actions">
+                  {directionsUrl && (
+                    <a
+                      className="button primary"
+                      href={directionsUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <Navigation aria-hidden="true" size={18} />
+                      Como llegar
+                    </a>
+                  )}
+                  <a className="button secondary" href="#menu">
+                    <ShoppingBag aria-hidden="true" size={18} />
+                    Pedir para recoger
+                  </a>
+                </div>
+              </article>
+            )}
+
+            {showAbout && (
+              <article className="about-panel">
+                <p className="eyebrow">Nosotros</p>
+                <h2>{siteContent.aboutTitle}</h2>
+                <p>{siteContent.aboutText}</p>
+                <div className="about-signature">
+                  <Heart aria-hidden="true" size={18} />
+                  Hecho para pedir otra mordida
+                </div>
+              </article>
+            )}
+          </div>
+        </section>
+      )}
     </main>
   );
 }
