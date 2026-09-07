@@ -8,6 +8,8 @@ import {
 import { ConfigService } from "@nestjs/config";
 import {
   DeliveryMethod,
+  LoyaltyRedemptionStatus,
+  LoyaltyRewardType,
   OrderPaymentMethod,
   OrderStatus,
   PaymentProvider,
@@ -41,6 +43,7 @@ const orderInclude = {
   statusHistory: {
     orderBy: { createdAt: "asc" },
   },
+  loyaltyRedemption: true,
 } satisfies Prisma.OrderInclude;
 
 const checkoutProductInclude = {
@@ -74,6 +77,38 @@ interface AdminOrderListOptions {
   page?: string;
   pageSize?: string;
 }
+
+interface CheckoutOrderLine {
+  productId: string;
+  productName: string;
+  unitPriceCents: number;
+  quantity: number;
+  lineTotalCents: number;
+  options: Array<{
+    groupName: string;
+    choiceName: string;
+    priceCents: number;
+  }>;
+}
+
+interface LoyaltyRewardApplication {
+  userId: string;
+  rewardType: LoyaltyRewardType;
+  rewardLabel: string;
+  discountCents: number;
+  goalOrdersSnapshot: number;
+  completedOrdersSnapshot: number;
+}
+
+const consumedLoyaltyStatuses: LoyaltyRedemptionStatus[] = [
+  LoyaltyRedemptionStatus.RESERVED,
+  LoyaltyRedemptionStatus.APPLIED,
+];
+const loyaltyReleaseStatuses: OrderStatus[] = [
+  OrderStatus.CANCELLED,
+  OrderStatus.PAYMENT_FAILED,
+  OrderStatus.EXPIRED,
+];
 
 @Injectable()
 export class OrdersService {
@@ -168,132 +203,171 @@ export class OrdersService {
       deliveryFeeCents = deliveryQuote.deliveryFeeCents;
     }
 
-    const discountCents = 0;
-    const totalCents = subtotalCents + deliveryFeeCents - discountCents;
     const taxRate = await this.settingsService.getTaxRate();
-    const taxCents = this.includedTaxCents(totalCents, taxRate);
     const paymentMethod = dto.paymentMethod ?? OrderPaymentMethod.CARD;
-    const cashTenderedCents =
-      paymentMethod === OrderPaymentMethod.CASH &&
-      dto.cashTenderedCents !== undefined
-        ? dto.cashTenderedCents
-        : null;
-
-    if (
-      paymentMethod === OrderPaymentMethod.CASH &&
-      dto.deliveryMethod === DeliveryMethod.DELIVERY &&
-      cashTenderedCents === null
-    ) {
-      throw new BadRequestException(
-        "Indica con cuanto pagara el cliente para preparar el cambio.",
-      );
-    }
-
-    if (
-      paymentMethod === OrderPaymentMethod.CASH &&
-      cashTenderedCents !== null &&
-      cashTenderedCents < totalCents
-    ) {
-      throw new BadRequestException(
-        "El importe en efectivo debe cubrir el total del pedido.",
-      );
-    }
-
-    const cashChangeCents =
-      paymentMethod === OrderPaymentMethod.CASH && cashTenderedCents !== null
-        ? cashTenderedCents - totalCents
-        : null;
-    const initialStatus =
-      paymentMethod === OrderPaymentMethod.CASH
-        ? OrderStatus.CONFIRMED
-        : OrderStatus.CREATED;
-    const statusHistoryCreate =
-      paymentMethod === OrderPaymentMethod.CASH
-        ? [
-            {
-              toStatus: OrderStatus.CREATED,
-              changedById: user?.id,
-              note: "Order created",
-            },
-            {
-              fromStatus: OrderStatus.CREATED,
-              toStatus: OrderStatus.CONFIRMED,
-              changedById: user?.id,
-              note: "Pago en efectivo seleccionado",
-            },
-          ]
-        : [
-            {
-              toStatus: OrderStatus.CREATED,
-              changedById: user?.id,
-              note: "Order created",
-            },
-          ];
+    const loyaltyProgram = dto.useLoyaltyReward
+      ? await this.settingsService.getLoyaltyProgram()
+      : undefined;
 
     try {
-      const createdOrder = await this.prisma.$transaction(async (tx) => {
-        const orderNumber = await this.nextOrderNumber(tx);
-        const order = await tx.order.create({
-          data: {
-            orderNumber,
-            trackingToken: this.trackingToken(),
+      const createdOrder = await this.prisma.$transaction(
+        async (tx) => {
+          const loyaltyReward = await this.resolveLoyaltyReward({
+            tx,
             userId: user?.id,
-            customerEmail: dto.customerEmail.toLowerCase().trim(),
-            customerName: dto.customerName.trim(),
-            customerPhone: dto.customerPhone.trim(),
-            deliveryMethod: dto.deliveryMethod,
-            deliveryName: dto.address?.name.trim(),
-            deliveryPhone: dto.address?.phone.trim(),
-            deliveryStreet: dto.address?.street.trim(),
-            deliveryCity: dto.address?.city.trim(),
-            deliveryPostalCode: dto.address?.postalCode.trim(),
-            deliveryNotes: dto.address?.notes?.trim(),
-            status: initialStatus,
-            paymentMethod,
+            program: loyaltyProgram,
+            orderLines,
             subtotalCents,
-            discountCents,
-            deliveryFeeCents,
-            taxCents,
-            totalCents,
-            taxRate,
-            cashTenderedCents,
-            cashChangeCents,
-            idempotencyKey,
-            acceptedLegalAt: new Date(),
-            legalVersion: LEGAL_VERSION,
-            items: {
-              create: orderLines.map((line) => ({
-                productId: line.productId,
-                productName: line.productName,
-                unitPriceCents: line.unitPriceCents,
-                quantity: line.quantity,
-                lineTotalCents: line.lineTotalCents,
-                options:
-                  line.options.length > 0
-                    ? { create: line.options }
-                    : undefined,
-              })),
-            },
-            payments:
-              paymentMethod === OrderPaymentMethod.CASH
+          });
+          const discountCents = loyaltyReward?.discountCents ?? 0;
+          const totalCents = Math.max(
+            0,
+            subtotalCents + deliveryFeeCents - discountCents,
+          );
+          const taxCents = this.includedTaxCents(totalCents, taxRate);
+          const cashTenderedCents =
+            paymentMethod === OrderPaymentMethod.CASH &&
+            dto.cashTenderedCents !== undefined
+              ? dto.cashTenderedCents
+              : null;
+
+          if (
+            paymentMethod === OrderPaymentMethod.CASH &&
+            dto.deliveryMethod === DeliveryMethod.DELIVERY &&
+            cashTenderedCents === null
+          ) {
+            throw new BadRequestException(
+              "Indica con cuanto pagara el cliente para preparar el cambio.",
+            );
+          }
+
+          if (
+            paymentMethod === OrderPaymentMethod.CASH &&
+            cashTenderedCents !== null &&
+            cashTenderedCents < totalCents
+          ) {
+            throw new BadRequestException(
+              "El importe en efectivo debe cubrir el total del pedido.",
+            );
+          }
+
+          const cashChangeCents =
+            paymentMethod === OrderPaymentMethod.CASH &&
+            cashTenderedCents !== null
+              ? cashTenderedCents - totalCents
+              : null;
+          const initialStatus =
+            paymentMethod === OrderPaymentMethod.CASH
+              ? OrderStatus.CONFIRMED
+              : OrderStatus.CREATED;
+          const statusHistoryCreate =
+            paymentMethod === OrderPaymentMethod.CASH
+              ? [
+                  {
+                    toStatus: OrderStatus.CREATED,
+                    changedById: user?.id,
+                    note: "Order created",
+                  },
+                  {
+                    fromStatus: OrderStatus.CREATED,
+                    toStatus: OrderStatus.CONFIRMED,
+                    changedById: user?.id,
+                    note: "Pago en efectivo seleccionado",
+                  },
+                ]
+              : [
+                  {
+                    toStatus: OrderStatus.CREATED,
+                    changedById: user?.id,
+                    note: "Order created",
+                  },
+                ];
+
+          const orderNumber = await this.nextOrderNumber(tx);
+          const order = await tx.order.create({
+            data: {
+              orderNumber,
+              trackingToken: this.trackingToken(),
+              userId: user?.id,
+              customerEmail: dto.customerEmail.toLowerCase().trim(),
+              customerName: dto.customerName.trim(),
+              customerPhone: dto.customerPhone.trim(),
+              deliveryMethod: dto.deliveryMethod,
+              deliveryName: dto.address?.name.trim(),
+              deliveryPhone: dto.address?.phone.trim(),
+              deliveryStreet: dto.address?.street.trim(),
+              deliveryCity: dto.address?.city.trim(),
+              deliveryPostalCode: dto.address?.postalCode.trim(),
+              deliveryNotes: dto.address?.notes?.trim(),
+              status: initialStatus,
+              paymentMethod,
+              subtotalCents,
+              discountCents,
+              deliveryFeeCents,
+              taxCents,
+              totalCents,
+              taxRate,
+              cashTenderedCents,
+              cashChangeCents,
+              idempotencyKey,
+              acceptedLegalAt: new Date(),
+              legalVersion: LEGAL_VERSION,
+              items: {
+                create: orderLines.map((line) => ({
+                  productId: line.productId,
+                  productName: line.productName,
+                  unitPriceCents: line.unitPriceCents,
+                  quantity: line.quantity,
+                  lineTotalCents: line.lineTotalCents,
+                  options:
+                    line.options.length > 0
+                      ? { create: line.options }
+                      : undefined,
+                })),
+              },
+              payments:
+                paymentMethod === OrderPaymentMethod.CASH
+                  ? {
+                      create: {
+                        provider: PaymentProvider.CASH,
+                        status: PaymentStatus.PENDING,
+                        amountCents: totalCents,
+                        currency: "eur",
+                      },
+                    }
+                  : undefined,
+              loyaltyRedemption: loyaltyReward
                 ? {
                     create: {
-                      provider: PaymentProvider.CASH,
-                      status: PaymentStatus.PENDING,
-                      amountCents: totalCents,
-                      currency: "eur",
+                      user: { connect: { id: loyaltyReward.userId } },
+                      rewardType: loyaltyReward.rewardType,
+                      status:
+                        paymentMethod === OrderPaymentMethod.CASH
+                          ? LoyaltyRedemptionStatus.APPLIED
+                          : LoyaltyRedemptionStatus.RESERVED,
+                      rewardLabel: loyaltyReward.rewardLabel,
+                      discountCents: loyaltyReward.discountCents,
+                      goalOrdersSnapshot: loyaltyReward.goalOrdersSnapshot,
+                      completedOrdersSnapshot:
+                        loyaltyReward.completedOrdersSnapshot,
+                      appliedAt:
+                        paymentMethod === OrderPaymentMethod.CASH
+                          ? new Date()
+                          : undefined,
                     },
                   }
                 : undefined,
-            statusHistory: {
-              create: statusHistoryCreate,
+              statusHistory: {
+                create: statusHistoryCreate,
+              },
             },
-          },
-          include: orderInclude,
-        });
+            include: orderInclude,
+          });
 
-        return order;
-      });
+          return order;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
 
       if (paymentMethod === OrderPaymentMethod.CASH) {
         await this.sendOrderReceiptSafely(createdOrder);
@@ -355,6 +429,7 @@ export class OrdersService {
       deliveryPostalCode: order.deliveryPostalCode,
       deliveryNotes: order.deliveryNotes,
       subtotalCents: order.subtotalCents,
+      discountCents: order.discountCents,
       deliveryFeeCents: order.deliveryFeeCents,
       taxCents: order.taxCents,
       cashTenderedCents: order.cashTenderedCents,
@@ -604,6 +679,32 @@ export class OrdersService {
         include: orderInclude,
       });
 
+      if (toStatus === OrderStatus.PAID) {
+        await tx.loyaltyRedemption.updateMany({
+          where: {
+            orderId: order.id,
+            status: LoyaltyRedemptionStatus.RESERVED,
+          },
+          data: {
+            status: LoyaltyRedemptionStatus.APPLIED,
+            appliedAt: new Date(),
+          },
+        });
+      }
+
+      if (loyaltyReleaseStatuses.includes(toStatus)) {
+        await tx.loyaltyRedemption.updateMany({
+          where: {
+            orderId: order.id,
+            status: { in: consumedLoyaltyStatuses },
+          },
+          data: {
+            status: LoyaltyRedemptionStatus.RELEASED,
+            releasedAt: new Date(),
+          },
+        });
+      }
+
       await tx.orderStatusHistory.create({
         data: {
           orderId: order.id,
@@ -627,7 +728,7 @@ export class OrdersService {
   private buildOrderLine(
     item: CreateOrderDto["items"][number],
     product: CheckoutProduct,
-  ) {
+  ): CheckoutOrderLine {
     const options = this.resolveOrderItemOptions(item.options ?? [], product);
     const optionUnitPriceCents = options.reduce(
       (sum, option) => sum + option.priceCents,
@@ -713,6 +814,115 @@ export class OrdersService {
     }
 
     return snapshots;
+  }
+
+  private async resolveLoyaltyReward({
+    tx,
+    userId,
+    program,
+    orderLines,
+    subtotalCents,
+  }: {
+    tx: Prisma.TransactionClient;
+    userId?: string;
+    program?: Awaited<ReturnType<SettingsService["getLoyaltyProgram"]>>;
+    orderLines: CheckoutOrderLine[];
+    subtotalCents: number;
+  }): Promise<LoyaltyRewardApplication | undefined> {
+    if (!program) {
+      return undefined;
+    }
+
+    if (!userId) {
+      throw new BadRequestException(
+        "Inicia sesion para canjear tu premio de fidelidad.",
+      );
+    }
+
+    if (!program.enabled) {
+      throw new BadRequestException(
+        "El programa de fidelidad no esta disponible ahora mismo.",
+      );
+    }
+
+    const [completedOrders, usedRewards] = await Promise.all([
+      tx.order.count({
+        where: {
+          userId,
+          status: OrderStatus.DELIVERED,
+        },
+      }),
+      tx.loyaltyRedemption.count({
+        where: {
+          userId,
+          status: { in: consumedLoyaltyStatuses },
+        },
+      }),
+    ]);
+    const earnedRewards = Math.floor(completedOrders / program.goalOrders);
+    if (usedRewards >= earnedRewards) {
+      throw new BadRequestException(
+        "Todavia no tienes premios disponibles para canjear.",
+      );
+    }
+
+    const reward = this.calculateLoyaltyDiscount(
+      program,
+      orderLines,
+      subtotalCents,
+    );
+
+    return {
+      userId,
+      rewardType:
+        program.rewardType === "FREE_PRODUCT"
+          ? LoyaltyRewardType.FREE_PRODUCT
+          : LoyaltyRewardType.DISCOUNT_PERCENT,
+      rewardLabel: reward.rewardLabel,
+      discountCents: reward.discountCents,
+      goalOrdersSnapshot: program.goalOrders,
+      completedOrdersSnapshot: completedOrders,
+    };
+  }
+
+  private calculateLoyaltyDiscount(
+    program: Awaited<ReturnType<SettingsService["getLoyaltyProgram"]>>,
+    orderLines: CheckoutOrderLine[],
+    subtotalCents: number,
+  ) {
+    if (program.rewardType === "DISCOUNT_PERCENT") {
+      const discountCents = Math.min(
+        subtotalCents,
+        Math.round((subtotalCents * program.discountPercent) / 100),
+      );
+      if (discountCents <= 0) {
+        throw new BadRequestException(
+          "El carrito no tiene importe suficiente para aplicar el premio.",
+        );
+      }
+
+      return {
+        discountCents,
+        rewardLabel: `${program.discountPercent}% de descuento`,
+      };
+    }
+
+    const productName = program.freeProductName.trim();
+    const targetProduct = normalizeComparableText(productName);
+    const matchingLine = orderLines.find(
+      (line) => normalizeComparableText(line.productName) === targetProduct,
+    );
+
+    if (!targetProduct || !matchingLine) {
+      throw new BadRequestException(
+        `Anade ${productName || "el producto de fidelidad"} al carrito para canjear este premio.`,
+      );
+    }
+
+    return {
+      discountCents: Math.min(subtotalCents, matchingLine.unitPriceCents),
+      rewardLabel: `${matchingLine.productName} gratis`,
+    };
   }
 
   private async nextOrderNumber(tx: Prisma.TransactionClient) {
@@ -966,4 +1176,12 @@ function formatDateOnly(year: number, month: number, day: number) {
   return [year, month, day]
     .map((part) => String(part).padStart(2, "0"))
     .join("-");
+}
+
+function normalizeComparableText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
 }

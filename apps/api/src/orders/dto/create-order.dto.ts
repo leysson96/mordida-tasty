@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   Equals,
   IsArray,
+  IsBoolean,
   IsEmail,
   IsEnum,
   IsInt,
@@ -102,6 +103,10 @@ export class CreateOrderDto {
   @Min(0)
   @Max(100000)
   cashTenderedCents?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  useLoyaltyReward?: boolean;
 
   @ValidateIf(
     (value: CreateOrderDto) => value.deliveryMethod === DeliveryMethod.DELIVERY,

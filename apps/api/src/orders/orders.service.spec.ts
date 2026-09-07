@@ -1,6 +1,8 @@
 import { BadRequestException } from "@nestjs/common";
 import {
   DeliveryMethod,
+  LoyaltyRedemptionStatus,
+  LoyaltyRewardType,
   OrderPaymentMethod,
   OrderStatus,
   PaymentProvider,
@@ -23,6 +25,7 @@ describe("OrdersService", () => {
   const settings = {
     getServiceStatus: jest.fn(),
     getTaxRate: jest.fn(),
+    getLoyaltyProgram: jest.fn(),
   };
 
   const deliveryZones = {
@@ -47,6 +50,15 @@ describe("OrdersService", () => {
     prisma.$transaction.mockReset();
     settings.getServiceStatus.mockResolvedValue({ openNow: true });
     settings.getTaxRate.mockResolvedValue(0.1);
+    settings.getLoyaltyProgram.mockResolvedValue({
+      enabled: true,
+      goalOrders: 5,
+      rewardType: "DISCOUNT_PERCENT",
+      discountPercent: 10,
+      freeProductName: "Mordida Smash",
+      title: "Mordida Club",
+      description: "Completa pedidos y desbloquea una recompensa.",
+    });
     deliveryZones.quoteDelivery.mockResolvedValue({
       available: true,
       deliveryFeeCents: 250,
@@ -352,6 +364,245 @@ describe("OrdersService", () => {
     );
   });
 
+  it("reserves an available loyalty percentage reward on card orders", async () => {
+    const productId = "00000000-0000-4000-8000-000000000001";
+    prisma.product.findMany.mockResolvedValue([
+      {
+        id: productId,
+        name: "Mordida Smash",
+        priceCents: 1190,
+        available: true,
+        optionGroups: [],
+      },
+    ]);
+
+    const tx = {
+      sequenceCounter: {
+        upsert: jest.fn().mockResolvedValue({ value: 10 }),
+      },
+      order: {
+        count: jest.fn().mockResolvedValue(5),
+        create: jest.fn(({ data }) => ({
+          id: "order-loyalty",
+          orderNumber: data.orderNumber,
+          status: data.status,
+          discountCents: data.discountCents,
+          totalCents: data.totalCents,
+          loyaltyRedemption: data.loyaltyRedemption?.create,
+          items: [],
+          statusHistory: [],
+        })),
+      },
+      loyaltyRedemption: {
+        count: jest.fn().mockResolvedValue(0),
+      },
+    };
+    prisma.$transaction.mockImplementation((callback) => callback(tx));
+
+    await expect(
+      service().createOrder(
+        {
+          customerName: "Cliente Test",
+          customerEmail: "cliente@example.com",
+          customerPhone: "+34611752804",
+          deliveryMethod: DeliveryMethod.PICKUP,
+          useLoyaltyReward: true,
+          items: [{ productId, quantity: 1 }],
+          acceptLegal: true,
+        },
+        "checkout-loyalty-key",
+        { id: "user-1" } as never,
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        status: OrderStatus.CREATED,
+        discountCents: 119,
+        totalCents: 1071,
+      }),
+    );
+
+    expect(tx.order.count).toHaveBeenCalledWith({
+      where: {
+        userId: "user-1",
+        status: OrderStatus.DELIVERED,
+      },
+    });
+    expect(tx.loyaltyRedemption.count).toHaveBeenCalledWith({
+      where: {
+        userId: "user-1",
+        status: {
+          in: [
+            LoyaltyRedemptionStatus.RESERVED,
+            LoyaltyRedemptionStatus.APPLIED,
+          ],
+        },
+      },
+    });
+    expect(tx.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          discountCents: 119,
+          totalCents: 1071,
+          loyaltyRedemption: {
+            create: expect.objectContaining({
+              rewardType: LoyaltyRewardType.DISCOUNT_PERCENT,
+              status: LoyaltyRedemptionStatus.RESERVED,
+              rewardLabel: "10% de descuento",
+              discountCents: 119,
+              goalOrdersSnapshot: 5,
+              completedOrdersSnapshot: 5,
+            }),
+          },
+        }),
+      }),
+    );
+  });
+
+  it("applies a free product loyalty reward immediately on cash pickup orders", async () => {
+    const productId = "00000000-0000-4000-8000-000000000001";
+    settings.getLoyaltyProgram.mockResolvedValue({
+      enabled: true,
+      goalOrders: 5,
+      rewardType: "FREE_PRODUCT",
+      discountPercent: 10,
+      freeProductName: "Mordida Smash",
+      title: "Mordida Club",
+      description: "Completa pedidos y desbloquea una recompensa.",
+    });
+    prisma.product.findMany.mockResolvedValue([
+      {
+        id: productId,
+        name: "Mordida Smash",
+        priceCents: 1190,
+        available: true,
+        optionGroups: [],
+      },
+    ]);
+
+    const tx = {
+      sequenceCounter: {
+        upsert: jest.fn().mockResolvedValue({ value: 11 }),
+      },
+      order: {
+        count: jest.fn().mockResolvedValue(5),
+        create: jest.fn(({ data }) => ({
+          id: "order-free-product",
+          orderNumber: data.orderNumber,
+          status: data.status,
+          paymentMethod: data.paymentMethod,
+          discountCents: data.discountCents,
+          totalCents: data.totalCents,
+          loyaltyRedemption: data.loyaltyRedemption?.create,
+          items: [],
+          statusHistory: [],
+        })),
+      },
+      loyaltyRedemption: {
+        count: jest.fn().mockResolvedValue(0),
+      },
+    };
+    prisma.$transaction.mockImplementation((callback) => callback(tx));
+
+    await expect(
+      service().createOrder(
+        {
+          customerName: "Cliente Test",
+          customerEmail: "cliente@example.com",
+          customerPhone: "+34611752804",
+          deliveryMethod: DeliveryMethod.PICKUP,
+          paymentMethod: OrderPaymentMethod.CASH,
+          useLoyaltyReward: true,
+          items: [{ productId, quantity: 1 }],
+          acceptLegal: true,
+        },
+        "checkout-loyalty-cash-key",
+        { id: "user-1" } as never,
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        status: OrderStatus.CONFIRMED,
+        paymentMethod: OrderPaymentMethod.CASH,
+        discountCents: 1190,
+        totalCents: 0,
+      }),
+    );
+
+    expect(tx.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          payments: {
+            create: expect.objectContaining({
+              provider: PaymentProvider.CASH,
+              amountCents: 0,
+            }),
+          },
+          loyaltyRedemption: {
+            create: expect.objectContaining({
+              rewardType: LoyaltyRewardType.FREE_PRODUCT,
+              status: LoyaltyRedemptionStatus.APPLIED,
+              rewardLabel: "Mordida Smash gratis",
+              discountCents: 1190,
+              appliedAt: expect.any(Date),
+            }),
+          },
+        }),
+      }),
+    );
+    expect(mailService.sendOrderReceiptEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderNumber: expect.stringMatching(/^MT-/),
+        discountCents: 1190,
+        totalCents: 0,
+      }),
+    );
+  });
+
+  it("rejects loyalty redemption when every earned reward was already used", async () => {
+    const productId = "00000000-0000-4000-8000-000000000001";
+    prisma.product.findMany.mockResolvedValue([
+      {
+        id: productId,
+        name: "Mordida Smash",
+        priceCents: 1190,
+        available: true,
+        optionGroups: [],
+      },
+    ]);
+
+    const tx = {
+      sequenceCounter: {
+        upsert: jest.fn(),
+      },
+      order: {
+        count: jest.fn().mockResolvedValue(5),
+        create: jest.fn(),
+      },
+      loyaltyRedemption: {
+        count: jest.fn().mockResolvedValue(1),
+      },
+    };
+    prisma.$transaction.mockImplementation((callback) => callback(tx));
+
+    await expect(
+      service().createOrder(
+        {
+          customerName: "Cliente Test",
+          customerEmail: "cliente@example.com",
+          customerPhone: "+34611752804",
+          deliveryMethod: DeliveryMethod.PICKUP,
+          useLoyaltyReward: true,
+          items: [{ productId, quantity: 1 }],
+          acceptLegal: true,
+        },
+        "checkout-loyalty-used-key",
+        { id: "user-1" } as never,
+      ),
+    ).rejects.toThrow("Todavia no tienes premios disponibles para canjear.");
+
+    expect(tx.sequenceCounter.upsert).not.toHaveBeenCalled();
+    expect(tx.order.create).not.toHaveBeenCalled();
+  });
+
   it("rejects cash delivery orders when the tendered amount is too low", async () => {
     const productId = "00000000-0000-4000-8000-000000000001";
     prisma.product.findMany.mockResolvedValue([
@@ -363,6 +614,15 @@ describe("OrdersService", () => {
         optionGroups: [],
       },
     ]);
+    const tx = {
+      sequenceCounter: {
+        upsert: jest.fn(),
+      },
+      order: {
+        create: jest.fn(),
+      },
+    };
+    prisma.$transaction.mockImplementation((callback) => callback(tx));
 
     await expect(
       service().createOrder(
@@ -389,7 +649,9 @@ describe("OrdersService", () => {
       "El importe en efectivo debe cubrir el total del pedido.",
     );
 
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalled();
+    expect(tx.sequenceCounter.upsert).not.toHaveBeenCalled();
+    expect(tx.order.create).not.toHaveBeenCalled();
     expect(mailService.sendOrderReceiptEmail).not.toHaveBeenCalled();
   });
 
@@ -575,6 +837,54 @@ describe("OrdersService", () => {
     ).rejects.toThrow("Selecciona al menos 1 opcion(es) de Punto.");
 
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("releases reserved loyalty rewards when an unpaid order fails", async () => {
+    const tx = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "order-1",
+          status: OrderStatus.PENDING_PAYMENT,
+          paidAt: null,
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "order-1",
+          status: OrderStatus.PAYMENT_FAILED,
+          statusHistory: [],
+          items: [],
+        }),
+      },
+      loyaltyRedemption: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      orderStatusHistory: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+    };
+    prisma.$transaction.mockImplementation((callback) => callback(tx));
+
+    await service().transitionOrder(
+      "order-1",
+      OrderStatus.PAYMENT_FAILED,
+      "admin-1",
+      "Pago fallido",
+    );
+
+    expect(tx.loyaltyRedemption.updateMany).toHaveBeenCalledWith({
+      where: {
+        orderId: "order-1",
+        status: {
+          in: [
+            LoyaltyRedemptionStatus.RESERVED,
+            LoyaltyRedemptionStatus.APPLIED,
+          ],
+        },
+      },
+      data: {
+        status: LoyaltyRedemptionStatus.RELEASED,
+        releasedAt: expect.any(Date),
+      },
+    });
   });
 
   it("uses the configured business timezone for the admin today filter", async () => {

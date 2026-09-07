@@ -6,6 +6,7 @@ import {
   Banknote,
   CheckCircle2,
   CreditCard,
+  Gift,
   MapPin,
   Pencil,
   Store,
@@ -14,6 +15,7 @@ import {
 import { ApiError, api, formatMoney } from "../../lib/api";
 import {
   Address,
+  CustomerLoyaltyProgress,
   DeliveryMethod,
   DeliveryQuote,
   OrderPaymentMethod,
@@ -35,6 +37,8 @@ export default function CheckoutPage() {
   const [paymentMethod, setPaymentMethod] =
     useState<OrderPaymentMethod>("CARD");
   const [publicSettings, setPublicSettings] = useState<PublicSettings>();
+  const [loyalty, setLoyalty] = useState<CustomerLoyaltyProgress>();
+  const [useLoyaltyReward, setUseLoyaltyReward] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -74,8 +78,12 @@ export default function CheckoutPage() {
   useEffect(() => {
     let active = true;
 
-    Promise.all([api<User>("/auth/me"), api<Address[]>("/customers/addresses")])
-      .then(([user, addresses]) => {
+    Promise.all([
+      api<User>("/auth/me"),
+      api<Address[]>("/customers/addresses"),
+      api<CustomerLoyaltyProgress>("/customers/loyalty").catch(() => undefined),
+    ])
+      .then(([user, addresses, loyaltyProgress]) => {
         if (!active) {
           return;
         }
@@ -85,6 +93,8 @@ export default function CheckoutPage() {
         setCustomerPhone((current) => current || user.phone || "");
         setAddressName((current) => current || user.name || "");
         setAddressPhone((current) => current || user.phone || "");
+        setLoyalty(loyaltyProgress);
+        setUseLoyaltyReward(Boolean(loyaltyProgress?.rewardReady));
         setCustomerDetailsOpen(!(user.name && user.email && user.phone));
         setSavedAddresses(addresses);
 
@@ -188,9 +198,28 @@ export default function CheckoutPage() {
   const deliveryBlocked =
     deliveryMethod === "DELIVERY" &&
     (deliveryQuote?.available === false || Boolean(quoteError));
+  const loyaltyRewardAvailable = Boolean(
+    loyalty?.program.enabled && loyalty.rewardReady,
+  );
+  const loyaltyDiscountCents = useMemo(
+    () =>
+      estimateLoyaltyDiscountCents({
+        items,
+        loyalty,
+        subtotalCents,
+        useLoyaltyReward,
+      }),
+    [items, loyalty, subtotalCents, useLoyaltyReward],
+  );
+  const loyaltyRewardBlocked = Boolean(
+    useLoyaltyReward &&
+      loyaltyRewardAvailable &&
+      loyalty?.program.rewardType === "FREE_PRODUCT" &&
+      loyaltyDiscountCents <= 0,
+  );
   const totalCents = useMemo(
-    () => subtotalCents + deliveryFeeCents,
-    [deliveryFeeCents, subtotalCents],
+    () => Math.max(0, subtotalCents + deliveryFeeCents - loyaltyDiscountCents),
+    [deliveryFeeCents, loyaltyDiscountCents, subtotalCents],
   );
   const cashTenderedCents = useMemo(
     () => parseMoneyInputCents(cashTenderedEuros),
@@ -259,6 +288,13 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (loyaltyRewardBlocked) {
+      setError(
+        `Anade ${loyalty?.program.freeProductName ?? "el producto de fidelidad"} al carrito para canjear este premio.`,
+      );
+      return;
+    }
+
     if (paymentMethod === "CASH" && deliveryMethod === "DELIVERY") {
       if (cashTenderedCents === undefined) {
         setError(
@@ -287,6 +323,7 @@ export default function CheckoutPage() {
           customerPhone: String(form.get("customerPhone")),
           deliveryMethod,
           paymentMethod,
+          useLoyaltyReward: loyaltyRewardAvailable && useLoyaltyReward,
           cashTenderedCents:
             paymentMethod === "CASH" && deliveryMethod === "DELIVERY"
               ? cashTenderedCents
@@ -624,6 +661,40 @@ export default function CheckoutPage() {
             </section>
           )}
 
+          {loyaltyRewardAvailable && (
+            <section
+              className={`checkout-loyalty-panel ${
+                useLoyaltyReward ? "active" : ""
+              }`}
+            >
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={useLoyaltyReward}
+                  onChange={(event) =>
+                    setUseLoyaltyReward(event.target.checked)
+                  }
+                />
+                <span>
+                  <strong>Usar premio Mordida Club</strong>
+                  <small>
+                    {loyalty?.rewardLabel}
+                    {loyaltyDiscountCents > 0
+                      ? ` - ${formatMoney(loyaltyDiscountCents)} menos`
+                      : ""}
+                  </small>
+                </span>
+              </label>
+              <Gift aria-hidden="true" size={28} />
+              {loyaltyRewardBlocked && (
+                <p className="form-error">
+                  Anade {loyalty?.program.freeProductName} al carrito para
+                  canjear este premio.
+                </p>
+              )}
+            </section>
+          )}
+
           <section className="payment-method-panel">
             <div className="payment-method-head">
               <h2>Pago</h2>
@@ -723,6 +794,12 @@ export default function CheckoutPage() {
             <span>Envio</span>
             <strong>{formatMoney(deliveryFeeCents)}</strong>
           </div>
+          {loyaltyDiscountCents > 0 && (
+            <div className="summary-discount-row">
+              <span>Premio Mordida Club</span>
+              <strong>-{formatMoney(loyaltyDiscountCents)}</strong>
+            </div>
+          )}
           <div className="total-row">
             <span>Total</span>
             <strong>{formatMoney(totalCents)}</strong>
@@ -753,6 +830,7 @@ export default function CheckoutPage() {
               deliveryBlocked ||
               quoteLoading ||
               deliveryNeedsQuote ||
+              loyaltyRewardBlocked ||
               cashBlocked
             }
           >
@@ -764,10 +842,14 @@ export default function CheckoutPage() {
             {loading
               ? paymentMethod === "CASH"
                 ? "Confirmando"
-                : "Abriendo pago"
+                : totalCents <= 0
+                  ? "Confirmando"
+                  : "Abriendo pago"
               : paymentMethod === "CASH"
                 ? "Confirmar pedido"
-                : "Pagar"}
+                : totalCents <= 0
+                  ? "Confirmar premio"
+                  : "Pagar"}
           </button>
         </aside>
       </form>
@@ -805,4 +887,49 @@ function parseMoneyInputCents(value: string) {
   }
 
   return Math.round(amount * 100);
+}
+
+function estimateLoyaltyDiscountCents({
+  items,
+  loyalty,
+  subtotalCents,
+  useLoyaltyReward,
+}: {
+  items: ReturnType<typeof useCart>["items"];
+  loyalty?: CustomerLoyaltyProgress;
+  subtotalCents: number;
+  useLoyaltyReward: boolean;
+}) {
+  if (
+    !useLoyaltyReward ||
+    !loyalty?.program.enabled ||
+    !loyalty.rewardReady ||
+    subtotalCents <= 0
+  ) {
+    return 0;
+  }
+
+  if (loyalty.program.rewardType === "DISCOUNT_PERCENT") {
+    return Math.min(
+      subtotalCents,
+      Math.round((subtotalCents * loyalty.program.discountPercent) / 100),
+    );
+  }
+
+  const targetProduct = normalizeComparableText(
+    loyalty.program.freeProductName,
+  );
+  const matchingItem = items.find(
+    (item) => normalizeComparableText(item.name) === targetProduct,
+  );
+
+  return matchingItem ? Math.min(subtotalCents, matchingItem.priceCents) : 0;
+}
+
+function normalizeComparableText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
 }

@@ -248,6 +248,18 @@ export function TrackingClient({
             <strong>{formatMoney(item.lineTotalCents)}</strong>
           </div>
         ))}
+        {(order.discountCents ?? 0) > 0 && (
+          <div className="summary-discount-row">
+            <span>Premio Mordida Club</span>
+            <strong>-{formatMoney(order.discountCents ?? 0)}</strong>
+          </div>
+        )}
+        {(order.deliveryFeeCents ?? 0) > 0 && (
+          <div>
+            <span>Envio</span>
+            <strong>{formatMoney(order.deliveryFeeCents ?? 0)}</strong>
+          </div>
+        )}
         <div className="total-row">
           <span>Total</span>
           <strong>{formatMoney(order.totalCents)}</strong>

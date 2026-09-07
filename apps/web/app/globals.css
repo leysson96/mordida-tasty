@@ -887,6 +887,10 @@ p {
   border-top: 1px solid var(--color-line);
 }
 
+.summary-discount-row strong {
+  color: var(--color-green);
+}
+
 .checkout-layout,
 .account-grid,
 .admin-content,
@@ -1027,6 +1031,11 @@ p {
   right: 22px;
   bottom: -22px;
   color: rgba(255, 250, 244, 0.11);
+}
+
+.loyalty-used-note {
+  color: rgba(255, 250, 244, 0.72);
+  font-weight: 850;
 }
 
 .form-grid {
@@ -1186,6 +1195,46 @@ textarea {
   margin-top: 0;
   padding-top: 0;
   border-top: 0;
+}
+
+.checkout-loyalty-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid rgba(224, 138, 40, 0.38);
+  border-radius: var(--radius);
+  background: rgba(224, 138, 40, 0.12);
+}
+
+.checkout-loyalty-panel.active {
+  border-color: rgba(35, 113, 90, 0.42);
+  background: rgba(35, 113, 90, 0.1);
+}
+
+.checkout-loyalty-panel > svg {
+  color: var(--color-gold);
+}
+
+.checkout-loyalty-panel .checkbox-label {
+  align-items: center;
+}
+
+.checkout-loyalty-panel .checkbox-label span {
+  display: grid;
+  gap: 3px;
+}
+
+.checkout-loyalty-panel small {
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  font-weight: 850;
+}
+
+.checkout-loyalty-panel .form-error {
+  grid-column: 1 / -1;
 }
 
 .checkout-details {

@@ -241,12 +241,19 @@ export default function AccountPage() {
               <span>{loyalty.completedOrders} entregados</span>
               <span>
                 {loyalty.rewardReady
-                  ? `${loyalty.earnedRewards} premio${
-                      loyalty.earnedRewards === 1 ? "" : "s"
-                    } conseguido${loyalty.earnedRewards === 1 ? "" : "s"}`
+                  ? `${loyalty.availableRewards} premio${
+                      loyalty.availableRewards === 1 ? "" : "s"
+                    } disponible${loyalty.availableRewards === 1 ? "" : "s"}`
                   : `Faltan ${loyalty.ordersRemaining}`}
               </span>
             </div>
+            {loyalty.usedRewards > 0 && (
+              <small className="loyalty-used-note">
+                {loyalty.usedRewards} premio
+                {loyalty.usedRewards === 1 ? "" : "s"} canjeado
+                {loyalty.usedRewards === 1 ? "" : "s"}.
+              </small>
+            )}
           </div>
           <Gift className="loyalty-watermark" aria-hidden="true" size={96} />
         </section>

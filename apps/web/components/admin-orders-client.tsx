@@ -1470,6 +1470,18 @@ export function AdminOrdersClient() {
                 </div>
               ))}
             <hr />
+            {(printingOrder.discountCents ?? 0) > 0 && (
+              <div>
+                <span>Premio Mordida Club</span>
+                <strong>-{formatMoney(printingOrder.discountCents ?? 0)}</strong>
+              </div>
+            )}
+            {(printingOrder.deliveryFeeCents ?? 0) > 0 && (
+              <div>
+                <span>Envio</span>
+                <strong>{formatMoney(printingOrder.deliveryFeeCents ?? 0)}</strong>
+              </div>
+            )}
             <div>
               <span>Total</span>
               <strong>{formatMoney(printingOrder.totalCents)}</strong>

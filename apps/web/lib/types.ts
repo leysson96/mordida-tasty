@@ -124,6 +124,7 @@ export interface OrderSummary {
   deliveryPostalCode?: string | null;
   deliveryNotes?: string | null;
   subtotalCents?: number;
+  discountCents?: number;
   deliveryFeeCents?: number;
   taxCents?: number;
   cashTenderedCents?: number | null;
@@ -182,6 +183,8 @@ export interface CustomerLoyaltyProgress {
   progressPercent: number;
   ordersRemaining: number;
   earnedRewards: number;
+  usedRewards: number;
+  availableRewards: number;
   rewardReady: boolean;
   rewardLabel: string;
 }

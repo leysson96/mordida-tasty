@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { OrderStatus } from '@prisma/client';
+import { LoyaltyRedemptionStatus, OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { UpsertAddressDto } from './dto/address.dto';
@@ -65,7 +65,7 @@ export class CustomersService {
   }
 
   async getLoyaltyProgress(userId: string) {
-    const [program, completedOrders] = await Promise.all([
+    const [program, completedOrders, usedRewards] = await Promise.all([
       this.settingsService.getLoyaltyProgram(),
       this.prisma.order.count({
         where: {
@@ -73,11 +73,32 @@ export class CustomersService {
           status: OrderStatus.DELIVERED,
         },
       }),
+      this.prisma.loyaltyRedemption.count({
+        where: {
+          userId,
+          status: {
+            in: [
+              LoyaltyRedemptionStatus.RESERVED,
+              LoyaltyRedemptionStatus.APPLIED,
+            ],
+          },
+        },
+      }),
     ]);
-    const rawProgress = completedOrders % program.goalOrders;
-    const rewardReady = program.enabled && completedOrders >= program.goalOrders;
+    const earnedRewards = program.enabled
+      ? Math.floor(completedOrders / program.goalOrders)
+      : 0;
+    const availableRewards = Math.max(0, earnedRewards - usedRewards);
+    const rewardReady = program.enabled && availableRewards > 0;
+    const completedOrdersAfterRedemptions = Math.max(
+      0,
+      completedOrders - usedRewards * program.goalOrders,
+    );
+    const rawProgress = completedOrdersAfterRedemptions % program.goalOrders;
     const progressOrders =
-      rawProgress === 0 && completedOrders > 0 ? program.goalOrders : rawProgress;
+      rewardReady || (rawProgress === 0 && completedOrdersAfterRedemptions > 0)
+        ? program.goalOrders
+        : rawProgress;
     const progressPercent = program.enabled
       ? Math.round((progressOrders / program.goalOrders) * 100)
       : 0;
@@ -91,9 +112,9 @@ export class CustomersService {
         program.enabled && !rewardReady
           ? Math.max(0, program.goalOrders - progressOrders)
           : 0,
-      earnedRewards: program.enabled
-        ? Math.floor(completedOrders / program.goalOrders)
-        : 0,
+      earnedRewards,
+      usedRewards,
+      availableRewards,
       rewardReady,
       rewardLabel:
         program.rewardType === "DISCOUNT_PERCENT"

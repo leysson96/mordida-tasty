@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
+  LoyaltyRedemptionStatus,
   OrderPaymentMethod,
   OrderStatus,
   PaymentStatus,
@@ -61,6 +62,11 @@ const fullyRefundableOrderStatuses: OrderStatus[] = [
   OrderStatus.READY,
 ];
 
+const consumedLoyaltyStatuses: LoyaltyRedemptionStatus[] = [
+  LoyaltyRedemptionStatus.RESERVED,
+  LoyaltyRedemptionStatus.APPLIED,
+];
+
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
@@ -98,7 +104,30 @@ export class PaymentsService {
       throw new BadRequestException("El pedido no tiene productos activos.");
     }
 
+    if (order.totalCents <= 0) {
+      await this.ordersService.transitionOrder(
+        order.id,
+        OrderStatus.PENDING_PAYMENT,
+        undefined,
+        "Pedido cubierto por premio de fidelidad",
+      );
+      await this.ordersService.transitionOrder(
+        order.id,
+        OrderStatus.PAID,
+        undefined,
+        "Pedido cubierto por premio de fidelidad",
+      );
+      await this.markLoyaltyRedemptionApplied(order.id);
+      await this.sendOrderReceiptSafely(order.id);
+
+      return {
+        orderNumber: order.orderNumber,
+        checkoutUrl: this.stripeSuccessUrl(order),
+      };
+    }
+
     const stripe = this.requireStripe();
+    const discounts = await this.stripeDiscountsForOrder(stripe, order);
 
     await this.ordersService.transitionOrder(
       order.id,
@@ -120,6 +149,7 @@ export class PaymentsService {
           orderId: order.id,
           orderNumber: order.orderNumber,
         },
+        ...(discounts ? { discounts } : {}),
         line_items: [
           ...payableItems.map((item) => ({
             quantity: item.quantity,
@@ -565,6 +595,17 @@ export class PaymentsService {
           },
         });
 
+        await tx.loyaltyRedemption.updateMany({
+          where: {
+            orderId: currentOrder.id,
+            status: { in: consumedLoyaltyStatuses },
+          },
+          data: {
+            status: LoyaltyRedemptionStatus.RELEASED,
+            releasedAt: new Date(),
+          },
+        });
+
         await tx.orderStatusHistory.create({
           data: {
             orderId: currentOrder.id,
@@ -692,6 +733,7 @@ export class PaymentsService {
     ]);
 
     if (doNotFulfillAfterPaymentStatuses.includes(order.status)) {
+      await this.releaseLoyaltyRedemption(order.id);
       await this.prisma.orderStatusHistory.create({
         data: {
           orderId: order.id,
@@ -712,6 +754,8 @@ export class PaymentsService {
       );
       await this.sendOrderReceiptSafely(order.id);
     }
+
+    await this.markLoyaltyRedemptionApplied(order.id);
   }
 
   private async handleCheckoutExpired(session: Stripe.Checkout.Session) {
@@ -729,6 +773,7 @@ export class PaymentsService {
         undefined,
         `Stripe checkout expired: ${session.id}`,
       );
+      await this.releaseLoyaltyRedemption(order.id);
     }
   }
 
@@ -753,6 +798,7 @@ export class PaymentsService {
         undefined,
         `Stripe payment failed: ${paymentIntent.id}`,
       );
+      await this.releaseLoyaltyRedemption(order.id);
     }
   }
 
@@ -779,6 +825,54 @@ export class PaymentsService {
       throw new InternalServerErrorException("Stripe no esta configurado.");
     }
     return this.stripe;
+  }
+
+  private async stripeDiscountsForOrder(
+    stripe: Stripe,
+    order: { id: string; currency: string; discountCents: number },
+  ) {
+    const discountCents = order.discountCents ?? 0;
+    if (discountCents <= 0) {
+      return undefined;
+    }
+
+    const coupon = await stripe.coupons.create(
+      {
+        amount_off: discountCents,
+        currency: order.currency,
+        duration: "once",
+        name: "Mordida Club",
+      },
+      { idempotencyKey: `loyalty-coupon:${order.id}` },
+    );
+
+    return [{ coupon: coupon.id }];
+  }
+
+  private async markLoyaltyRedemptionApplied(orderId: string) {
+    await this.prisma.loyaltyRedemption.updateMany({
+      where: {
+        orderId,
+        status: LoyaltyRedemptionStatus.RESERVED,
+      },
+      data: {
+        status: LoyaltyRedemptionStatus.APPLIED,
+        appliedAt: new Date(),
+      },
+    });
+  }
+
+  private async releaseLoyaltyRedemption(orderId: string) {
+    await this.prisma.loyaltyRedemption.updateMany({
+      where: {
+        orderId,
+        status: { in: consumedLoyaltyStatuses },
+      },
+      data: {
+        status: LoyaltyRedemptionStatus.RELEASED,
+        releasedAt: new Date(),
+      },
+    });
   }
 
   private frontendUrl(path: string) {

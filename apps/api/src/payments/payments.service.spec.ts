@@ -30,6 +30,9 @@ describe("PaymentsService", () => {
       upsert: jest.fn(),
       aggregate: jest.fn(),
     },
+    loyaltyRedemption: {
+      updateMany: jest.fn(),
+    },
     $transaction: jest.fn(),
   };
 
@@ -47,6 +50,9 @@ describe("PaymentsService", () => {
       sessions: {
         create: jest.fn(),
       },
+    },
+    coupons: {
+      create: jest.fn(),
     },
     refunds: {
       create: jest.fn(),
@@ -95,6 +101,8 @@ describe("PaymentsService", () => {
     prisma.paymentRefund.aggregate.mockResolvedValue({
       _sum: { amountCents: 0 },
     });
+    prisma.loyaltyRedemption.updateMany.mockResolvedValue({ count: 0 });
+    stripe.coupons.create.mockResolvedValue({ id: "coupon_123" });
     stripe.refunds.create.mockResolvedValue({ id: "re_123" });
   });
 
@@ -354,6 +362,142 @@ describe("PaymentsService", () => {
         ]),
       }),
       { idempotencyKey: "checkout:order-1" },
+    );
+  });
+
+  it("adds a Stripe coupon when the order has a loyalty discount", async () => {
+    ordersService.getForCheckout.mockResolvedValue({
+      id: "order-1",
+      orderNumber: "MT-0001",
+      trackingToken: "track_123",
+      status: OrderStatus.CREATED,
+      paymentMethod: OrderPaymentMethod.CARD,
+      customerEmail: "cliente@example.com",
+      currency: "eur",
+      discountCents: 119,
+      totalCents: 1071,
+      deliveryFeeCents: 0,
+      items: [
+        {
+          id: "item-1",
+          productName: "Mordida Smash",
+          quantity: 1,
+          unitPriceCents: 1190,
+          removedAt: null,
+          options: [],
+        },
+      ],
+    });
+    stripe.coupons.create.mockResolvedValue({ id: "coupon_loyalty" });
+    stripe.checkout.sessions.create.mockResolvedValue({
+      id: "cs_123",
+      url: "https://stripe.test/checkout",
+      payment_intent: "pi_123",
+      expires_at: 1_787_000_000,
+    });
+
+    await service().createCheckoutSession({ orderId: "order-1" });
+
+    expect(stripe.coupons.create).toHaveBeenCalledWith(
+      {
+        amount_off: 119,
+        currency: "eur",
+        duration: "once",
+        name: "Mordida Club",
+      },
+      { idempotencyKey: "loyalty-coupon:order-1" },
+    );
+    expect(stripe.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        discounts: [{ coupon: "coupon_loyalty" }],
+      }),
+      { idempotencyKey: "checkout:order-1" },
+    );
+  });
+
+  it("marks zero-total loyalty orders as paid without opening Stripe", async () => {
+    ordersService.getForCheckout.mockResolvedValue({
+      id: "order-1",
+      orderNumber: "MT-0001",
+      trackingToken: "track_123",
+      status: OrderStatus.CREATED,
+      paymentMethod: OrderPaymentMethod.CARD,
+      customerEmail: "cliente@example.com",
+      currency: "eur",
+      discountCents: 1190,
+      totalCents: 0,
+      deliveryFeeCents: 0,
+      items: [
+        {
+          id: "item-1",
+          productName: "Mordida Smash",
+          quantity: 1,
+          unitPriceCents: 1190,
+          removedAt: null,
+          options: [],
+        },
+      ],
+    });
+    prisma.order.findUniqueOrThrow.mockResolvedValue({
+      id: "order-1",
+      orderNumber: "MT-0001",
+      trackingToken: "track_123",
+      customerEmail: "cliente@example.com",
+      customerName: "Cliente Test",
+      customerPhone: "+34611752804",
+      deliveryMethod: "PICKUP",
+      paymentMethod: "CARD",
+      subtotalCents: 1190,
+      discountCents: 1190,
+      deliveryFeeCents: 0,
+      taxCents: 0,
+      totalCents: 0,
+      createdAt: new Date("2026-08-31T20:00:00.000Z"),
+      items: [
+        {
+          productName: "Mordida Smash",
+          quantity: 1,
+          lineTotalCents: 1190,
+          options: [],
+        },
+      ],
+    });
+
+    await expect(
+      service().createCheckoutSession({ orderId: "order-1" }),
+    ).resolves.toEqual({
+      orderNumber: "MT-0001",
+      checkoutUrl: "https://mordida.test/seguimiento/MT-0001?t=track_123",
+    });
+
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+    expect(stripe.coupons.create).not.toHaveBeenCalled();
+    expect(ordersService.transitionOrder).toHaveBeenCalledWith(
+      "order-1",
+      OrderStatus.PENDING_PAYMENT,
+      undefined,
+      "Pedido cubierto por premio de fidelidad",
+    );
+    expect(ordersService.transitionOrder).toHaveBeenCalledWith(
+      "order-1",
+      OrderStatus.PAID,
+      undefined,
+      "Pedido cubierto por premio de fidelidad",
+    );
+    expect(prisma.loyaltyRedemption.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          orderId: "order-1",
+          status: "RESERVED",
+        },
+      }),
+    );
+    expect(mailService.sendOrderReceiptEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderNumber: "MT-0001",
+        discountCents: 1190,
+        totalCents: 0,
+      }),
     );
   });
 

@@ -14,6 +14,9 @@ describe("CustomersService", () => {
     order: {
       count: jest.fn(),
     },
+    loyaltyRedemption: {
+      count: jest.fn(),
+    },
     $transaction: jest.fn(),
   };
   const settings = {
@@ -43,6 +46,7 @@ describe("CustomersService", () => {
     prisma.customerAddress.update.mockResolvedValue({ id: "address-1" });
     prisma.customerAddress.delete.mockResolvedValue({});
     prisma.order.count.mockResolvedValue(0);
+    prisma.loyaltyRedemption.count.mockResolvedValue(0);
     settings.getLoyaltyProgram.mockResolvedValue({
       enabled: true,
       goalOrders: 5,
@@ -127,6 +131,8 @@ describe("CustomersService", () => {
         progressPercent: 60,
         ordersRemaining: 2,
         earnedRewards: 0,
+        usedRewards: 0,
+        availableRewards: 0,
         rewardReady: false,
         rewardLabel: "10% de descuento",
       }),
@@ -150,7 +156,27 @@ describe("CustomersService", () => {
         progressPercent: 100,
         ordersRemaining: 0,
         earnedRewards: 1,
+        usedRewards: 0,
+        availableRewards: 1,
         rewardReady: true,
+      }),
+    );
+  });
+
+  it("subtracts already used loyalty rewards from the available balance", async () => {
+    prisma.order.count.mockResolvedValue(7);
+    prisma.loyaltyRedemption.count.mockResolvedValue(1);
+
+    await expect(service().getLoyaltyProgress("user-1")).resolves.toEqual(
+      expect.objectContaining({
+        completedOrders: 7,
+        progressOrders: 2,
+        progressPercent: 40,
+        ordersRemaining: 3,
+        earnedRewards: 1,
+        usedRewards: 1,
+        availableRewards: 0,
+        rewardReady: false,
       }),
     );
   });

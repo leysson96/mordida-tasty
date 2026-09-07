@@ -49,6 +49,17 @@ enum OrderPaymentMethod {
   CASH
 }
 
+enum LoyaltyRewardType {
+  DISCOUNT_PERCENT
+  FREE_PRODUCT
+}
+
+enum LoyaltyRedemptionStatus {
+  RESERVED
+  APPLIED
+  RELEASED
+}
+
 model User {
   id                  String                   @id @default(uuid())
   email               String                   @unique
@@ -73,6 +84,7 @@ model User {
   emailTokens         EmailVerificationToken[]
   passwordResetTokens PasswordResetToken[]
   createdClosures     SpecialClosure[]         @relation("ClosureCreatedBy")
+  loyaltyRedemptions  LoyaltyRedemption[]
 }
 
 model EmailVerificationToken {
@@ -234,10 +246,31 @@ model Order {
   statusHistory         OrderStatusHistory[]
   payments              Payment[]
   refunds               PaymentRefund[]
+  loyaltyRedemption     LoyaltyRedemption?
 
   @@index([userId])
   @@index([status])
   @@index([paymentMethod])
+  @@index([createdAt])
+}
+
+model LoyaltyRedemption {
+  id                      String                   @id @default(uuid())
+  userId                  String
+  orderId                 String                   @unique
+  rewardType              LoyaltyRewardType
+  status                  LoyaltyRedemptionStatus  @default(RESERVED)
+  rewardLabel             String
+  discountCents           Int
+  goalOrdersSnapshot      Int
+  completedOrdersSnapshot Int
+  createdAt               DateTime                 @default(now())
+  appliedAt               DateTime?
+  releasedAt              DateTime?
+  user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order                   Order                    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
   @@index([createdAt])
 }
 
