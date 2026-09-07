@@ -7,15 +7,21 @@ import {
   Banknote,
   BarChart3,
   CalendarDays,
+  Clock3,
   CreditCard,
   Filter,
+  Mail,
+  MapPin,
   PackageCheck,
+  Phone,
   ReceiptText,
   RefreshCw,
   Search,
+  ShoppingBag,
   Store,
   Truck,
   Trophy,
+  UserRound,
   X,
 } from "lucide-react";
 import { api, formatMoney } from "../lib/api";
@@ -24,7 +30,8 @@ import {
   redirectOnAdminAuthError,
 } from "../lib/admin-errors";
 import { orderStatusLabels } from "../lib/order-state";
-import { paymentMethodLabel } from "../lib/payment-format";
+import { formatOrderItemOptions } from "../lib/order-format";
+import { paymentMethodLabel, paymentSummaryText } from "../lib/payment-format";
 import type {
   DeliveryMethod,
   OrderPaymentMethod,
@@ -126,6 +133,8 @@ export function AdminReportsClient() {
   const [historyOrders, setHistoryOrders] = useState<OrderSummary[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string>();
+  const [selectedHistoryOrderId, setSelectedHistoryOrderId] =
+    useState<string>();
 
   useEffect(() => {
     loadReport(initialRange.from, initialRange.to);
@@ -162,6 +171,7 @@ export function AdminReportsClient() {
       );
       setAppliedHistoryFilters(nextFilters);
       setHistoryOrders(data);
+      setSelectedHistoryOrderId(undefined);
     } catch (requestError) {
       if (redirectOnAdminAuthError(requestError)) {
         return;
@@ -231,6 +241,9 @@ export function AdminReportsClient() {
       appliedHistoryFilters.paymentMethod === "ALL" ||
       (order.paymentMethod ?? "CARD") === appliedHistoryFilters.paymentMethod,
   );
+  const selectedHistoryOrder = selectedHistoryOrderId
+    ? filteredHistoryOrders.find((order) => order.id === selectedHistoryOrderId)
+    : undefined;
 
   return (
     <main className="page-shell admin-page admin-report-page">
@@ -547,61 +560,71 @@ export function AdminReportsClient() {
             Cargando historial
           </div>
         ) : filteredHistoryOrders.length ? (
-          <div className="order-history-list">
-            {filteredHistoryOrders.map((order) => {
-              const DeliveryIcon =
-                order.deliveryMethod === "DELIVERY" ? Truck : Store;
-              const PaymentIcon =
-                order.paymentMethod === "CASH" ? Banknote : CreditCard;
+          <div className="order-history-layout">
+            <div className="order-history-list">
+              {filteredHistoryOrders.map((order) => {
+                const DeliveryIcon =
+                  order.deliveryMethod === "DELIVERY" ? Truck : Store;
+                const PaymentIcon =
+                  order.paymentMethod === "CASH" ? Banknote : CreditCard;
+                const selected = order.id === selectedHistoryOrderId;
 
-              return (
-                <article
-                  className={`order-history-row status-${order.status.toLowerCase()}`}
-                  key={order.id}
-                >
-                  <div className="history-order-main">
-                    <div>
-                      <strong className="order-number">
-                        {order.orderNumber}
-                      </strong>
-                      <time dateTime={order.createdAt}>
-                        {formatHistoryDate(order.createdAt)}
-                      </time>
+                return (
+                  <button
+                    type="button"
+                    className={`order-history-row status-${order.status.toLowerCase()} ${
+                      selected ? "selected" : ""
+                    }`}
+                    key={order.id}
+                    onClick={() => setSelectedHistoryOrderId(order.id)}
+                  >
+                    <div className="history-order-main">
+                      <div>
+                        <strong className="order-number">
+                          {order.orderNumber}
+                        </strong>
+                        <time dateTime={order.createdAt}>
+                          {formatHistoryDate(order.createdAt)}
+                        </time>
+                      </div>
+                      <span
+                        className={`history-status status-${order.status.toLowerCase()}`}
+                      >
+                        {orderStatusLabels[order.status]}
+                      </span>
                     </div>
-                    <span
-                      className={`history-status status-${order.status.toLowerCase()}`}
-                    >
-                      {orderStatusLabels[order.status]}
-                    </span>
-                  </div>
-                  <div className="history-order-meta">
-                    <span className="history-customer">
-                      {order.customerName ??
-                        order.deliveryName ??
-                        "Cliente sin nombre"}
-                    </span>
-                    <span className="history-chip">
-                      <DeliveryIcon aria-hidden="true" size={16} />
-                      {deliveryMethodLabel(order.deliveryMethod)}
-                    </span>
-                    <span
-                      className={`history-chip ${
-                        order.paymentMethod === "CASH" ? "cash" : ""
-                      }`}
-                    >
-                      <PaymentIcon aria-hidden="true" size={16} />
-                      {paymentMethodLabel(order)}
-                    </span>
-                    <span className="history-chip">
-                      {orderItemCountLabel(order)}
-                    </span>
-                    <strong className="history-order-total">
-                      {formatMoney(order.totalCents)}
-                    </strong>
-                  </div>
-                </article>
-              );
-            })}
+                    <div className="history-order-meta">
+                      <span className="history-customer">
+                        {customerDisplayName(order)}
+                      </span>
+                      <span className="history-chip">
+                        <DeliveryIcon aria-hidden="true" size={16} />
+                        {deliveryMethodLabel(order.deliveryMethod)}
+                      </span>
+                      <span
+                        className={`history-chip ${
+                          order.paymentMethod === "CASH" ? "cash" : ""
+                        }`}
+                      >
+                        <PaymentIcon aria-hidden="true" size={16} />
+                        {paymentMethodLabel(order)}
+                      </span>
+                      <span className="history-chip">
+                        {orderItemCountLabel(order)}
+                      </span>
+                      <strong className="history-order-total">
+                        {formatMoney(order.totalCents)}
+                      </strong>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <OrderHistoryDetail
+              order={selectedHistoryOrder}
+              onClose={() => setSelectedHistoryOrderId(undefined)}
+            />
           </div>
         ) : (
           <div className="empty-state">Sin pedidos para estos filtros.</div>
@@ -611,6 +634,207 @@ export function AdminReportsClient() {
   );
 }
 
+function OrderHistoryDetail({
+  order,
+  onClose,
+}: {
+  order?: OrderSummary;
+  onClose: () => void;
+}) {
+  if (!order) {
+    return (
+      <aside className="order-history-detail empty">
+        <ReceiptText aria-hidden="true" size={28} />
+        <strong>Selecciona un pedido</strong>
+        <span>Abre cualquier pedido del historial para revisar sus datos.</span>
+      </aside>
+    );
+  }
+
+  const isDelivery = order.deliveryMethod === "DELIVERY";
+  const phone = customerPhone(order);
+
+  return (
+    <aside className="order-history-detail">
+      <div className="history-detail-head">
+        <div>
+          <p className="eyebrow">Pedido</p>
+          <h3>{order.orderNumber}</h3>
+          <span>{orderStatusLabels[order.status]}</span>
+        </div>
+        <button
+          type="button"
+          className="icon-button"
+          onClick={onClose}
+          title="Cerrar detalle"
+        >
+          <X aria-hidden="true" size={18} />
+        </button>
+      </div>
+
+      <div className="history-detail-section">
+        <h4>
+          <UserRound aria-hidden="true" size={17} />
+          Cliente
+        </h4>
+        <dl className="history-detail-list">
+          <div>
+            <dt>Nombre</dt>
+            <dd>{customerDisplayName(order)}</dd>
+          </div>
+          {order.customerEmail && (
+            <div>
+              <dt>
+                <Mail aria-hidden="true" size={15} />
+                Email
+              </dt>
+              <dd>{order.customerEmail}</dd>
+            </div>
+          )}
+          {phone && (
+            <div>
+              <dt>
+                <Phone aria-hidden="true" size={15} />
+                Telefono
+              </dt>
+              <dd>{phone}</dd>
+            </div>
+          )}
+        </dl>
+      </div>
+
+      <div className="history-detail-section">
+        <h4>
+          {isDelivery ? (
+            <Truck aria-hidden="true" size={17} />
+          ) : (
+            <Store aria-hidden="true" size={17} />
+          )}
+          Entrega
+        </h4>
+        <dl className="history-detail-list">
+          <div>
+            <dt>Metodo</dt>
+            <dd>{deliveryMethodLabel(order.deliveryMethod)}</dd>
+          </div>
+          {isDelivery && (
+            <>
+              {order.deliveryName && (
+                <div>
+                  <dt>Nombre entrega</dt>
+                  <dd>{order.deliveryName}</dd>
+                </div>
+              )}
+              <div>
+                <dt>
+                  <MapPin aria-hidden="true" size={15} />
+                  Direccion
+                </dt>
+                <dd>{deliveryAddress(order)}</dd>
+              </div>
+              {order.deliveryNotes && (
+                <div>
+                  <dt>Notas</dt>
+                  <dd>{order.deliveryNotes}</dd>
+                </div>
+              )}
+            </>
+          )}
+        </dl>
+      </div>
+
+      <div className="history-detail-section">
+        <h4>
+          <ShoppingBag aria-hidden="true" size={17} />
+          Productos
+        </h4>
+        <ul className="history-detail-items">
+          {order.items.map((item, index) => (
+            <li
+              key={item.id ?? `${order.id}-${item.productName}-${index}`}
+              className={item.removedAt ? "removed" : undefined}
+            >
+              <span>{item.quantity}x</span>
+              <div>
+                <strong>{item.productName}</strong>
+                {item.options && item.options.length > 0 && (
+                  <small>{formatOrderItemOptions(item)}</small>
+                )}
+                {item.removedAt && (
+                  <small>{item.removedReason ?? "Producto quitado"}</small>
+                )}
+              </div>
+              <strong>{formatMoney(item.lineTotalCents)}</strong>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="history-detail-section">
+        <h4>
+          <CreditCard aria-hidden="true" size={17} />
+          Pago y totales
+        </h4>
+        <dl className="history-total-list">
+          <div>
+            <dt>Metodo</dt>
+            <dd>{paymentSummaryText(order)}</dd>
+          </div>
+          {order.subtotalCents !== undefined && (
+            <div>
+              <dt>Subtotal</dt>
+              <dd>{formatMoney(order.subtotalCents)}</dd>
+            </div>
+          )}
+          {(order.discountCents ?? 0) > 0 && (
+            <div>
+              <dt>Descuento</dt>
+              <dd>-{formatMoney(order.discountCents ?? 0)}</dd>
+            </div>
+          )}
+          {(order.deliveryFeeCents ?? 0) > 0 && (
+            <div>
+              <dt>Envio</dt>
+              <dd>{formatMoney(order.deliveryFeeCents ?? 0)}</dd>
+            </div>
+          )}
+          {(order.taxCents ?? 0) > 0 && (
+            <div>
+              <dt>Impuestos</dt>
+              <dd>{formatMoney(order.taxCents ?? 0)}</dd>
+            </div>
+          )}
+          <div className="history-total-strong">
+            <dt>Total</dt>
+            <dd>{formatMoney(order.totalCents)}</dd>
+          </div>
+        </dl>
+      </div>
+
+      <div className="history-detail-section">
+        <h4>
+          <Clock3 aria-hidden="true" size={17} />
+          Historial de estados
+        </h4>
+        {order.statusHistory?.length ? (
+          <ol className="history-status-list">
+            {order.statusHistory.map((item, index) => (
+              <li key={`${item.toStatus}-${item.createdAt}-${index}`}>
+                <span>{orderStatusLabels[item.toStatus]}</span>
+                <time dateTime={item.createdAt}>
+                  {formatHistoryDate(item.createdAt)}
+                </time>
+                {item.note && <small>{item.note}</small>}
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="muted">Sin movimientos registrados.</p>
+        )}
+      </div>
+    </aside>
+  );
+}
 function formatReportDate(value: string) {
   return new Date(`${value}T00:00:00`).toLocaleDateString("es-ES", {
     day: "2-digit",
@@ -659,6 +883,26 @@ function formatHistoryDate(value: string) {
 
 function deliveryMethodLabel(method: DeliveryMethod) {
   return method === "DELIVERY" ? "Envio" : "Recogida";
+}
+
+function customerDisplayName(order: OrderSummary) {
+  return order.customerName ?? order.deliveryName ?? "Cliente sin nombre";
+}
+
+function customerPhone(order: OrderSummary) {
+  return order.deliveryPhone ?? order.customerPhone;
+}
+
+function deliveryAddress(order: OrderSummary) {
+  const address = [
+    order.deliveryStreet,
+    order.deliveryPostalCode,
+    order.deliveryCity,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  return address || "Direccion no registrada";
 }
 
 function orderItemCountLabel(order: OrderSummary) {
