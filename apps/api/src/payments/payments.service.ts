@@ -23,6 +23,7 @@ import {
 import { OrdersService } from "../orders/orders.service";
 import { MailService } from "../mail/mail.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { SettingsService } from "../settings/settings.service";
 import { CreateCheckoutSessionDto } from "./dto/create-checkout-session.dto";
 
 const doNotFulfillAfterPaymentStatuses: OrderStatus[] = [
@@ -67,6 +68,11 @@ const consumedLoyaltyStatuses: LoyaltyRedemptionStatus[] = [
   LoyaltyRedemptionStatus.APPLIED,
 ];
 
+const noLongerPayableStatuses: OrderStatus[] = [
+  OrderStatus.CANCELLED,
+  OrderStatus.EXPIRED,
+];
+
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
@@ -77,6 +83,7 @@ export class PaymentsService {
     private readonly ordersService: OrdersService,
     private readonly mailService: MailService,
     private readonly configService: ConfigService<AppEnv, true>,
+    private readonly settingsService: SettingsService,
   ) {
     const secretKey = this.configService.get("STRIPE_SECRET_KEY", {
       infer: true,
@@ -90,6 +97,10 @@ export class PaymentsService {
     const order = await this.ordersService.getForCheckout(dto.orderId);
     const payableItems = order.items.filter((item) => !item.removedAt);
 
+    if (order.trackingToken !== dto.trackingToken) {
+      throw new NotFoundException("Order not found.");
+    }
+
     if (order.paymentMethod === OrderPaymentMethod.CASH) {
       throw new BadRequestException(
         "Este pedido se pagara en efectivo y no necesita Stripe.",
@@ -100,9 +111,15 @@ export class PaymentsService {
       throw new BadRequestException("Order is already paid.");
     }
 
+    if (noLongerPayableStatuses.includes(order.status)) {
+      throw new BadRequestException("Order is no longer payable.");
+    }
+
     if (payableItems.length === 0) {
       throw new BadRequestException("El pedido no tiene productos activos.");
     }
+
+    await this.ensureCheckoutAllowedByServiceStatus(order);
 
     if (order.totalCents <= 0) {
       await this.ordersService.transitionOrder(
@@ -825,6 +842,44 @@ export class PaymentsService {
       throw new InternalServerErrorException("Stripe no esta configurado.");
     }
     return this.stripe;
+  }
+
+  private async ensureCheckoutAllowedByServiceStatus(order: {
+    id: string;
+    status: OrderStatus;
+    createdAt: Date;
+    stripeSessionId: string | null;
+  }) {
+    const serviceStatus = await this.settingsService.getServiceStatus();
+    if (serviceStatus.openNow || this.isWithinCheckoutGrace(order.createdAt)) {
+      return;
+    }
+
+    const reason =
+      serviceStatus.reason ?? "Los pedidos estan cerrados ahora mismo.";
+    const graceMinutes =
+      this.configService.get("CHECKOUT_GRACE_MINUTES", { infer: true }) ?? 15;
+
+    if (!order.stripeSessionId && order.status !== OrderStatus.CANCELLED) {
+      await this.ordersService.transitionOrder(
+        order.id,
+        OrderStatus.EXPIRED,
+        undefined,
+        `Checkout rechazado fuera de ventana de gracia (${graceMinutes} min). ${reason}`,
+      );
+    }
+
+    throw new BadRequestException(
+      "El plazo para pagar este pedido ha expirado porque la tienda esta cerrada.",
+    );
+  }
+
+  private isWithinCheckoutGrace(createdAt: Date) {
+    const graceMinutes =
+      this.configService.get("CHECKOUT_GRACE_MINUTES", { infer: true }) ?? 15;
+    const graceMilliseconds = graceMinutes * 60_000;
+
+    return Date.now() - createdAt.getTime() <= graceMilliseconds;
   }
 
   private async stripeDiscountsForOrder(

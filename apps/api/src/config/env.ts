@@ -27,6 +27,7 @@ export interface AppEnv {
   STRIPE_WEBHOOK_SECRET: string;
   STRIPE_SUCCESS_PATH: string;
   STRIPE_CANCEL_PATH: string;
+  CHECKOUT_GRACE_MINUTES: number;
   SMTP_HOST?: string;
   SMTP_PORT: number;
   SMTP_SECURE: boolean;
@@ -67,6 +68,21 @@ function parsePositiveInteger(
   const parsed = Number(value ?? fallback);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`${key} must be a positive integer.`);
+  }
+
+  return parsed;
+}
+
+function parseIntegerInRange(
+  value: string | undefined,
+  fallback: number,
+  key: string,
+  min: number,
+  max: number,
+) {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new Error(`${key} must be an integer between ${min} and ${max}.`);
   }
 
   return parsed;
@@ -124,6 +140,13 @@ export function validateEnvironment(env: RawEnv): AppEnv {
       env.STRIPE_SUCCESS_PATH ??
       "/seguimiento/{ORDER_NUMBER}?t={TRACKING_TOKEN}",
     STRIPE_CANCEL_PATH: env.STRIPE_CANCEL_PATH ?? "/checkout?cancelled=1",
+    CHECKOUT_GRACE_MINUTES: parseIntegerInRange(
+      env.CHECKOUT_GRACE_MINUTES,
+      15,
+      "CHECKOUT_GRACE_MINUTES",
+      1,
+      120,
+    ),
     SMTP_HOST: env.SMTP_HOST,
     SMTP_PORT: parsePositiveInteger(env.SMTP_PORT, 587, "SMTP_PORT"),
     SMTP_SECURE: env.SMTP_SECURE === "true",

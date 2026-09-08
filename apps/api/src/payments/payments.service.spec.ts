@@ -41,6 +41,10 @@ describe("PaymentsService", () => {
     transitionOrder: jest.fn(),
   };
 
+  const settingsService = {
+    getServiceStatus: jest.fn(),
+  };
+
   const mailService = {
     sendOrderReceiptEmail: jest.fn(),
   };
@@ -62,11 +66,12 @@ describe("PaymentsService", () => {
     },
   };
 
-  const configValues: Record<string, string | undefined> = {
+  const configValues: Record<string, string | number | undefined> = {
     STRIPE_WEBHOOK_SECRET: "whsec_test",
     FRONTEND_URL: "https://mordida.test",
     STRIPE_SUCCESS_PATH: "/seguimiento/{ORDER_NUMBER}?t={TRACKING_TOKEN}",
     STRIPE_CANCEL_PATH: "/carrito",
+    CHECKOUT_GRACE_MINUTES: 15,
   };
 
   const config = {
@@ -102,6 +107,11 @@ describe("PaymentsService", () => {
       _sum: { amountCents: 0 },
     });
     prisma.loyaltyRedemption.updateMany.mockResolvedValue({ count: 0 });
+    settingsService.getServiceStatus.mockResolvedValue({
+      openNow: true,
+      pause: { paused: false, reason: "" },
+    });
+    configValues.CHECKOUT_GRACE_MINUTES = 15;
     stripe.coupons.create.mockResolvedValue({ id: "coupon_123" });
     stripe.refunds.create.mockResolvedValue({ id: "re_123" });
   });
@@ -112,6 +122,7 @@ describe("PaymentsService", () => {
       ordersService as never,
       mailService as never,
       config as never,
+      settingsService as never,
     );
     (paymentsService as unknown as { stripe: typeof stripe }).stripe = stripe;
     return paymentsService;
@@ -186,7 +197,12 @@ describe("PaymentsService", () => {
     });
   });
 
-  it("moves a pending order to paid when Stripe confirms checkout", async () => {
+  it("moves a pending order to paid when Stripe confirms checkout even if the store is closed", async () => {
+    settingsService.getServiceStatus.mockResolvedValue({
+      openNow: false,
+      reason: "Fuera de horario de pedidos.",
+      pause: { paused: false, reason: "" },
+    });
     stripe.webhooks.constructEvent.mockReturnValue({
       id: "evt_paid",
       type: "checkout.session.completed",
@@ -245,6 +261,7 @@ describe("PaymentsService", () => {
         customerEmail: "cliente@example.com",
       }),
     );
+    expect(settingsService.getServiceStatus).not.toHaveBeenCalled();
   });
 
   it("expires unpaid orders when Stripe checkout expires", async () => {
@@ -313,8 +330,12 @@ describe("PaymentsService", () => {
       orderNumber: "MT-0001",
       trackingToken: "track_123",
       status: OrderStatus.CREATED,
+      createdAt: new Date("2026-09-01T19:00:00.000Z"),
+      stripeSessionId: null,
+      paymentMethod: OrderPaymentMethod.CARD,
       customerEmail: "cliente@example.com",
       currency: "eur",
+      discountCents: 0,
       totalCents: 1440,
       deliveryFeeCents: 250,
       items: [
@@ -341,7 +362,10 @@ describe("PaymentsService", () => {
     });
 
     await expect(
-      service().createCheckoutSession({ orderId: "order-1" }),
+      service().createCheckoutSession({
+        orderId: "order-1",
+        trackingToken: "track_123",
+      }),
     ).resolves.toEqual({
       orderNumber: "MT-0001",
       checkoutUrl: "https://stripe.test/checkout",
@@ -365,12 +389,235 @@ describe("PaymentsService", () => {
     );
   });
 
+  it("rejects checkout when the tracking token is wrong", async () => {
+    ordersService.getForCheckout.mockResolvedValue({
+      id: "order-1",
+      orderNumber: "MT-0001",
+      trackingToken: "track_123",
+      status: OrderStatus.CREATED,
+      createdAt: new Date("2026-09-01T19:00:00.000Z"),
+      stripeSessionId: null,
+      paymentMethod: OrderPaymentMethod.CARD,
+      items: [{ removedAt: null }],
+    });
+
+    await expect(
+      service().createCheckoutSession({
+        orderId: "order-1",
+        trackingToken: "wrong_tracking_token_value_123",
+      }),
+    ).rejects.toThrow("Order not found.");
+
+    expect(settingsService.getServiceStatus).not.toHaveBeenCalled();
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects checkout when the tracking token is missing", async () => {
+    ordersService.getForCheckout.mockResolvedValue({
+      id: "order-1",
+      orderNumber: "MT-0001",
+      trackingToken: "track_123",
+      status: OrderStatus.CREATED,
+      createdAt: new Date("2026-09-01T19:00:00.000Z"),
+      stripeSessionId: null,
+      paymentMethod: OrderPaymentMethod.CARD,
+      items: [{ removedAt: null }],
+    });
+
+    await expect(
+      service().createCheckoutSession({ orderId: "order-1" } as never),
+    ).rejects.toThrow("Order not found.");
+
+    expect(settingsService.getServiceStatus).not.toHaveBeenCalled();
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+
+  it.each([OrderStatus.CANCELLED, OrderStatus.EXPIRED])(
+    "rejects checkout when the order is %s",
+    async (status) => {
+      ordersService.getForCheckout.mockResolvedValue({
+        id: "order-1",
+        orderNumber: "MT-0001",
+        trackingToken: "track_123",
+        status,
+        paymentMethod: OrderPaymentMethod.CARD,
+        items: [{ removedAt: null }],
+      });
+
+      await expect(
+        service().createCheckoutSession({
+          orderId: "order-1",
+          trackingToken: "track_123",
+        }),
+      ).rejects.toThrow("Order is no longer payable.");
+
+      expect(settingsService.getServiceStatus).not.toHaveBeenCalled();
+      expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it("allows checkout for a recent order when the store is closed inside the grace window", async () => {
+    settingsService.getServiceStatus.mockResolvedValue({
+      openNow: false,
+      reason: "Fuera de horario de pedidos.",
+      pause: { paused: false, reason: "" },
+    });
+    ordersService.getForCheckout.mockResolvedValue({
+      id: "order-1",
+      orderNumber: "MT-0001",
+      trackingToken: "track_123",
+      status: OrderStatus.CREATED,
+      createdAt: new Date(Date.now() - 5 * 60_000),
+      stripeSessionId: null,
+      paymentMethod: OrderPaymentMethod.CARD,
+      customerEmail: "cliente@example.com",
+      currency: "eur",
+      discountCents: 0,
+      totalCents: 1440,
+      deliveryFeeCents: 0,
+      items: [
+        {
+          id: "item-1",
+          productName: "Mordida Smash",
+          quantity: 1,
+          unitPriceCents: 1440,
+          removedAt: null,
+          options: [],
+        },
+      ],
+    });
+    stripe.checkout.sessions.create.mockResolvedValue({
+      id: "cs_123",
+      url: "https://stripe.test/checkout",
+      payment_intent: "pi_123",
+      expires_at: 1_787_000_000,
+    });
+
+    await expect(
+      service().createCheckoutSession({
+        orderId: "order-1",
+        trackingToken: "track_123",
+      }),
+    ).resolves.toEqual({
+      orderNumber: "MT-0001",
+      checkoutUrl: "https://stripe.test/checkout",
+    });
+
+    expect(stripe.checkout.sessions.create).toHaveBeenCalled();
+    expect(ordersService.transitionOrder).not.toHaveBeenCalledWith(
+      "order-1",
+      OrderStatus.EXPIRED,
+      undefined,
+      expect.any(String),
+    );
+  });
+
+  it("expires an unpaid order and rejects checkout when the store is closed outside the grace window", async () => {
+    settingsService.getServiceStatus.mockResolvedValue({
+      openNow: false,
+      reason: "Fuera de horario de pedidos.",
+      pause: { paused: false, reason: "" },
+    });
+    ordersService.getForCheckout.mockResolvedValue({
+      id: "order-1",
+      orderNumber: "MT-0001",
+      trackingToken: "track_123",
+      status: OrderStatus.CREATED,
+      createdAt: new Date(Date.now() - 16 * 60_000),
+      stripeSessionId: null,
+      paymentMethod: OrderPaymentMethod.CARD,
+      customerEmail: "cliente@example.com",
+      currency: "eur",
+      discountCents: 0,
+      totalCents: 1440,
+      deliveryFeeCents: 0,
+      items: [
+        {
+          id: "item-1",
+          productName: "Mordida Smash",
+          quantity: 1,
+          unitPriceCents: 1440,
+          removedAt: null,
+          options: [],
+        },
+      ],
+    });
+
+    await expect(
+      service().createCheckoutSession({
+        orderId: "order-1",
+        trackingToken: "track_123",
+      }),
+    ).rejects.toThrow(
+      "El plazo para pagar este pedido ha expirado porque la tienda esta cerrada.",
+    );
+
+    expect(ordersService.transitionOrder).toHaveBeenCalledWith(
+      "order-1",
+      OrderStatus.EXPIRED,
+      undefined,
+      "Checkout rechazado fuera de ventana de gracia (15 min). Fuera de horario de pedidos.",
+    );
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects closed checkout outside grace without expiring an order that already has a Stripe session", async () => {
+    settingsService.getServiceStatus.mockResolvedValue({
+      openNow: false,
+      reason: "Fuera de horario de pedidos.",
+      pause: { paused: false, reason: "" },
+    });
+    ordersService.getForCheckout.mockResolvedValue({
+      id: "order-1",
+      orderNumber: "MT-0001",
+      trackingToken: "track_123",
+      status: OrderStatus.PENDING_PAYMENT,
+      createdAt: new Date(Date.now() - 16 * 60_000),
+      stripeSessionId: "cs_existing",
+      paymentMethod: OrderPaymentMethod.CARD,
+      customerEmail: "cliente@example.com",
+      currency: "eur",
+      discountCents: 0,
+      totalCents: 1440,
+      deliveryFeeCents: 0,
+      items: [
+        {
+          id: "item-1",
+          productName: "Mordida Smash",
+          quantity: 1,
+          unitPriceCents: 1440,
+          removedAt: null,
+          options: [],
+        },
+      ],
+    });
+
+    await expect(
+      service().createCheckoutSession({
+        orderId: "order-1",
+        trackingToken: "track_123",
+      }),
+    ).rejects.toThrow(
+      "El plazo para pagar este pedido ha expirado porque la tienda esta cerrada.",
+    );
+
+    expect(ordersService.transitionOrder).not.toHaveBeenCalledWith(
+      "order-1",
+      OrderStatus.EXPIRED,
+      undefined,
+      expect.any(String),
+    );
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+
   it("adds a Stripe coupon when the order has a loyalty discount", async () => {
     ordersService.getForCheckout.mockResolvedValue({
       id: "order-1",
       orderNumber: "MT-0001",
       trackingToken: "track_123",
       status: OrderStatus.CREATED,
+      createdAt: new Date("2026-09-01T19:00:00.000Z"),
+      stripeSessionId: null,
       paymentMethod: OrderPaymentMethod.CARD,
       customerEmail: "cliente@example.com",
       currency: "eur",
@@ -396,7 +643,10 @@ describe("PaymentsService", () => {
       expires_at: 1_787_000_000,
     });
 
-    await service().createCheckoutSession({ orderId: "order-1" });
+    await service().createCheckoutSession({
+      orderId: "order-1",
+      trackingToken: "track_123",
+    });
 
     expect(stripe.coupons.create).toHaveBeenCalledWith(
       {
@@ -421,6 +671,8 @@ describe("PaymentsService", () => {
       orderNumber: "MT-0001",
       trackingToken: "track_123",
       status: OrderStatus.CREATED,
+      createdAt: new Date("2026-09-01T19:00:00.000Z"),
+      stripeSessionId: null,
       paymentMethod: OrderPaymentMethod.CARD,
       customerEmail: "cliente@example.com",
       currency: "eur",
@@ -464,7 +716,10 @@ describe("PaymentsService", () => {
     });
 
     await expect(
-      service().createCheckoutSession({ orderId: "order-1" }),
+      service().createCheckoutSession({
+        orderId: "order-1",
+        trackingToken: "track_123",
+      }),
     ).resolves.toEqual({
       orderNumber: "MT-0001",
       checkoutUrl: "https://mordida.test/seguimiento/MT-0001?t=track_123",
@@ -504,12 +759,16 @@ describe("PaymentsService", () => {
   it("rejects checkout when all order items were removed", async () => {
     ordersService.getForCheckout.mockResolvedValue({
       id: "order-1",
+      trackingToken: "track_123",
       status: OrderStatus.CREATED,
       items: [{ removedAt: new Date() }],
     });
 
     await expect(
-      service().createCheckoutSession({ orderId: "order-1" }),
+      service().createCheckoutSession({
+        orderId: "order-1",
+        trackingToken: "track_123",
+      }),
     ).rejects.toThrow(BadRequestException);
 
     expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
@@ -518,13 +777,17 @@ describe("PaymentsService", () => {
   it("rejects Stripe checkout for cash orders", async () => {
     ordersService.getForCheckout.mockResolvedValue({
       id: "order-1",
+      trackingToken: "track_123",
       status: OrderStatus.CREATED,
       paymentMethod: OrderPaymentMethod.CASH,
       items: [{ removedAt: null }],
     });
 
     await expect(
-      service().createCheckoutSession({ orderId: "order-1" }),
+      service().createCheckoutSession({
+        orderId: "order-1",
+        trackingToken: "track_123",
+      }),
     ).rejects.toThrow("Este pedido se pagara en efectivo");
 
     expect(ordersService.transitionOrder).not.toHaveBeenCalled();

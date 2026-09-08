@@ -75,6 +75,25 @@ describe("environment validation", () => {
     );
   });
 
+  it("defaults checkout grace window to 15 minutes", () => {
+    const env = validateEnvironment({
+      DATABASE_URL: "postgresql://example",
+      JWT_SECRET: "a".repeat(40),
+    });
+
+    expect(env.CHECKOUT_GRACE_MINUTES).toBe(15);
+  });
+
+  it("accepts a bounded checkout grace window", () => {
+    const env = validateEnvironment({
+      DATABASE_URL: "postgresql://example",
+      JWT_SECRET: "a".repeat(40),
+      CHECKOUT_GRACE_MINUTES: "30",
+    });
+
+    expect(env.CHECKOUT_GRACE_MINUTES).toBe(30);
+  });
+
   it("uses shorter default JWT sessions for staff", () => {
     const env = validateEnvironment({
       DATABASE_URL: "postgresql://example",
@@ -128,6 +147,15 @@ describe("environment validation", () => {
     expect(() =>
       validateEnvironment({ ...baseEnv, UPLOAD_MAX_BYTES: "-1" }),
     ).toThrow("UPLOAD_MAX_BYTES must be a positive integer.");
+    expect(() =>
+      validateEnvironment({ ...baseEnv, CHECKOUT_GRACE_MINUTES: "0" }),
+    ).toThrow("CHECKOUT_GRACE_MINUTES must be an integer between 1 and 120.");
+    expect(() =>
+      validateEnvironment({ ...baseEnv, CHECKOUT_GRACE_MINUTES: "121" }),
+    ).toThrow("CHECKOUT_GRACE_MINUTES must be an integer between 1 and 120.");
+    expect(() =>
+      validateEnvironment({ ...baseEnv, CHECKOUT_GRACE_MINUTES: "abc" }),
+    ).toThrow("CHECKOUT_GRACE_MINUTES must be an integer between 1 and 120.");
   });
 
   it("rejects database URLs that are not PostgreSQL connection strings", () => {

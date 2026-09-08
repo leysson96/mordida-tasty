@@ -360,11 +360,18 @@ export default function CheckoutPage() {
         return;
       }
 
+      if (!order.trackingToken) {
+        throw new Error("No se pudo abrir el pago seguro del pedido.");
+      }
+
       const checkout = await api<CheckoutSessionResponse>(
         "/payments/checkout",
         {
           method: "POST",
-          body: JSON.stringify({ orderId: order.id }),
+          body: JSON.stringify({
+            orderId: order.id,
+            trackingToken: order.trackingToken,
+          }),
         },
       );
 

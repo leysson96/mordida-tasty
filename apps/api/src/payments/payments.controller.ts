@@ -1,6 +1,7 @@
 import { Body, Controller, Post, Req } from "@nestjs/common";
 import { SkipThrottle, Throttle } from "@nestjs/throttler";
 import { Request } from "express";
+import { SkipOriginGuard } from "../common/guards/origin.guard";
 import { CreateCheckoutSessionDto } from "./dto/create-checkout-session.dto";
 import { PaymentsService } from "./payments.service";
 
@@ -16,6 +17,7 @@ export class PaymentsController {
 
   @Post("webhook")
   @SkipThrottle()
+  @SkipOriginGuard()
   handleWebhook(@Req() request: Request & { rawBody?: Buffer }) {
     return this.paymentsService.handleWebhook(request);
   }
