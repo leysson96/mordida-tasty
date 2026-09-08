@@ -39,8 +39,8 @@ Estado actualizado: 2026-08-31
 - [x] Subida de imagenes desde el ordenador para portada y productos.
 - [x] Categorias ocultas bloqueadas tambien en detalle publico, carritos antiguos y checkout backend.
 - [x] Pedidos de hoy, reportes y numeracion diaria usando `APP_TIMEZONE`.
-- [x] Variables obligatorias de produccion ampliadas con `API_PUBLIC_URL` y `UPLOAD_DIR`.
-- [x] Plantilla Render preparada con Persistent Disk para imagenes subidas desde admin.
+- [x] Variables obligatorias de produccion ampliadas con `API_PUBLIC_URL` y almacenamiento de imagenes.
+- [x] Plantilla Render preparada para imagenes persistentes con Cloudinary y fallback local.
 - [x] Limites de pedido publico: maximo 30 lineas y 25 unidades por producto.
 - [x] Horarios editables validados por backend antes de guardar.
 - [x] Horarios nocturnos corregidos: rangos como `20:00-02:00` mantienen abierto el servicio despues de medianoche.

@@ -53,7 +53,9 @@ npm run dev
 
 La API escucha en `http://localhost:4000` y la web en `http://localhost:3000`.
 El buzon local de desarrollo escucha en `http://localhost:8025`.
-Las imagenes subidas desde admin se guardan en `UPLOAD_DIR` y se sirven desde
+Las imagenes subidas desde admin se envian a Cloudinary si `CLOUDINARY_CLOUD_NAME`,
+`CLOUDINARY_API_KEY` y `CLOUDINARY_API_SECRET` estan configuradas. Sin esas
+variables, desarrollo local usa `UPLOAD_DIR` y sirve los archivos desde
 `http://localhost:4000/uploads`.
 
 El seed crea el admin con el email configurado en `MORDIDA_SEED_ADMIN_EMAIL` y la clave configurada en `MORDIDA_SEED_ADMIN_PASSWORD`.

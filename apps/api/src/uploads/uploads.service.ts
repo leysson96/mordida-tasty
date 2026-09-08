@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
@@ -18,9 +19,35 @@ export interface UploadedImageFile {
   buffer: Buffer;
 }
 
+export interface StoredImage {
+  url: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+}
+
+interface CloudinaryCredentials {
+  cloudName: string;
+  apiKey: string;
+  apiSecret: string;
+}
+
 @Injectable()
 export class UploadsService {
-  constructor(private readonly configService: ConfigService<AppEnv, true>) {}
+  private readonly credentials?: CloudinaryCredentials;
+
+  constructor(private readonly configService: ConfigService<AppEnv, true>) {
+    this.credentials = this.cloudinaryCredentials();
+
+    if (this.credentials) {
+      cloudinary.config({
+        cloud_name: this.credentials.cloudName,
+        api_key: this.credentials.apiKey,
+        api_secret: this.credentials.apiSecret,
+        secure: true,
+      });
+    }
+  }
 
   async saveImage(file?: UploadedImageFile) {
     if (!file) {
@@ -46,7 +73,18 @@ export class UploadsService {
     }
 
     const bucket = new Date().toISOString().slice(0, 7);
-    const filename = `${Date.now()}-${randomUUID()}${extension}`;
+    const publicId = `${Date.now()}-${randomUUID()}`;
+
+    const cloudinaryImage = await this.uploadToCloudinary(
+      file,
+      bucket,
+      publicId,
+    );
+    if (cloudinaryImage) {
+      return cloudinaryImage;
+    }
+
+    const filename = `${publicId}${extension}`;
     const root = this.uploadRoot();
     const directory = join(root, 'images', bucket);
     const diskPath = join(directory, filename);
@@ -62,6 +100,64 @@ export class UploadsService {
       mimeType: file.mimetype,
       size: file.size
     };
+  }
+
+  private async uploadToCloudinary(
+    file: UploadedImageFile,
+    bucket: string,
+    publicId: string
+  ): Promise<StoredImage | undefined> {
+    if (!this.credentials) {
+      return undefined;
+    }
+
+    const result = await new Promise<UploadApiResponse>(
+      (resolvePromise, rejectPromise) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            folder: `mordida-tasty/images/${bucket}`,
+            public_id: publicId,
+            resource_type: 'image',
+            overwrite: false,
+          },
+          (error, uploadResult) => {
+            if (error || !uploadResult) {
+              rejectPromise(error ?? new Error('Cloudinary upload failed.'));
+              return;
+            }
+
+            resolvePromise(uploadResult);
+          },
+        );
+
+        uploadStream.end(file.buffer);
+      },
+    );
+
+    return {
+      url: result.secure_url,
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      size: file.size,
+    };
+  }
+
+  private cloudinaryCredentials(): CloudinaryCredentials | undefined {
+    const cloudName = this.configService.get('CLOUDINARY_CLOUD_NAME', {
+      infer: true,
+    });
+    const apiKey = this.configService.get('CLOUDINARY_API_KEY', {
+      infer: true,
+    });
+    const apiSecret = this.configService.get('CLOUDINARY_API_SECRET', {
+      infer: true,
+    });
+
+    if (!cloudName || !apiKey || !apiSecret) {
+      return undefined;
+    }
+
+    return { cloudName, apiKey, apiSecret };
   }
 
   private uploadRoot() {

@@ -7,7 +7,6 @@ const requiredInProduction = [
   "STRIPE_SECRET_KEY",
   "STRIPE_WEBHOOK_SECRET",
   "SMTP_FROM",
-  "UPLOAD_DIR",
 ] as const;
 
 export interface AppEnv {
@@ -37,6 +36,9 @@ export interface AppEnv {
   SMTP_TIMEOUT_MS: number;
   BREVO_API_KEY?: string;
   BREVO_API_URL: string;
+  CLOUDINARY_CLOUD_NAME?: string;
+  CLOUDINARY_API_KEY?: string;
+  CLOUDINARY_API_SECRET?: string;
   UPLOAD_DIR: string;
   UPLOAD_MAX_BYTES: number;
 }
@@ -98,10 +100,34 @@ function parseDatabaseUrl(value: string) {
   return value;
 }
 
+function hasAnyCloudinaryValue(env: RawEnv) {
+  return Boolean(
+    env.CLOUDINARY_CLOUD_NAME ||
+      env.CLOUDINARY_API_KEY ||
+      env.CLOUDINARY_API_SECRET,
+  );
+}
+
+function validateCloudinary(env: RawEnv) {
+  if (!hasAnyCloudinaryValue(env)) {
+    return;
+  }
+
+  for (const key of [
+    "CLOUDINARY_CLOUD_NAME",
+    "CLOUDINARY_API_KEY",
+    "CLOUDINARY_API_SECRET",
+  ]) {
+    requireValue(env, key);
+  }
+}
+
 export function validateEnvironment(env: RawEnv): AppEnv {
   for (const key of requiredInAllEnvironments) {
     requireValue(env, key);
   }
+
+  validateCloudinary(env);
 
   if (env.NODE_ENV === "production") {
     for (const key of requiredInProduction) {
@@ -117,6 +143,12 @@ export function validateEnvironment(env: RawEnv): AppEnv {
     if (!env.BREVO_API_KEY && !env.SMTP_HOST) {
       throw new Error(
         "Configure BREVO_API_KEY or SMTP_HOST in production.",
+      );
+    }
+
+    if (!hasAnyCloudinaryValue(env) && !env.UPLOAD_DIR) {
+      throw new Error(
+        "Configure Cloudinary credentials or UPLOAD_DIR in production.",
       );
     }
   }
@@ -161,6 +193,9 @@ export function validateEnvironment(env: RawEnv): AppEnv {
     BREVO_API_KEY: env.BREVO_API_KEY,
     BREVO_API_URL:
       env.BREVO_API_URL ?? "https://api.brevo.com/v3/smtp/email",
+    CLOUDINARY_CLOUD_NAME: env.CLOUDINARY_CLOUD_NAME,
+    CLOUDINARY_API_KEY: env.CLOUDINARY_API_KEY,
+    CLOUDINARY_API_SECRET: env.CLOUDINARY_API_SECRET,
     UPLOAD_DIR: env.UPLOAD_DIR ?? "uploads",
     UPLOAD_MAX_BYTES: parsePositiveInteger(
       env.UPLOAD_MAX_BYTES,

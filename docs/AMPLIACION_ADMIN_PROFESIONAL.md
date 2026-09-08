@@ -418,6 +418,6 @@ Pruebas:
 6. Opciones y extras de productos.
 7. Prueba e2e real con Postgres temporal y Stripe CLI.
 8. Servicios reales: proveedor, dominio, Postgres, Stripe live, SMTP y
-   almacenamiento persistente.
+   Cloudinary o almacenamiento persistente equivalente.
 9. PWA instalable para clientes moviles.
 10. Revision visual final con fotos reales y textos legales reales.

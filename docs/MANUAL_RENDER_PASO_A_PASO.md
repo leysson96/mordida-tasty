@@ -4,7 +4,7 @@ Estado actual: el codigo ya esta en GitHub en
 `https://github.com/leysson96/mordida-tasty.git`.
 
 Objetivo: montar la aplicacion completa en produccion con Render, PostgreSQL,
-Stripe, SMTP real, imagenes persistentes, admin, cocina y web publica.
+Stripe, SMTP real, Cloudinary para imagenes, admin, cocina y web publica.
 
 ## 0. Idea general
 
@@ -22,7 +22,7 @@ En Render vamos a crear:
 - `mordida-tasty-db`: base PostgreSQL.
 - `mordida-tasty-api`: servicio web Node para la API.
 - `mordida-tasty-web`: servicio web Node para la web.
-- Un disco persistente en la API para fotos subidas desde admin.
+- Cloudinary conectado a la API para fotos subidas desde admin.
 
 Importante: el repositorio de GitHub guarda codigo, no secretos. Los secretos
 van en el panel de Render, Stripe y el proveedor de correo.
@@ -50,9 +50,9 @@ Puedes hacer un primer despliegue de prueba sin dominio propio usando URLs
 - Fotos reales del restaurante/productos.
 - Textos legales finales: aviso legal, privacidad y condiciones.
 
-Para produccion real no recomiendo el plan gratuito si vas a usar subida de
-imagenes desde admin. La API necesita disco persistente para no perder fotos al
-redeplegar.
+Para produccion real en Render gratis no uses el disco local para imagenes. La
+API debe tener Cloudinary configurado para que las fotos no se pierdan al
+reiniciar o redesplegar.
 
 ## 3. Sobre los archivos `.env`
 
@@ -141,13 +141,9 @@ Health Check Path:
 /health
 ```
 
-En `Advanced`, crea un Persistent Disk:
-
-```text
-Disk name: mordida-tasty-uploads
-Mount path: /opt/render/project/src/uploads
-Size: 1 GB
-```
+En Render gratis no uses disco local para imagenes: se pierde al reiniciar o
+redesplegar. Configura Cloudinary en las variables de la API. Si tienes un plan
+con Persistent Disk, puedes usarlo como alternativa.
 
 Variables de entorno de la API:
 
@@ -177,7 +173,9 @@ SMTP_FROM=Mordida Tasty <no-reply@tudominio.es>
 SMTP_TIMEOUT_MS=10000
 BREVO_API_KEY=clave_api_brevo_recomendada_en_render_gratis
 BREVO_API_URL=https://api.brevo.com/v3/smtp/email
-UPLOAD_DIR=/opt/render/project/src/uploads
+CLOUDINARY_CLOUD_NAME=nombre_de_tu_nube
+CLOUDINARY_API_KEY=clave_api_cloudinary
+CLOUDINARY_API_SECRET=secreto_api_cloudinary
 UPLOAD_MAX_BYTES=5242880
 MORDIDA_SEED_ADMIN_EMAIL=tu_email_admin_real
 MORDIDA_SEED_ADMIN_PASSWORD=contrasena_temporal_larga
@@ -190,6 +188,8 @@ Notas:
 - Si todavia no tienes dominio propio, usa las URLs `onrender.com`.
 - Si luego el nombre real del servicio cambia, actualiza `FRONTEND_URL`,
   `API_PUBLIC_URL` y `CORS_ORIGIN`.
+- No agregues `UPLOAD_DIR` en Render gratis. Solo usalo si tienes un disco
+  persistente real.
 - `SESSION_COOKIE_SAME_SITE=none` es lo mas practico mientras web y API esten
   en subdominios temporales de Render.
 - Cuando uses dominio propio tipo `www.tudominio.es` y `api.tudominio.es`, usa
@@ -614,8 +614,11 @@ No llegan correos:
 
 Fotos desaparecen:
 
-- Revisa que la API tenga Persistent Disk.
-- Revisa `UPLOAD_DIR=/opt/render/project/src/uploads`.
+- Revisa que la API tenga `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` y
+  `CLOUDINARY_API_SECRET`.
+- Revisa que despues de guardar esas variables hiciste redeploy de la API.
+- Las fotos antiguas que estaban en disco efimero no se recuperan solas: hay que
+  volver a subirlas desde admin.
 
 Admin perdio 2FA:
 
@@ -631,7 +634,7 @@ Ejecutar solo desde Shell segura de Render.
 - [ ] PostgreSQL creado en Frankfurt.
 - [ ] API creada en Frankfurt.
 - [ ] Web creada en Frankfurt.
-- [ ] API con disco persistente.
+- [ ] API con Cloudinary configurado.
 - [ ] API con `/health` OK.
 - [ ] Web publica visible.
 - [ ] Migraciones ejecutadas.
@@ -655,6 +658,7 @@ Ejecutar solo desde Shell segura de Render.
 - Render Environment Variables and Secrets:
   https://render.com/docs/configure-environment-variables
 - Render PostgreSQL: https://render.com/docs/postgresql-creating-connecting
+- Cloudinary Node SDK: https://cloudinary.com/documentation/node_integration
 - Render Persistent Disks: https://render.com/docs/disks
 - Render Deploys and Pre-Deploy Command: https://render.com/docs/deploys
 - Render Custom Domains: https://render.com/docs/custom-domains

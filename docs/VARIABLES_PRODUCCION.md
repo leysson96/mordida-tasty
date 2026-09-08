@@ -146,15 +146,20 @@ metodos no se verifican correos ni recuperacion de contrasena.
 
 ## Imagenes y subidas
 
-- `UPLOAD_DIR`: carpeta donde la API guarda las fotos subidas desde admin.
-  En Render con runtime Node usa `/opt/render/project/src/uploads`. En Docker
-  usa una ruta persistente, por ejemplo `/app/uploads`.
+- `CLOUDINARY_CLOUD_NAME`: nombre de la nube de Cloudinary.
+- `CLOUDINARY_API_KEY`: clave publica de API de Cloudinary.
+- `CLOUDINARY_API_SECRET`: secreto de API de Cloudinary. Guardar solo como
+  variable secreta en Render.
+- `UPLOAD_DIR`: fallback local donde la API guarda fotos si Cloudinary no esta
+  configurado. En produccion solo debe usarse con un disco persistente real.
 - `UPLOAD_MAX_BYTES`: tamano maximo por imagen. Valor actual recomendado:
   `5242880` para 5 MB.
 
-En produccion esta carpeta no debe ser efimera. En Render se monta como
-Persistent Disk; en AWS se puede montar en el servicio o sustituir despues por
-S3/R2 manteniendo el mismo endpoint de admin.
+En Render gratis usa Cloudinary. El disco local de Render es efimero y las fotos
+subidas al contenedor pueden perderse al reiniciar o redesplegar. Despues de
+cambiar cualquiera de las variables `CLOUDINARY_*`, haz redeploy del servicio
+`mordida-tasty-api`. La web tambien debe estar desplegada con soporte para
+`https://res.cloudinary.com` en Next/Image y CSP.
 
 ## Seed inicial
 

@@ -35,7 +35,37 @@ describe("environment validation", () => {
     expect(env.BREVO_API_URL).toBe("https://api.brevo.com/v3/smtp/email");
   });
 
-  it("requires the public API URL and upload directory in production", () => {
+  it("accepts Cloudinary uploads in production without a persistent upload directory", () => {
+    const env = validateEnvironment({
+      NODE_ENV: "production",
+      DATABASE_URL: "postgresql://example",
+      JWT_SECRET: "a".repeat(40),
+      FRONTEND_URL: "https://mordidatasty.es",
+      API_PUBLIC_URL: "https://api.mordidatasty.es",
+      STRIPE_SECRET_KEY: "sk_live_example",
+      STRIPE_WEBHOOK_SECRET: "whsec_example",
+      SMTP_FROM: "Mordida Tasty <hola@mordidatasty.es>",
+      BREVO_API_KEY: "xkeysib-example",
+      CLOUDINARY_CLOUD_NAME: "mordida",
+      CLOUDINARY_API_KEY: "cloudinary-key",
+      CLOUDINARY_API_SECRET: "cloudinary-secret",
+    });
+
+    expect(env.CLOUDINARY_CLOUD_NAME).toBe("mordida");
+    expect(env.UPLOAD_DIR).toBe("uploads");
+  });
+
+  it("requires complete Cloudinary credentials when one Cloudinary value is configured", () => {
+    expect(() =>
+      validateEnvironment({
+        DATABASE_URL: "postgresql://example",
+        JWT_SECRET: "a".repeat(40),
+        CLOUDINARY_CLOUD_NAME: "mordida",
+      }),
+    ).toThrow("Missing required environment variable: CLOUDINARY_API_KEY");
+  });
+
+  it("requires the public API URL and upload storage in production", () => {
     expect(() =>
       validateEnvironment({
         NODE_ENV: "production",
@@ -61,7 +91,7 @@ describe("environment validation", () => {
         SMTP_HOST: "smtp.example.com",
         SMTP_FROM: "Mordida Tasty <hola@mordidatasty.es>",
       }),
-    ).toThrow("Missing required environment variable: UPLOAD_DIR");
+    ).toThrow("Configure Cloudinary credentials or UPLOAD_DIR in production.");
   });
 
   it("defaults Stripe success links to include the private tracking token", () => {

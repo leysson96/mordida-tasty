@@ -16,10 +16,7 @@ services:
     preDeployCommand: npm run prisma:deploy -w @mordida/api
     startCommand: npm run start -w @mordida/api
     healthCheckPath: /health
-    disk:
-      name: mordida-tasty-uploads
-      mountPath: /opt/render/project/src/uploads
-      sizeGB: 1
+    # Render free does not include persistent disks. Use Cloudinary for uploads.
     envVars:
       - key: NODE_ENV
         value: production
@@ -59,6 +56,12 @@ services:
         sync: false
       - key: BREVO_API_URL
         value: https://api.brevo.com/v3/smtp/email
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
@@ -73,8 +76,6 @@ services:
         value: Mordida Tasty <no-reply@tudominio.es>
       - key: SMTP_TIMEOUT_MS
         value: 10000
-      - key: UPLOAD_DIR
-        value: /opt/render/project/src/uploads
       - key: UPLOAD_MAX_BYTES
         value: 5242880
       - key: MORDIDA_SEED_ADMIN_EMAIL

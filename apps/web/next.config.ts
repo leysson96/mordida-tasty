@@ -57,6 +57,7 @@ function contentSecurityPolicy() {
       apiUrlOrigin,
       "https://www.googletagmanager.com",
       "https://www.google-analytics.com",
+      "https://res.cloudinary.com",
     ].join(" "),
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self' data:",
@@ -116,6 +117,11 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       ...(uploadRemotePattern ? [uploadRemotePattern] : []),
+      {
+        protocol: "https",
+        hostname: "res.cloudinary.com",
+        pathname: "/**",
+      },
       {
         protocol: "http",
         hostname: "localhost",

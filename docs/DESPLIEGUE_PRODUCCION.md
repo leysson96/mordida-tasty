@@ -2,7 +2,7 @@
 
 Estado: el codigo ya esta preparado para desplegar, pero produccion no puede
 quedar cerrada sin credenciales reales: dominio, base PostgreSQL, Stripe live,
-SMTP, almacenamiento persistente de imagenes y textos legales finales.
+SMTP, Cloudinary para imagenes y textos legales finales.
 
 ## Comandos de produccion
 
@@ -40,9 +40,6 @@ Usar tres recursos:
 - PostgreSQL gestionado.
 - Servicio web Node para `mordida-tasty-api`.
 - Servicio web Node para `mordida-tasty-web`.
-- Persistent Disk para las imagenes subidas por admin, montado en
-  `/opt/render/project/src/uploads` si usas el runtime Node nativo de Render.
-  Si despliegas con Docker, usa `/app/uploads`.
 
 Como este repositorio usa npm workspaces, deja el root directory en la raiz del
 repositorio y usa comandos filtrados por workspace.
@@ -63,16 +60,16 @@ Health Check Path:
 /health
 ```
 
-Disco persistente de la API:
+Imagenes de productos y portada:
 
-```bash
-Mount Path:
-/opt/render/project/src/uploads
-```
+Configura `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` y
+`CLOUDINARY_API_SECRET` en el servicio API. El disco local de Render gratis es
+efimero: las fotos guardadas ahi se pierden al reiniciar o redesplegar. Solo usa
+`UPLOAD_DIR` como almacenamiento principal si tienes un disco persistente real.
 
-Nota: el disco persistente y el pre-deploy command requieren servicio compatible
-de pago en Render. No recomiendo lanzar produccion real en un plan sin disco,
-porque las fotos subidas desde admin se perderian al redeplegar.
+Nota: el pre-deploy command puede requerir un servicio compatible de pago en
+Render. Si no esta disponible, ejecuta las migraciones desde una shell segura
+antes del primer trafico real.
 
 Web:
 
@@ -106,7 +103,7 @@ levantarlas en App Runner o ECS con:
 
 - `DATABASE_URL` apuntando a RDS PostgreSQL.
 - secretos en Secrets Manager o variables protegidas del servicio.
-- volumen persistente para `UPLOAD_DIR` o sustitucion por S3/R2.
+- Cloudinary, S3/R2 o un volumen persistente real para imagenes subidas.
 - HTTPS y dominio propio delante de web y API.
 
 Ejecuta `npm run prisma:deploy -w @mordida/api` como paso separado de
@@ -125,7 +122,7 @@ la experiencia con cookies.
 2. Crear PostgreSQL gestionado.
 3. Crear SMTP real y verificar remitente.
 4. Crear cuenta Stripe live y webhook hacia `/payments/webhook`.
-5. Crear almacenamiento persistente para `UPLOAD_DIR`.
+5. Crear Cloudinary o un almacenamiento persistente equivalente para imagenes.
 6. Cargar variables de `.env.production.example` en el proveedor.
 7. Ejecutar build.
 8. Ejecutar migraciones con `prisma:deploy`.
