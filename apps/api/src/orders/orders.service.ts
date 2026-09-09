@@ -101,8 +101,24 @@ interface AdminOrderListOptions {
   from?: string;
   to?: string;
   deliveryMethod?: DeliveryMethod;
+  paymentMethod?: OrderPaymentMethod;
   page?: string;
   pageSize?: string;
+}
+
+interface AdminOrderPagination {
+  skip: number;
+  take: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface AdminOrderHistoryResult {
+  orders: OrderWithDetails[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 }
 
 interface CheckoutOrderLine {
@@ -522,39 +538,7 @@ export class OrdersService {
   }
 
   async listAdminOrders(options: AdminOrderListOptions) {
-    const where: Prisma.OrderWhereInput = {};
-    const status = this.parseOrderStatus(options.status);
-    const deliveryMethod = this.parseDeliveryMethod(options.deliveryMethod);
-
-    if (status) {
-      where.status = status;
-    }
-
-    if (deliveryMethod) {
-      where.deliveryMethod = deliveryMethod;
-    }
-
-    if (options.from || options.to) {
-      const range = this.dateRange(options.from, options.to);
-      where.createdAt = { gte: range.fromDate, lt: range.toExclusiveDate };
-    } else if (options.today) {
-      const range = this.currentBusinessDayRange();
-      where.createdAt = { gte: range.fromDate, lt: range.toExclusiveDate };
-    }
-
-    const q = options.q?.trim();
-    if (q) {
-      where.OR = [
-        { orderNumber: { contains: q, mode: "insensitive" } },
-        { customerEmail: { contains: q, mode: "insensitive" } },
-        { customerName: { contains: q, mode: "insensitive" } },
-        { customerPhone: { contains: q } },
-        { deliveryName: { contains: q, mode: "insensitive" } },
-        { deliveryPhone: { contains: q } },
-        { deliveryPostalCode: { contains: q, mode: "insensitive" } },
-      ];
-    }
-
+    const where = this.adminOrderWhere(options);
     const query: Prisma.OrderFindManyArgs = {
       where,
       orderBy: { createdAt: "desc" },
@@ -570,6 +554,35 @@ export class OrdersService {
     }
 
     return this.prisma.order.findMany(query);
+  }
+
+  async listAdminOrderHistory(
+    options: AdminOrderListOptions,
+  ): Promise<AdminOrderHistoryResult> {
+    const where = this.adminOrderWhere(options);
+    const pagination = this.adminOrderPagination(
+      options.page,
+      options.pageSize,
+      true,
+    );
+    const [orders, total] = await Promise.all([
+      this.prisma.order.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        include: orderInclude,
+        skip: pagination.skip,
+        take: pagination.take,
+      }),
+      this.prisma.order.count({ where }),
+    ]);
+
+    return {
+      orders,
+      total,
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pagination.pageSize)),
+    };
   }
 
   async listKitchenOrders() {
@@ -1169,6 +1182,48 @@ export class OrdersService {
     this.parseDateOnly(value);
   }
 
+  private adminOrderWhere(options: AdminOrderListOptions) {
+    const where: Prisma.OrderWhereInput = {};
+    const status = this.parseOrderStatus(options.status);
+    const deliveryMethod = this.parseDeliveryMethod(options.deliveryMethod);
+    const paymentMethod = this.parsePaymentMethod(options.paymentMethod);
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (deliveryMethod) {
+      where.deliveryMethod = deliveryMethod;
+    }
+
+    if (paymentMethod) {
+      where.paymentMethod = paymentMethod;
+    }
+
+    if (options.from || options.to) {
+      const range = this.dateRange(options.from, options.to);
+      where.createdAt = { gte: range.fromDate, lt: range.toExclusiveDate };
+    } else if (options.today) {
+      const range = this.currentBusinessDayRange();
+      where.createdAt = { gte: range.fromDate, lt: range.toExclusiveDate };
+    }
+
+    const q = options.q?.trim();
+    if (q) {
+      where.OR = [
+        { orderNumber: { contains: q, mode: "insensitive" } },
+        { customerEmail: { contains: q, mode: "insensitive" } },
+        { customerName: { contains: q, mode: "insensitive" } },
+        { customerPhone: { contains: q } },
+        { deliveryName: { contains: q, mode: "insensitive" } },
+        { deliveryPhone: { contains: q } },
+        { deliveryPostalCode: { contains: q, mode: "insensitive" } },
+      ];
+    }
+
+    return where;
+  }
+
   private parseOrderStatus(value: OrderStatus | undefined) {
     if (!value) {
       return undefined;
@@ -1193,8 +1248,34 @@ export class OrdersService {
     return value;
   }
 
-  private adminOrderPagination(page?: string, pageSize?: string) {
-    if (page === undefined && pageSize === undefined) {
+  private parsePaymentMethod(value: OrderPaymentMethod | undefined) {
+    if (!value) {
+      return undefined;
+    }
+
+    if (!Object.values(OrderPaymentMethod).includes(value)) {
+      throw new BadRequestException("Metodo de pago no valido.");
+    }
+
+    return value;
+  }
+
+  private adminOrderPagination(
+    page: string | undefined,
+    pageSize: string | undefined,
+    required: true,
+  ): AdminOrderPagination;
+  private adminOrderPagination(
+    page?: string,
+    pageSize?: string,
+    required?: false,
+  ): AdminOrderPagination | undefined;
+  private adminOrderPagination(
+    page?: string,
+    pageSize?: string,
+    required = false,
+  ) {
+    if (!required && page === undefined && pageSize === undefined) {
       return undefined;
     }
 
@@ -1211,6 +1292,8 @@ export class OrdersService {
     return {
       skip: (parsedPage - 1) * parsedPageSize,
       take: parsedPageSize,
+      page: parsedPage,
+      pageSize: parsedPageSize,
     };
   }
 

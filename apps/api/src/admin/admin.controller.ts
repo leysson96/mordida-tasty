@@ -14,7 +14,12 @@ import {
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { DeliveryMethod, OrderStatus, Role } from "@prisma/client";
+import {
+  DeliveryMethod,
+  OrderPaymentMethod,
+  OrderStatus,
+  Role,
+} from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { Request } from "express";
 import { AuditService } from "../audit/audit.service";
@@ -109,6 +114,29 @@ export class AdminController {
       from,
       to,
       deliveryMethod,
+      page,
+      pageSize,
+    });
+  }
+
+  @Get("orders/history")
+  orderHistory(
+    @Query("status") status?: OrderStatus,
+    @Query("q") q?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("deliveryMethod") deliveryMethod?: DeliveryMethod,
+    @Query("paymentMethod") paymentMethod?: OrderPaymentMethod,
+    @Query("page") page?: string,
+    @Query("pageSize") pageSize?: string,
+  ) {
+    return this.ordersService.listAdminOrderHistory({
+      status,
+      q,
+      from,
+      to,
+      deliveryMethod,
+      paymentMethod,
       page,
       pageSize,
     });

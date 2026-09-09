@@ -15,6 +15,7 @@ describe("OrdersService", () => {
     order: {
       findUnique: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn(),
       groupBy: jest.fn(),
     },
     product: {
@@ -47,6 +48,7 @@ describe("OrdersService", () => {
     jest.clearAllMocks();
     prisma.order.findUnique.mockResolvedValue(null);
     prisma.order.findMany.mockResolvedValue([]);
+    prisma.order.count.mockResolvedValue(0);
     prisma.order.groupBy.mockResolvedValue([]);
     prisma.product.findMany.mockResolvedValue([]);
     prisma.$transaction.mockReset();
@@ -930,6 +932,71 @@ describe("OrdersService", () => {
         take: 25,
       }),
     );
+  });
+
+  it("returns paginated admin order history with payment method metadata", async () => {
+    const orders = [
+      {
+        id: "order-1",
+        orderNumber: "MT-0001",
+      },
+    ];
+    prisma.order.findMany.mockResolvedValue(orders);
+    prisma.order.count.mockResolvedValue(126);
+
+    await expect(
+      service().listAdminOrderHistory({
+        q: "  leysson  ",
+        status: OrderStatus.PAID,
+        deliveryMethod: DeliveryMethod.PICKUP,
+        paymentMethod: OrderPaymentMethod.CASH,
+        from: "2026-08-01",
+        to: "2026-08-02",
+        page: "3",
+        pageSize: "50",
+      }),
+    ).resolves.toEqual({
+      orders,
+      total: 126,
+      page: 3,
+      pageSize: 50,
+      totalPages: 3,
+    });
+
+    const expectedWhere = expect.objectContaining({
+      status: OrderStatus.PAID,
+      deliveryMethod: DeliveryMethod.PICKUP,
+      paymentMethod: OrderPaymentMethod.CASH,
+      createdAt: {
+        gte: new Date("2026-07-31T22:00:00.000Z"),
+        lt: new Date("2026-08-02T22:00:00.000Z"),
+      },
+      OR: expect.arrayContaining([
+        { orderNumber: { contains: "leysson", mode: "insensitive" } },
+        { customerEmail: { contains: "leysson", mode: "insensitive" } },
+        { customerName: { contains: "leysson", mode: "insensitive" } },
+        { customerPhone: { contains: "leysson" } },
+      ]),
+    });
+    expect(prisma.order.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expectedWhere,
+        skip: 100,
+        take: 50,
+      }),
+    );
+    expect(prisma.order.count).toHaveBeenCalledWith({ where: expectedWhere });
+  });
+
+  it("rejects invalid admin order payment method filters", async () => {
+    await expect(
+      service().listAdminOrderHistory({
+        paymentMethod: "BIZUM" as OrderPaymentMethod,
+      }),
+    ).rejects.toThrow("Metodo de pago no valido.");
+
+    expect(prisma.order.findMany).not.toHaveBeenCalled();
+    expect(prisma.order.count).not.toHaveBeenCalled();
   });
 
   it("counts only collected payments in today's dashboard revenue", async () => {
