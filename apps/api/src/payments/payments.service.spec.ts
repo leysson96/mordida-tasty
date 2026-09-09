@@ -319,15 +319,95 @@ describe("PaymentsService", () => {
 
     await service().handleWebhook(signedStripeRequest() as never);
 
+    expect(prisma.order.update).toHaveBeenCalledWith({
+      where: { id: "order-1" },
+      data: { stripePaymentIntentId: "pi_failed" },
+    });
     expect(prisma.payment.updateMany).toHaveBeenCalledWith({
-      where: { stripePaymentIntentId: "pi_failed" },
-      data: { status: PaymentStatus.FAILED },
+      where: {
+        orderId: "order-1",
+        OR: [
+          { stripePaymentIntentId: "pi_failed" },
+          {
+            stripePaymentIntentId: null,
+            status: PaymentStatus.PENDING,
+          },
+        ],
+      },
+      data: {
+        status: PaymentStatus.FAILED,
+        stripePaymentIntentId: "pi_failed",
+      },
     });
     expect(ordersService.transitionOrder).toHaveBeenCalledWith(
       "order-1",
       OrderStatus.PAYMENT_FAILED,
       undefined,
       "Stripe payment failed: pi_failed",
+    );
+  });
+
+  it("finds a failed Stripe payment by metadata when the intent id was not stored", async () => {
+    stripe.webhooks.constructEvent.mockReturnValue({
+      id: "evt_failed_metadata",
+      type: "payment_intent.payment_failed",
+      data: {
+        object: {
+          id: "pi_failed_late",
+          metadata: {
+            orderId: "order-1",
+            orderNumber: "MT-0001",
+            trackingToken: "track_123",
+          },
+        },
+      },
+    });
+    prisma.order.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: "order-1",
+        orderNumber: "MT-0001",
+        trackingToken: "track_123",
+        status: OrderStatus.PENDING_PAYMENT,
+      });
+
+    await service().handleWebhook(signedStripeRequest() as never);
+
+    expect(prisma.order.findFirst).toHaveBeenNthCalledWith(1, {
+      where: { stripePaymentIntentId: "pi_failed_late" },
+    });
+    expect(prisma.order.findFirst).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: "order-1",
+        orderNumber: "MT-0001",
+        trackingToken: "track_123",
+      },
+    });
+    expect(prisma.order.update).toHaveBeenCalledWith({
+      where: { id: "order-1" },
+      data: { stripePaymentIntentId: "pi_failed_late" },
+    });
+    expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+      where: {
+        orderId: "order-1",
+        OR: [
+          { stripePaymentIntentId: "pi_failed_late" },
+          {
+            stripePaymentIntentId: null,
+            status: PaymentStatus.PENDING,
+          },
+        ],
+      },
+      data: {
+        status: PaymentStatus.FAILED,
+        stripePaymentIntentId: "pi_failed_late",
+      },
+    });
+    expect(ordersService.transitionOrder).toHaveBeenCalledWith(
+      "order-1",
+      OrderStatus.PAYMENT_FAILED,
+      undefined,
+      "Stripe payment failed: pi_failed_late",
     );
   });
 
@@ -382,6 +462,18 @@ describe("PaymentsService", () => {
       expect.objectContaining({
         client_reference_id: "order-1",
         success_url: "https://mordida.test/seguimiento/MT-0001?t=track_123",
+        metadata: {
+          orderId: "order-1",
+          orderNumber: "MT-0001",
+          trackingToken: "track_123",
+        },
+        payment_intent_data: {
+          metadata: {
+            orderId: "order-1",
+            orderNumber: "MT-0001",
+            trackingToken: "track_123",
+          },
+        },
         line_items: expect.arrayContaining([
           expect.objectContaining({
             price_data: expect.objectContaining({

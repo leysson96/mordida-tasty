@@ -160,6 +160,7 @@ export class PaymentsService {
       "Checkout session requested",
     );
 
+    const stripeMetadata = this.stripeOrderMetadata(order);
     const session = await stripe.checkout.sessions.create(
       {
         mode: "payment",
@@ -169,9 +170,9 @@ export class PaymentsService {
         cancel_url: this.frontendUrl(
           this.configService.get("STRIPE_CANCEL_PATH", { infer: true }),
         ),
-        metadata: {
-          orderId: order.id,
-          orderNumber: order.orderNumber,
+        metadata: stripeMetadata,
+        payment_intent_data: {
+          metadata: stripeMetadata,
         },
         ...(discounts ? { discounts } : {}),
         line_items: [
@@ -908,18 +909,34 @@ export class PaymentsService {
   }
 
   private async handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
-    const order = await this.prisma.order.findFirst({
-      where: { stripePaymentIntentId: paymentIntent.id },
-    });
+    const order = await this.findOrderFromPaymentIntent(paymentIntent);
 
     if (!order) {
       return;
     }
 
-    await this.prisma.payment.updateMany({
-      where: { stripePaymentIntentId: paymentIntent.id },
-      data: { status: PaymentStatus.FAILED },
-    });
+    await this.prisma.$transaction([
+      this.prisma.order.update({
+        where: { id: order.id },
+        data: { stripePaymentIntentId: paymentIntent.id },
+      }),
+      this.prisma.payment.updateMany({
+        where: {
+          orderId: order.id,
+          OR: [
+            { stripePaymentIntentId: paymentIntent.id },
+            {
+              stripePaymentIntentId: null,
+              status: PaymentStatus.PENDING,
+            },
+          ],
+        },
+        data: {
+          status: PaymentStatus.FAILED,
+          stripePaymentIntentId: paymentIntent.id,
+        },
+      }),
+    ]);
 
     if (!paidOrBeyondStatuses.includes(order.status)) {
       await this.ordersService.transitionOrder(
@@ -948,6 +965,29 @@ export class PaymentsService {
     }
 
     return order;
+  }
+
+  private async findOrderFromPaymentIntent(paymentIntent: Stripe.PaymentIntent) {
+    const order = await this.prisma.order.findFirst({
+      where: { stripePaymentIntentId: paymentIntent.id },
+    });
+
+    if (order) {
+      return order;
+    }
+
+    const { orderId, orderNumber, trackingToken } = paymentIntent.metadata ?? {};
+    if (!orderId || !orderNumber || !trackingToken) {
+      return null;
+    }
+
+    return this.prisma.order.findFirst({
+      where: {
+        id: orderId,
+        orderNumber,
+        trackingToken,
+      },
+    });
   }
 
   private requireStripe() {
@@ -1060,6 +1100,18 @@ export class PaymentsService {
       .replace("{TRACKING_TOKEN}", encodeURIComponent(order.trackingToken));
 
     return this.frontendUrl(path);
+  }
+
+  private stripeOrderMetadata(order: {
+    id: string;
+    orderNumber: string;
+    trackingToken: string;
+  }): Stripe.MetadataParam {
+    return {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      trackingToken: order.trackingToken,
+    };
   }
 
   private stringId(value: string | Stripe.PaymentIntent | null) {
