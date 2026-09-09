@@ -15,6 +15,7 @@ describe("OrdersService", () => {
     order: {
       findUnique: jest.fn(),
       findMany: jest.fn(),
+      groupBy: jest.fn(),
     },
     product: {
       findMany: jest.fn(),
@@ -46,6 +47,7 @@ describe("OrdersService", () => {
     jest.clearAllMocks();
     prisma.order.findUnique.mockResolvedValue(null);
     prisma.order.findMany.mockResolvedValue([]);
+    prisma.order.groupBy.mockResolvedValue([]);
     prisma.product.findMany.mockResolvedValue([]);
     prisma.$transaction.mockReset();
     settings.getServiceStatus.mockResolvedValue({ openNow: true });
@@ -930,12 +932,80 @@ describe("OrdersService", () => {
     );
   });
 
+  it("counts only collected payments in today's dashboard revenue", async () => {
+    prisma.order.groupBy.mockResolvedValue([
+      { status: OrderStatus.PAID, _count: { _all: 1 } },
+      { status: OrderStatus.CONFIRMED, _count: { _all: 1 } },
+      { status: OrderStatus.CANCELLED, _count: { _all: 1 } },
+    ]);
+    prisma.order.findMany.mockResolvedValue([
+      {
+        status: OrderStatus.PAID,
+        paymentMethod: OrderPaymentMethod.CARD,
+        totalCents: 1200,
+        paidAt: new Date("2026-08-30T10:00:00.000Z"),
+        payments: [
+          {
+            provider: PaymentProvider.STRIPE,
+            status: PaymentStatus.SUCCEEDED,
+          },
+        ],
+      },
+      {
+        status: OrderStatus.CONFIRMED,
+        paymentMethod: OrderPaymentMethod.CASH,
+        totalCents: 2000,
+        paidAt: null,
+        payments: [
+          {
+            provider: PaymentProvider.CASH,
+            status: PaymentStatus.PENDING,
+          },
+        ],
+      },
+      {
+        status: OrderStatus.CANCELLED,
+        paymentMethod: OrderPaymentMethod.CASH,
+        totalCents: 900,
+        paidAt: null,
+        payments: [
+          {
+            provider: PaymentProvider.CASH,
+            status: PaymentStatus.PENDING,
+          },
+        ],
+      },
+    ]);
+
+    const dashboard = await service().dashboardToday();
+
+    expect(dashboard.paidRevenueCents).toBe(1200);
+    expect(dashboard.paymentBreakdown).toEqual({
+      collected: { orderCount: 1, amountCents: 1200 },
+      pendingCash: { orderCount: 1, amountCents: 2000 },
+      cancelled: { orderCount: 1, amountCents: 900 },
+    });
+    expect(dashboard.ordersByStatus).toEqual({
+      PAID: 1,
+      CONFIRMED: 1,
+      CANCELLED: 1,
+    });
+  });
+
   it("groups sales reports by local business day", async () => {
     prisma.order.findMany.mockResolvedValue([
       {
         createdAt: new Date("2026-08-29T22:30:00.000Z"),
         status: OrderStatus.PAID,
+        paymentMethod: OrderPaymentMethod.CARD,
         totalCents: 1200,
+        paidAt: new Date("2026-08-29T22:30:00.000Z"),
+        payments: [
+          {
+            provider: PaymentProvider.STRIPE,
+            status: PaymentStatus.SUCCEEDED,
+          },
+        ],
         items: [],
       },
     ]);
@@ -960,6 +1030,124 @@ describe("OrdersService", () => {
         date: "2026-08-30",
         revenueCents: 1200,
         orderCount: 1,
+      },
+    ]);
+  });
+
+  it("separates collected revenue from pending cash and cancelled orders", async () => {
+    const collectedAt = new Date("2026-08-30T10:00:00.000Z");
+    prisma.order.findMany.mockResolvedValue([
+      {
+        createdAt: collectedAt,
+        status: OrderStatus.PAID,
+        paymentMethod: OrderPaymentMethod.CARD,
+        totalCents: 1200,
+        paidAt: collectedAt,
+        payments: [
+          {
+            provider: PaymentProvider.STRIPE,
+            status: PaymentStatus.SUCCEEDED,
+          },
+        ],
+        items: [
+          {
+            productName: "Mordida Smash",
+            quantity: 1,
+            lineTotalCents: 1200,
+            removedAt: null,
+          },
+        ],
+      },
+      {
+        createdAt: collectedAt,
+        status: OrderStatus.READY,
+        paymentMethod: OrderPaymentMethod.CASH,
+        totalCents: 1500,
+        paidAt: collectedAt,
+        payments: [
+          {
+            provider: PaymentProvider.CASH,
+            status: PaymentStatus.SUCCEEDED,
+          },
+        ],
+        items: [
+          {
+            productName: "Mordida Smash",
+            quantity: 1,
+            lineTotalCents: 1500,
+            removedAt: null,
+          },
+        ],
+      },
+      {
+        createdAt: collectedAt,
+        status: OrderStatus.CONFIRMED,
+        paymentMethod: OrderPaymentMethod.CASH,
+        totalCents: 2000,
+        paidAt: null,
+        payments: [
+          {
+            provider: PaymentProvider.CASH,
+            status: PaymentStatus.PENDING,
+          },
+        ],
+        items: [
+          {
+            productName: "Pollo Crujiente",
+            quantity: 2,
+            lineTotalCents: 2000,
+            removedAt: null,
+          },
+        ],
+      },
+      {
+        createdAt: collectedAt,
+        status: OrderStatus.CANCELLED,
+        paymentMethod: OrderPaymentMethod.CASH,
+        totalCents: 900,
+        paidAt: null,
+        payments: [
+          {
+            provider: PaymentProvider.CASH,
+            status: PaymentStatus.PENDING,
+          },
+        ],
+        items: [
+          {
+            productName: "Nachos de la Casa",
+            quantity: 1,
+            lineTotalCents: 900,
+            removedAt: null,
+          },
+        ],
+      },
+    ]);
+
+    const report = await service().salesReport({
+      from: "2026-08-30",
+      to: "2026-08-30",
+    });
+
+    expect(report.totalRevenueCents).toBe(2700);
+    expect(report.orderCount).toBe(2);
+    expect(report.averageTicketCents).toBe(1350);
+    expect(report.paymentBreakdown).toEqual({
+      collected: { orderCount: 2, amountCents: 2700 },
+      pendingCash: { orderCount: 1, amountCents: 2000 },
+      cancelled: { orderCount: 1, amountCents: 900 },
+    });
+    expect(report.salesByDay).toEqual([
+      {
+        date: "2026-08-30",
+        revenueCents: 2700,
+        orderCount: 2,
+      },
+    ]);
+    expect(report.topProducts).toEqual([
+      {
+        productName: "Mordida Smash",
+        quantity: 2,
+        revenueCents: 2700,
       },
     ]);
   });

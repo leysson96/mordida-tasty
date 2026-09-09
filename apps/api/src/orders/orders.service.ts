@@ -46,6 +46,25 @@ const orderInclude = {
   loyaltyRedemption: true,
 } satisfies Prisma.OrderInclude;
 
+const paymentReportOrderInclude = {
+  payments: {
+    select: {
+      provider: true,
+      status: true,
+    },
+  },
+} satisfies Prisma.OrderInclude;
+
+const salesReportOrderInclude = {
+  items: true,
+  payments: {
+    select: {
+      provider: true,
+      status: true,
+    },
+  },
+} satisfies Prisma.OrderInclude;
+
 const checkoutProductInclude = {
   optionGroups: {
     where: { active: true },
@@ -65,6 +84,14 @@ type CheckoutProduct = Prisma.ProductGetPayload<{
 
 type OrderWithDetails = Prisma.OrderGetPayload<{
   include: typeof orderInclude;
+}>;
+
+type PaymentReportOrder = Prisma.OrderGetPayload<{
+  include: typeof paymentReportOrderInclude;
+}>;
+
+type SalesReportOrder = Prisma.OrderGetPayload<{
+  include: typeof salesReportOrderInclude;
 }>;
 
 interface AdminOrderListOptions {
@@ -109,6 +136,22 @@ const loyaltyReleaseStatuses: OrderStatus[] = [
   OrderStatus.PAYMENT_FAILED,
   OrderStatus.EXPIRED,
 ];
+const cancelledReportStatuses: OrderStatus[] = [
+  OrderStatus.CANCELLED,
+  OrderStatus.PAYMENT_FAILED,
+  OrderStatus.EXPIRED,
+];
+
+export interface ReportMoneyBucket {
+  orderCount: number;
+  amountCents: number;
+}
+
+export interface ReportPaymentBreakdown {
+  collected: ReportMoneyBucket;
+  pendingCash: ReportMoneyBucket;
+  cancelled: ReportMoneyBucket;
+}
 
 @Injectable()
 export class OrdersService {
@@ -544,7 +587,7 @@ export class OrdersService {
   async dashboardToday() {
     const range = this.currentBusinessDayRange();
 
-    const [orders, revenue] = await Promise.all([
+    const [orders, paymentOrders] = await Promise.all([
       this.prisma.order.groupBy({
         by: ["status"],
         where: {
@@ -552,20 +595,19 @@ export class OrdersService {
         },
         _count: { _all: true },
       }),
-      this.prisma.order.aggregate({
+      this.prisma.order.findMany({
         where: {
           createdAt: { gte: range.fromDate, lt: range.toExclusiveDate },
-          status: {
-            in: revenueOrderStatuses,
-          },
         },
-        _sum: { totalCents: true },
+        include: paymentReportOrderInclude,
       }),
     ]);
+    const paymentBreakdown = this.paymentBreakdown(paymentOrders);
 
     return {
       date: range.date,
-      paidRevenueCents: revenue._sum.totalCents ?? 0,
+      paidRevenueCents: paymentBreakdown.collected.amountCents,
+      paymentBreakdown,
       ordersByStatus: orders.reduce<Record<string, number>>((acc, item) => {
         acc[item.status] = item._count._all;
         return acc;
@@ -575,29 +617,25 @@ export class OrdersService {
 
   async salesReport(options: { from?: string; to?: string }) {
     const range = this.dateRange(options.from, options.to);
-    const orders = await this.prisma.order.findMany({
+    const orders: SalesReportOrder[] = await this.prisma.order.findMany({
       where: {
         createdAt: {
           gte: range.fromDate,
           lt: range.toExclusiveDate,
         },
-        status: {
-          in: revenueOrderStatuses,
-        },
       },
-      include: {
-        items: true,
-      },
+      include: salesReportOrderInclude,
       orderBy: {
         createdAt: "asc",
       },
     });
 
-    const totalRevenueCents = orders.reduce(
-      (sum, order) => sum + order.totalCents,
-      0,
+    const paymentBreakdown = this.paymentBreakdown(orders);
+    const collectedOrders = orders.filter((order) =>
+      this.isCollectedReportOrder(order),
     );
-    const orderCount = orders.length;
+    const totalRevenueCents = paymentBreakdown.collected.amountCents;
+    const orderCount = paymentBreakdown.collected.orderCount;
     const salesByDay = this.daysBetween(range.from, range.to).map((date) => ({
       date,
       revenueCents: 0,
@@ -609,7 +647,7 @@ export class OrdersService {
       { productName: string; quantity: number; revenueCents: number }
     >();
 
-    for (const order of orders) {
+    for (const order of collectedOrders) {
       const dayKey = this.dateOnlyInTimezone(order.createdAt, range.timezone);
       const day = salesByDayMap.get(dayKey);
       if (day) {
@@ -638,6 +676,7 @@ export class OrdersService {
       orderCount,
       averageTicketCents:
         orderCount > 0 ? Math.round(totalRevenueCents / orderCount) : 0,
+      paymentBreakdown,
       salesByDay,
       topProducts: [...productMap.values()]
         .sort((a, b) => b.revenueCents - a.revenueCents)
@@ -955,6 +994,67 @@ export class OrdersService {
     return (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
+    );
+  }
+
+  private paymentBreakdown(
+    orders: PaymentReportOrder[],
+  ): ReportPaymentBreakdown {
+    const breakdown: ReportPaymentBreakdown = {
+      collected: { orderCount: 0, amountCents: 0 },
+      pendingCash: { orderCount: 0, amountCents: 0 },
+      cancelled: { orderCount: 0, amountCents: 0 },
+    };
+
+    for (const order of orders) {
+      if (this.isCollectedReportOrder(order)) {
+        this.addToMoneyBucket(breakdown.collected, order.totalCents);
+      } else if (this.isPendingCashReportOrder(order)) {
+        this.addToMoneyBucket(breakdown.pendingCash, order.totalCents);
+      } else if (cancelledReportStatuses.includes(order.status)) {
+        this.addToMoneyBucket(breakdown.cancelled, order.totalCents);
+      }
+    }
+
+    return breakdown;
+  }
+
+  private addToMoneyBucket(bucket: ReportMoneyBucket, amountCents: number) {
+    bucket.orderCount += 1;
+    bucket.amountCents += amountCents;
+  }
+
+  private isCollectedReportOrder(order: PaymentReportOrder) {
+    if (!revenueOrderStatuses.includes(order.status)) {
+      return false;
+    }
+
+    if (order.paymentMethod === OrderPaymentMethod.CASH) {
+      return this.hasCollectedPayment(order, PaymentProvider.CASH);
+    }
+
+    return this.hasCollectedPayment(order, PaymentProvider.STRIPE);
+  }
+
+  private isPendingCashReportOrder(order: PaymentReportOrder) {
+    return (
+      order.paymentMethod === OrderPaymentMethod.CASH &&
+      !cancelledReportStatuses.includes(order.status) &&
+      !this.hasCollectedPayment(order, PaymentProvider.CASH)
+    );
+  }
+
+  private hasCollectedPayment(
+    order: PaymentReportOrder,
+    provider: PaymentProvider,
+  ) {
+    return (
+      Boolean(order.paidAt) ||
+      order.payments.some(
+        (payment) =>
+          payment.provider === provider &&
+          payment.status === PaymentStatus.SUCCEEDED,
+      )
     );
   }
 
