@@ -10,6 +10,7 @@ import {
   LoyaltyRedemptionStatus,
   OrderPaymentMethod,
   OrderStatus,
+  PaymentProvider,
   PaymentStatus,
   Prisma,
 } from "@prisma/client";
@@ -71,6 +72,12 @@ const consumedLoyaltyStatuses: LoyaltyRedemptionStatus[] = [
 const noLongerPayableStatuses: OrderStatus[] = [
   OrderStatus.CANCELLED,
   OrderStatus.EXPIRED,
+];
+
+const nonCollectableCashOrderStatuses: OrderStatus[] = [
+  OrderStatus.CANCELLED,
+  OrderStatus.EXPIRED,
+  OrderStatus.PAYMENT_FAILED,
 ];
 
 @Injectable()
@@ -231,6 +238,112 @@ export class PaymentsService {
       orderNumber: order.orderNumber,
       checkoutUrl: session.url,
     };
+  }
+
+  async markCashPaymentCollected(input: { orderId: string; actorId: string }) {
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        const order = await tx.order.findUnique({
+          where: { id: input.orderId },
+          include: orderWithPaymentsInclude,
+        });
+
+        if (!order) {
+          throw new NotFoundException("Order not found.");
+        }
+
+        if (order.paymentMethod !== OrderPaymentMethod.CASH) {
+          throw new BadRequestException(
+            "Solo se pueden marcar como cobrados pedidos en efectivo.",
+          );
+        }
+
+        if (nonCollectableCashOrderStatuses.includes(order.status)) {
+          throw new BadRequestException(
+            "No se puede cobrar un pedido cancelado, expirado o fallido.",
+          );
+        }
+
+        const cashPayments = order.payments.filter(
+          (payment) => payment.provider === PaymentProvider.CASH,
+        );
+        const succeededPayment = cashPayments.find(
+          (payment) => payment.status === PaymentStatus.SUCCEEDED,
+        );
+
+        if (succeededPayment && order.paidAt) {
+          return {
+            order: await tx.order.findUniqueOrThrow({
+              where: { id: order.id },
+              include: orderSummaryInclude,
+            }),
+            paymentId: succeededPayment.id,
+            amountCents: succeededPayment.amountCents,
+          };
+        }
+
+        const pendingPayment = cashPayments.find(
+          (payment) => payment.status === PaymentStatus.PENDING,
+        );
+
+        let paymentId = succeededPayment?.id;
+        let amountCents = succeededPayment?.amountCents ?? order.totalCents;
+
+        if (pendingPayment) {
+          await tx.payment.update({
+            where: { id: pendingPayment.id },
+            data: { status: PaymentStatus.SUCCEEDED },
+          });
+          paymentId = pendingPayment.id;
+          amountCents = pendingPayment.amountCents;
+        } else if (!succeededPayment && cashPayments.length === 0) {
+          const payment = await tx.payment.create({
+            data: {
+              orderId: order.id,
+              provider: PaymentProvider.CASH,
+              status: PaymentStatus.SUCCEEDED,
+              amountCents: order.totalCents,
+              currency: order.currency,
+            },
+          });
+          paymentId = payment.id;
+          amountCents = payment.amountCents;
+        } else if (!succeededPayment) {
+          throw new BadRequestException(
+            "El pago en efectivo no esta pendiente de cobro.",
+          );
+        }
+
+        await tx.order.update({
+          where: { id: order.id },
+          data: {
+            paidAt: order.paidAt ?? new Date(),
+          },
+        });
+
+        await tx.orderStatusHistory.create({
+          data: {
+            orderId: order.id,
+            fromStatus: order.status,
+            toStatus: order.status,
+            changedById: input.actorId,
+            note: "Pago en efectivo cobrado.",
+          },
+        });
+
+        return {
+          order: await tx.order.findUniqueOrThrow({
+            where: { id: order.id },
+            include: orderSummaryInclude,
+          }),
+          paymentId,
+          amountCents,
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+
+    return result;
   }
 
   async removeOrderItemWithRefund(input: {

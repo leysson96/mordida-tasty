@@ -1,5 +1,10 @@
 import { BadRequestException } from "@nestjs/common";
-import { OrderPaymentMethod, OrderStatus, PaymentStatus } from "@prisma/client";
+import {
+  OrderPaymentMethod,
+  OrderStatus,
+  PaymentProvider,
+  PaymentStatus,
+} from "@prisma/client";
 import { PaymentsService } from "./payments.service";
 
 describe("PaymentsService", () => {
@@ -19,6 +24,7 @@ describe("PaymentsService", () => {
       upsert: jest.fn(),
       updateMany: jest.fn(),
       update: jest.fn(),
+      create: jest.fn(),
     },
     orderItem: {
       update: jest.fn(),
@@ -100,6 +106,7 @@ describe("PaymentsService", () => {
     prisma.payment.upsert.mockResolvedValue({});
     prisma.payment.updateMany.mockResolvedValue({ count: 1 });
     prisma.payment.update.mockResolvedValue({});
+    prisma.payment.create.mockResolvedValue({});
     prisma.orderItem.update.mockResolvedValue({});
     prisma.orderStatusHistory.create.mockResolvedValue({});
     prisma.paymentRefund.upsert.mockResolvedValue({});
@@ -792,6 +799,199 @@ describe("PaymentsService", () => {
 
     expect(ordersService.transitionOrder).not.toHaveBeenCalled();
     expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+
+  it("marks a pending cash payment as collected", async () => {
+    const summary = {
+      id: "order-cash",
+      orderNumber: "MT-0001",
+      items: [],
+      statusHistory: [],
+    };
+    prisma.order.findUnique.mockResolvedValue({
+      id: "order-cash",
+      orderNumber: "MT-0001",
+      status: OrderStatus.CONFIRMED,
+      paymentMethod: OrderPaymentMethod.CASH,
+      totalCents: 1440,
+      currency: "eur",
+      paidAt: null,
+      payments: [
+        {
+          id: "payment-cash",
+          provider: PaymentProvider.CASH,
+          status: PaymentStatus.PENDING,
+          amountCents: 1440,
+        },
+      ],
+    });
+    prisma.order.findUniqueOrThrow.mockResolvedValue(summary);
+
+    await expect(
+      service().markCashPaymentCollected({
+        orderId: "order-cash",
+        actorId: "admin-1",
+      }),
+    ).resolves.toEqual({
+      order: summary,
+      paymentId: "payment-cash",
+      amountCents: 1440,
+    });
+
+    expect(prisma.payment.update).toHaveBeenCalledWith({
+      where: { id: "payment-cash" },
+      data: { status: PaymentStatus.SUCCEEDED },
+    });
+    expect(prisma.order.update).toHaveBeenCalledWith({
+      where: { id: "order-cash" },
+      data: { paidAt: expect.any(Date) },
+    });
+    expect(prisma.orderStatusHistory.create).toHaveBeenCalledWith({
+      data: {
+        orderId: "order-cash",
+        fromStatus: OrderStatus.CONFIRMED,
+        toStatus: OrderStatus.CONFIRMED,
+        changedById: "admin-1",
+        note: "Pago en efectivo cobrado.",
+      },
+    });
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it("returns the order without duplicating history when cash was already collected", async () => {
+    const paidAt = new Date("2026-09-09T12:00:00.000Z");
+    const summary = {
+      id: "order-cash",
+      orderNumber: "MT-0001",
+      items: [],
+      statusHistory: [],
+    };
+    prisma.order.findUnique.mockResolvedValue({
+      id: "order-cash",
+      status: OrderStatus.DELIVERED,
+      paymentMethod: OrderPaymentMethod.CASH,
+      totalCents: 1440,
+      currency: "eur",
+      paidAt,
+      payments: [
+        {
+          id: "payment-cash",
+          provider: PaymentProvider.CASH,
+          status: PaymentStatus.SUCCEEDED,
+          amountCents: 1440,
+        },
+      ],
+    });
+    prisma.order.findUniqueOrThrow.mockResolvedValue(summary);
+
+    await expect(
+      service().markCashPaymentCollected({
+        orderId: "order-cash",
+        actorId: "admin-1",
+      }),
+    ).resolves.toEqual({
+      order: summary,
+      paymentId: "payment-cash",
+      amountCents: 1440,
+    });
+
+    expect(prisma.payment.update).not.toHaveBeenCalled();
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+    expect(prisma.order.update).not.toHaveBeenCalled();
+    expect(prisma.orderStatusHistory.create).not.toHaveBeenCalled();
+  });
+
+  it("creates a succeeded cash payment when a legacy cash order has no payment row", async () => {
+    const summary = {
+      id: "order-cash",
+      orderNumber: "MT-0001",
+      items: [],
+      statusHistory: [],
+    };
+    prisma.order.findUnique.mockResolvedValue({
+      id: "order-cash",
+      status: OrderStatus.READY,
+      paymentMethod: OrderPaymentMethod.CASH,
+      totalCents: 1440,
+      currency: "eur",
+      paidAt: null,
+      payments: [],
+    });
+    prisma.payment.create.mockResolvedValue({
+      id: "payment-new",
+      amountCents: 1440,
+    });
+    prisma.order.findUniqueOrThrow.mockResolvedValue(summary);
+
+    await expect(
+      service().markCashPaymentCollected({
+        orderId: "order-cash",
+        actorId: "admin-1",
+      }),
+    ).resolves.toEqual({
+      order: summary,
+      paymentId: "payment-new",
+      amountCents: 1440,
+    });
+
+    expect(prisma.payment.create).toHaveBeenCalledWith({
+      data: {
+        orderId: "order-cash",
+        provider: PaymentProvider.CASH,
+        status: PaymentStatus.SUCCEEDED,
+        amountCents: 1440,
+        currency: "eur",
+      },
+    });
+  });
+
+  it("rejects marking card orders as cash collected", async () => {
+    prisma.order.findUnique.mockResolvedValue({
+      id: "order-card",
+      status: OrderStatus.CONFIRMED,
+      paymentMethod: OrderPaymentMethod.CARD,
+      payments: [],
+    });
+
+    await expect(
+      service().markCashPaymentCollected({
+        orderId: "order-card",
+        actorId: "admin-1",
+      }),
+    ).rejects.toThrow(
+      "Solo se pueden marcar como cobrados pedidos en efectivo.",
+    );
+
+    expect(prisma.payment.update).not.toHaveBeenCalled();
+    expect(prisma.orderStatusHistory.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects collecting cash for cancelled orders", async () => {
+    prisma.order.findUnique.mockResolvedValue({
+      id: "order-cancelled",
+      status: OrderStatus.CANCELLED,
+      paymentMethod: OrderPaymentMethod.CASH,
+      payments: [
+        {
+          id: "payment-cash",
+          provider: PaymentProvider.CASH,
+          status: PaymentStatus.PENDING,
+          amountCents: 1440,
+        },
+      ],
+    });
+
+    await expect(
+      service().markCashPaymentCollected({
+        orderId: "order-cancelled",
+        actorId: "admin-1",
+      }),
+    ).rejects.toThrow(
+      "No se puede cobrar un pedido cancelado, expirado o fallido.",
+    );
+
+    expect(prisma.payment.update).not.toHaveBeenCalled();
+    expect(prisma.orderStatusHistory.create).not.toHaveBeenCalled();
   });
 
   it("removes an item from a paid order and creates one partial Stripe refund", async () => {

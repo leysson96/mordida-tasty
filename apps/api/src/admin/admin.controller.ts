@@ -215,6 +215,33 @@ export class AdminController {
     return result.order;
   }
 
+  @Patch("orders/:orderId/cash-collected")
+  async markCashPaymentCollected(
+    @Param("orderId") orderId: string,
+    @CurrentUser() user: { id: string },
+    @Req() request: Request,
+  ) {
+    const result = await this.paymentsService.markCashPaymentCollected({
+      orderId,
+      actorId: user.id,
+    });
+
+    await this.auditService.log({
+      actorId: user.id,
+      action: "order.cash_payment.collected",
+      entity: "order",
+      entityId: orderId,
+      metadata: {
+        paymentId: result.paymentId,
+        amountCents: result.amountCents,
+      },
+      ip: request.ip,
+      userAgent: request.headers["user-agent"],
+    });
+
+    return result.order;
+  }
+
   @Get("products")
   products() {
     return this.productsService.listAdminProducts();
