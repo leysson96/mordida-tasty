@@ -5,6 +5,8 @@ import {
   Banknote,
   BarChart3,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   CreditCard,
   Filter,
@@ -31,6 +33,7 @@ import { orderStatusLabels } from "../lib/order-state";
 import { formatOrderItemOptions } from "../lib/order-format";
 import { paymentMethodLabel, paymentSummaryText } from "../lib/payment-format";
 import type {
+  AdminOrderHistoryResponse,
   DeliveryMethod,
   OrderPaymentMethod,
   OrderStatus,
@@ -68,6 +71,8 @@ interface OrderHistoryFilters {
   from: string;
   to: string;
 }
+
+type OrderHistoryMeta = Omit<AdminOrderHistoryResponse, "orders">;
 
 const historyPageSize = 100;
 const historyStatusOptions = Object.keys(orderStatusLabels) as OrderStatus[];
@@ -116,6 +121,13 @@ const emptyHistoryFilters: OrderHistoryFilters = {
   to: "",
 };
 
+const emptyHistoryMeta: OrderHistoryMeta = {
+  total: 0,
+  page: 1,
+  pageSize: historyPageSize,
+  totalPages: 1,
+};
+
 export function AdminReportsClient() {
   const initialRange = useMemo(() => presetRange("30d"), []);
   const [from, setFrom] = useState(initialRange.from);
@@ -129,6 +141,8 @@ export function AdminReportsClient() {
   const [appliedHistoryFilters, setAppliedHistoryFilters] =
     useState<OrderHistoryFilters>(() => historyFiltersForRange(initialRange));
   const [historyOrders, setHistoryOrders] = useState<OrderSummary[]>([]);
+  const [historyMeta, setHistoryMeta] =
+    useState<OrderHistoryMeta>(emptyHistoryMeta);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string>();
   const [selectedHistoryOrderId, setSelectedHistoryOrderId] =
@@ -136,7 +150,7 @@ export function AdminReportsClient() {
 
   useEffect(() => {
     loadReport(initialRange.from, initialRange.to);
-    loadOrderHistory(historyFiltersForRange(initialRange));
+    loadOrderHistory(historyFiltersForRange(initialRange), 1);
   }, [initialRange.from, initialRange.to]);
 
   async function loadReport(nextFrom = from, nextTo = to) {
@@ -159,16 +173,22 @@ export function AdminReportsClient() {
     }
   }
 
-  async function loadOrderHistory(nextFilters = historyFilters) {
+  async function loadOrderHistory(nextFilters = historyFilters, nextPage = 1) {
     setHistoryLoading(true);
     setHistoryError(undefined);
 
     try {
-      const data = await api<OrderSummary[]>(
-        adminOrderHistoryPath(nextFilters),
+      const data = await api<AdminOrderHistoryResponse>(
+        adminOrderHistoryPath(nextFilters, nextPage),
       );
       setAppliedHistoryFilters(nextFilters);
-      setHistoryOrders(data);
+      setHistoryOrders(data.orders);
+      setHistoryMeta({
+        total: data.total,
+        page: data.page,
+        pageSize: data.pageSize,
+        totalPages: data.totalPages,
+      });
       setSelectedHistoryOrderId(undefined);
     } catch (requestError) {
       if (redirectOnAdminAuthError(requestError)) {
@@ -189,12 +209,16 @@ export function AdminReportsClient() {
 
   function submitHistory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    loadOrderHistory(historyFilters);
+    loadOrderHistory(historyFilters, 1);
   }
 
   function clearHistoryFilters() {
     setHistoryFilters(emptyHistoryFilters);
-    loadOrderHistory(emptyHistoryFilters);
+    loadOrderHistory(emptyHistoryFilters, 1);
+  }
+
+  function loadHistoryPage(page: number) {
+    loadOrderHistory(appliedHistoryFilters, page);
   }
 
   function applyPreset(preset: RangePreset) {
@@ -234,14 +258,11 @@ export function AdminReportsClient() {
     undefined,
   );
   const topProduct = report?.topProducts[0];
-  const filteredHistoryOrders = historyOrders.filter(
-    (order) =>
-      appliedHistoryFilters.paymentMethod === "ALL" ||
-      (order.paymentMethod ?? "CARD") === appliedHistoryFilters.paymentMethod,
-  );
   const selectedHistoryOrder = selectedHistoryOrderId
-    ? filteredHistoryOrders.find((order) => order.id === selectedHistoryOrderId)
+    ? historyOrders.find((order) => order.id === selectedHistoryOrderId)
     : undefined;
+  const canPageBack = historyMeta.page > 1;
+  const canPageForward = historyMeta.page < historyMeta.totalPages;
 
   return (
     <main className="page-shell admin-page admin-report-page">
@@ -443,7 +464,7 @@ export function AdminReportsClient() {
             Historial de pedidos
           </h2>
           <span className="admin-soft-pill">
-            {filteredHistoryOrders.length} pedidos
+            {historyOrderCountLabel(historyMeta.total)}
           </span>
         </div>
 
@@ -531,7 +552,11 @@ export function AdminReportsClient() {
             />
           </label>
           <div className="order-filter-actions">
-            <button className="button primary" type="submit">
+            <button
+              className="button primary"
+              type="submit"
+              disabled={historyLoading}
+            >
               <Filter aria-hidden="true" size={18} />
               Filtrar
             </button>
@@ -539,12 +564,40 @@ export function AdminReportsClient() {
               className="button secondary"
               type="button"
               onClick={clearHistoryFilters}
+              disabled={historyLoading}
             >
               <X aria-hidden="true" size={18} />
               Limpiar
             </button>
           </div>
         </form>
+
+        {historyMeta.total > 0 && (
+          <div className="order-pagination history-pagination no-print">
+            <button
+              type="button"
+              className="button secondary"
+              onClick={() => loadHistoryPage(historyMeta.page - 1)}
+              disabled={historyLoading || !canPageBack}
+            >
+              <ChevronLeft aria-hidden="true" size={18} />
+              Anterior
+            </button>
+            <span>
+              Pagina {historyMeta.page} de {historyMeta.totalPages} -{" "}
+              {historyRangeLabel(historyMeta)}
+            </span>
+            <button
+              type="button"
+              className="button secondary"
+              onClick={() => loadHistoryPage(historyMeta.page + 1)}
+              disabled={historyLoading || !canPageForward}
+            >
+              Siguiente
+              <ChevronRight aria-hidden="true" size={18} />
+            </button>
+          </div>
+        )}
 
         {historyError && <div className="empty-state error">{historyError}</div>}
 
@@ -553,10 +606,10 @@ export function AdminReportsClient() {
             <RefreshCw className="spin" aria-hidden="true" />
             Cargando historial
           </div>
-        ) : filteredHistoryOrders.length ? (
+        ) : historyOrders.length ? (
           <div className="order-history-layout">
             <div className="order-history-list">
-              {filteredHistoryOrders.map((order) => {
+              {historyOrders.map((order) => {
                 const DeliveryIcon =
                   order.deliveryMethod === "DELIVERY" ? Truck : Store;
                 const PaymentIcon =
@@ -836,7 +889,7 @@ function formatReportDate(value: string) {
   });
 }
 
-function adminOrderHistoryPath(filters: OrderHistoryFilters) {
+function adminOrderHistoryPath(filters: OrderHistoryFilters, page: number) {
   const params = new URLSearchParams();
 
   if (filters.q.trim()) {
@@ -845,6 +898,10 @@ function adminOrderHistoryPath(filters: OrderHistoryFilters) {
 
   if (filters.status !== "ALL") {
     params.set("status", filters.status);
+  }
+
+  if (filters.paymentMethod !== "ALL") {
+    params.set("paymentMethod", filters.paymentMethod);
   }
 
   if (filters.deliveryMethod !== "ALL") {
@@ -859,10 +916,25 @@ function adminOrderHistoryPath(filters: OrderHistoryFilters) {
     params.set("to", filters.to);
   }
 
-  params.set("page", "1");
+  params.set("page", String(Math.max(1, page)));
   params.set("pageSize", String(historyPageSize));
 
-  return `/admin/orders?${params.toString()}`;
+  return `/admin/orders/history?${params.toString()}`;
+}
+
+function historyOrderCountLabel(total: number) {
+  return total === 1 ? "1 pedido" : `${total} pedidos`;
+}
+
+function historyRangeLabel(meta: OrderHistoryMeta) {
+  if (meta.total === 0) {
+    return "Sin resultados";
+  }
+
+  const from = (meta.page - 1) * meta.pageSize + 1;
+  const to = Math.min(meta.total, meta.page * meta.pageSize);
+
+  return `${from}-${to} de ${meta.total}`;
 }
 
 function formatHistoryDate(value: string) {

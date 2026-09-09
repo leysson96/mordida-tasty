@@ -141,6 +141,14 @@ export interface OrderSummary {
   }>;
 }
 
+export interface AdminOrderHistoryResponse {
+  orders: OrderSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 export interface Address {
   id: string;
   label: string;
