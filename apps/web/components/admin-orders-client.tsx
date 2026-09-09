@@ -11,6 +11,7 @@ import {
   Euro,
   Filter,
   Gift,
+  AlertTriangle,
   X,
   Plus,
   Printer,
@@ -42,6 +43,7 @@ import {
 } from "../lib/order-state";
 import { formatOrderItemOptions } from "../lib/order-format";
 import {
+  DeliveryZone,
   DeliveryMethod,
   LoyaltyProgram,
   LoyaltyRewardType,
@@ -71,6 +73,7 @@ interface SettingsResponse {
   serviceStatus: ServiceStatus;
   ordersPause: OrdersPause;
   specialClosures: SpecialClosure[];
+  deliveryZones: DeliveryZone[];
   siteContent: SiteContent;
   loyaltyProgram: LoyaltyProgram;
 }
@@ -143,6 +146,7 @@ export function AdminOrdersClient() {
     reason: "",
   });
   const [specialClosures, setSpecialClosures] = useState<SpecialClosure[]>([]);
+  const [deliveryZones, setDeliveryZones] = useState<DeliveryZone[]>([]);
   const [siteContent, setSiteContent] = useState<SiteContent>(brandConfig);
   const [loyaltyProgram, setLoyaltyProgram] = useState<LoyaltyProgram>(
     defaultLoyaltyProgram,
@@ -186,6 +190,7 @@ export function AdminOrdersClient() {
             settingsData.ordersPause ?? settingsData.serviceStatus.pause,
           );
           setSpecialClosures(settingsData.specialClosures ?? []);
+          setDeliveryZones(settingsData.deliveryZones ?? []);
           setSiteContent({ ...brandConfig, ...settingsData.siteContent });
           setLoyaltyProgram({
             ...defaultLoyaltyProgram,
@@ -218,6 +223,11 @@ export function AdminOrdersClient() {
     [activeOrders, orderFilters.status, orders],
   );
   const hasNextOrderPage = orders.length === orderPageSize;
+  const activeDeliveryZoneCount = useMemo(
+    () => deliveryZones.filter((zone) => zone.active).length,
+    [deliveryZones],
+  );
+  const showDeliveryCoverageWarning = activeDeliveryZoneCount === 0;
 
   function activeOrderItems(order: OrderSummary) {
     return order.items.filter((item) => !item.removedAt);
@@ -1012,6 +1022,18 @@ export function AdminOrdersClient() {
                 <Clock aria-hidden="true" size={18} />
                 {openNow ? "Abierto ahora" : "Cerrado ahora"}
               </div>
+
+              {showDeliveryCoverageWarning && (
+                <div className="empty-state compact error" role="alert">
+                  <AlertTriangle aria-hidden="true" size={24} />
+                  <strong>Delivery sin zonas activas</strong>
+                  <span>
+                    Antes de abrir pedidos reales, crea una zona activa en
+                    Reparto. Si Render usa fallback global, revisa tarifa y
+                    cobertura antes de aceptar envios.
+                  </span>
+                </div>
+              )}
 
               <form
                 key={`${ordersPause.paused}-${ordersPause.reason}`}
