@@ -4,6 +4,7 @@ import {
   OrderStatus,
   PaymentProvider,
   PaymentStatus,
+  Prisma,
 } from "@prisma/client";
 import { PaymentsService } from "./payments.service";
 
@@ -151,6 +152,33 @@ describe("PaymentsService", () => {
       id: "evt_duplicate",
       type: "checkout.session.completed",
       data: { object: { id: "cs_duplicate" } },
+    });
+
+    await expect(
+      service().handleWebhook(signedStripeRequest() as never),
+    ).resolves.toEqual({
+      received: true,
+      duplicate: true,
+    });
+
+    expect(ordersService.transitionOrder).not.toHaveBeenCalled();
+    expect(prisma.stripeEvent.update).not.toHaveBeenCalled();
+  });
+
+  it("treats a concurrent duplicate Stripe webhook insert as already received", async () => {
+    prisma.stripeEvent.create.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError(
+        "Unique constraint failed on StripeEvent.id",
+        {
+          code: "P2002",
+          clientVersion: "test",
+        },
+      ),
+    );
+    stripe.webhooks.constructEvent.mockReturnValue({
+      id: "evt_duplicate_race",
+      type: "checkout.session.completed",
+      data: { object: { id: "cs_duplicate_race" } },
     });
 
     await expect(

@@ -795,12 +795,10 @@ export class PaymentsService {
     }
 
     if (!storedEvent) {
-      await this.prisma.stripeEvent.create({
-        data: {
-          id: event.id,
-          type: event.type,
-        },
-      });
+      const recorded = await this.recordStripeEvent(event);
+      if (!recorded) {
+        return { received: true, duplicate: true };
+      }
     }
 
     await this.processEvent(event);
@@ -965,6 +963,23 @@ export class PaymentsService {
     }
 
     return order;
+  }
+
+  private async recordStripeEvent(event: Stripe.Event) {
+    try {
+      await this.prisma.stripeEvent.create({
+        data: {
+          id: event.id,
+          type: event.type,
+        },
+      });
+      return true;
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        return false;
+      }
+      throw error;
+    }
   }
 
   private async findOrderFromPaymentIntent(paymentIntent: Stripe.PaymentIntent) {
@@ -1141,6 +1156,13 @@ export class PaymentsService {
       (payment) =>
         payment.status === PaymentStatus.SUCCEEDED &&
         payment.stripePaymentIntentId,
+    );
+  }
+
+  private isUniqueConstraintError(error: unknown) {
+    return (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
     );
   }
 
