@@ -3,6 +3,8 @@ import { formatOrderItemOptions } from "../lib/order-format";
 import { paymentSummaryText } from "../lib/payment-format";
 import type { OrderSummary } from "../lib/types";
 
+const cashCollectedHistoryNote = "Pago en efectivo cobrado.";
+
 interface PrintableOrderTicketProps {
   order: OrderSummary;
   siteName: string;
@@ -30,6 +32,7 @@ export function PrintableOrderTicket({
         {isDelivery ? "ENTREGA A DOMICILIO" : "RECOGIDA EN LOCAL"}
       </p>
       <p>{paymentSummaryText(order)}</p>
+      {order.paymentMethod === "CASH" && <p>{cashTicketStatusText(order)}</p>}
 
       <hr />
 
@@ -121,4 +124,21 @@ function TicketLine({
 
 function firstText(...values: Array<string | null | undefined>) {
   return values.find((value) => Boolean(value?.trim()));
+}
+
+function cashTicketStatusText(order: OrderSummary) {
+  return isCashPaymentCollected(order)
+    ? "Caja: EFECTIVO COBRADO"
+    : "Caja: EFECTIVO PENDIENTE";
+}
+
+function isCashPaymentCollected(order: OrderSummary) {
+  return (
+    Boolean(order.paidAt) ||
+    Boolean(
+      order.statusHistory?.some(
+        (historyItem) => historyItem.note === cashCollectedHistoryNote,
+      ),
+    )
+  );
 }

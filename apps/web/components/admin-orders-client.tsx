@@ -107,6 +107,12 @@ const fullRefundStatuses = new Set<OrderStatus>([
   "PREPARING",
   "READY",
 ]);
+const cashNonCollectableStatuses = new Set<OrderStatus>([
+  "CANCELLED",
+  "EXPIRED",
+  "PAYMENT_FAILED",
+]);
+const cashCollectedHistoryNote = "Pago en efectivo cobrado.";
 const defaultLoyaltyProgram: LoyaltyProgram = {
   enabled: true,
   goalOrders: 5,
@@ -151,6 +157,7 @@ export function AdminOrdersClient() {
   const [removalBusy, setRemovalBusy] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<OrderSummary>();
   const [cancelBusy, setCancelBusy] = useState(false);
+  const [cashCollectingOrderId, setCashCollectingOrderId] = useState<string>();
   const [acknowledged, setAcknowledged] = useState<Set<string>>(new Set());
   const [twoFactor, setTwoFactor] = useState<TwoFactorSetupResponse>();
   const [twoFactorMessage, setTwoFactorMessage] = useState<string>();
@@ -230,6 +237,42 @@ export function AdminOrdersClient() {
     return isCardPayment(order) && fullRefundStatuses.has(order.status);
   }
 
+  function isCashPaymentCollected(order: OrderSummary) {
+    return (
+      order.paymentMethod === "CASH" &&
+      (Boolean(order.paidAt) ||
+        Boolean(
+          order.statusHistory?.some(
+            (historyItem) => historyItem.note === cashCollectedHistoryNote,
+          ),
+        ))
+    );
+  }
+
+  function canMarkCashPaymentCollected(order: OrderSummary) {
+    return (
+      order.paymentMethod === "CASH" &&
+      !isCashPaymentCollected(order) &&
+      !cashNonCollectableStatuses.has(order.status)
+    );
+  }
+
+  function cashCollectionText(order: OrderSummary) {
+    if (order.paymentMethod !== "CASH") {
+      return undefined;
+    }
+
+    if (isCashPaymentCollected(order)) {
+      return "Caja: efectivo cobrado";
+    }
+
+    if (cashNonCollectableStatuses.has(order.status)) {
+      return "Caja: no cobrable";
+    }
+
+    return "Caja: pendiente de cobro";
+  }
+
   function applyOrderFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setOrderPage(1);
@@ -267,6 +310,31 @@ export function AdminOrdersClient() {
       setAcknowledged((current) => new Set(current).add(orderId));
     } catch (requestError) {
       handleAdminError(requestError, "No se pudo actualizar.");
+    }
+  }
+
+  async function markCashPaymentCollected(order: OrderSummary) {
+    setCashCollectingOrderId(order.id);
+
+    try {
+      const updated = await api<OrderSummary>(
+        `/admin/orders/${order.id}/cash-collected`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({}),
+        },
+      );
+      setOrders((current) =>
+        current.map((currentOrder) =>
+          currentOrder.id === updated.id ? updated : currentOrder,
+        ),
+      );
+      setAcknowledged((current) => new Set(current).add(updated.id));
+      setError(undefined);
+    } catch (requestError) {
+      handleAdminError(requestError, "No se pudo marcar el efectivo cobrado.");
+    } finally {
+      setCashCollectingOrderId(undefined);
     }
   }
 
@@ -786,6 +854,12 @@ export function AdminOrdersClient() {
                   )}
                   <span>{paymentSummaryText(order)}</span>
                 </div>
+                {cashCollectionText(order) && (
+                  <div className="payment-chip">
+                    <Banknote aria-hidden="true" size={16} />
+                    <span>{cashCollectionText(order)}</span>
+                  </div>
+                )}
                 <ul>
                   {order.items.map((item, itemIndex) => (
                     <li
@@ -847,6 +921,19 @@ export function AdminOrdersClient() {
                       {orderStatusLabels[status]}
                     </button>
                   ))}
+                  {canMarkCashPaymentCollected(order) && (
+                    <button
+                      type="button"
+                      className="button secondary"
+                      onClick={() => markCashPaymentCollected(order)}
+                      disabled={cashCollectingOrderId === order.id}
+                    >
+                      <Banknote aria-hidden="true" size={17} />
+                      {cashCollectingOrderId === order.id
+                        ? "Marcando..."
+                        : "Efectivo cobrado"}
+                    </button>
+                  )}
                   {canCancelOrderWithRefund(order) && (
                     <button
                       type="button"

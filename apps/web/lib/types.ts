@@ -130,6 +130,7 @@ export interface OrderSummary {
   cashTenderedCents?: number | null;
   cashChangeCents?: number | null;
   totalCents: number;
+  paidAt?: string | null;
   createdAt: string;
   updatedAt?: string;
   items: OrderItem[];
