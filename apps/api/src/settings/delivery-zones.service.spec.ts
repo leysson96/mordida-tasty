@@ -1,4 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { AppEnv, DeliveryCoverageMode } from "../config/env";
 import { DeliveryZonesService } from "./delivery-zones.service";
 
 describe("DeliveryZonesService", () => {
@@ -14,18 +16,52 @@ describe("DeliveryZonesService", () => {
   const settings = {
     getDeliveryFeeCents: jest.fn(),
   };
+  const config = {
+    get: jest.fn((key: keyof AppEnv) =>
+      key === "DELIVERY_COVERAGE_MODE"
+        ? ("zones" as DeliveryCoverageMode)
+        : undefined,
+    ),
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
     settings.getDeliveryFeeCents.mockResolvedValue(250);
+    config.get.mockImplementation((key: keyof AppEnv) =>
+      key === "DELIVERY_COVERAGE_MODE"
+        ? ("zones" as DeliveryCoverageMode)
+        : undefined,
+    );
   });
 
   function service() {
-    return new DeliveryZonesService(prisma as never, settings as never);
+    return new DeliveryZonesService(
+      prisma as never,
+      settings as never,
+      config as unknown as ConfigService<AppEnv, true>,
+    );
   }
 
-  it("uses the global delivery fee while no zones are configured", async () => {
+  it("rejects delivery by default while no active zones are configured", async () => {
     prisma.deliveryZone.findMany.mockResolvedValue([]);
+
+    await expect(service().quoteDelivery("15001", 1190)).resolves.toEqual({
+      available: false,
+      deliveryFeeCents: 0,
+      minimumOrderCents: 0,
+      reason:
+        "Reparto no configurado. Crea al menos una zona activa antes de aceptar pedidos a domicilio.",
+    });
+    expect(settings.getDeliveryFeeCents).toHaveBeenCalled();
+  });
+
+  it("uses the global delivery fee only when global fallback is explicitly enabled", async () => {
+    prisma.deliveryZone.findMany.mockResolvedValue([]);
+    config.get.mockImplementation((key: keyof AppEnv) =>
+      key === "DELIVERY_COVERAGE_MODE"
+        ? ("global_fallback" as DeliveryCoverageMode)
+        : undefined,
+    );
 
     await expect(service().quoteDelivery("15001", 1190)).resolves.toEqual({
       available: true,

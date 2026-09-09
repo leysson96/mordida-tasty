@@ -1,5 +1,7 @@
 type RawEnv = Record<string, string | undefined>;
 
+export type DeliveryCoverageMode = "zones" | "global_fallback";
+
 const requiredInAllEnvironments = ["DATABASE_URL", "JWT_SECRET"] as const;
 const requiredInProduction = [
   "FRONTEND_URL",
@@ -36,6 +38,7 @@ export interface AppEnv {
   SMTP_TIMEOUT_MS: number;
   BREVO_API_KEY?: string;
   BREVO_API_URL: string;
+  DELIVERY_COVERAGE_MODE: DeliveryCoverageMode;
   CLOUDINARY_CLOUD_NAME?: string;
   CLOUDINARY_API_KEY?: string;
   CLOUDINARY_API_SECRET?: string;
@@ -59,6 +62,19 @@ function parseSameSite(
 
   throw new Error(
     "SESSION_COOKIE_SAME_SITE must be one of: lax, strict, none.",
+  );
+}
+
+function parseDeliveryCoverageMode(
+  value: string | undefined,
+): DeliveryCoverageMode {
+  const mode = (value ?? "zones").toLowerCase();
+  if (mode === "zones" || mode === "global_fallback") {
+    return mode;
+  }
+
+  throw new Error(
+    "DELIVERY_COVERAGE_MODE must be one of: zones, global_fallback.",
   );
 }
 
@@ -193,6 +209,9 @@ export function validateEnvironment(env: RawEnv): AppEnv {
     BREVO_API_KEY: env.BREVO_API_KEY,
     BREVO_API_URL:
       env.BREVO_API_URL ?? "https://api.brevo.com/v3/smtp/email",
+    DELIVERY_COVERAGE_MODE: parseDeliveryCoverageMode(
+      env.DELIVERY_COVERAGE_MODE,
+    ),
     CLOUDINARY_CLOUD_NAME: env.CLOUDINARY_CLOUD_NAME,
     CLOUDINARY_API_KEY: env.CLOUDINARY_API_KEY,
     CLOUDINARY_API_SECRET: env.CLOUDINARY_API_SECRET,

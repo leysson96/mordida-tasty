@@ -3,7 +3,9 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Prisma } from "@prisma/client";
+import { AppEnv } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
 import { SettingsService } from "./settings.service";
 
@@ -49,6 +51,7 @@ export class DeliveryZonesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settingsService: SettingsService,
+    private readonly configService: ConfigService<AppEnv, true>,
   ) {}
 
   async listAdminZones() {
@@ -82,6 +85,16 @@ export class DeliveryZonesService {
     const fallbackFeeCents = await this.settingsService.getDeliveryFeeCents();
 
     if (activeZones.length === 0) {
+      if (this.deliveryCoverageMode() !== "global_fallback") {
+        return {
+          available: false,
+          deliveryFeeCents: 0,
+          minimumOrderCents: 0,
+          reason:
+            "Reparto no configurado. Crea al menos una zona activa antes de aceptar pedidos a domicilio.",
+        };
+      }
+
       return {
         available: true,
         deliveryFeeCents: fallbackFeeCents,
@@ -227,6 +240,10 @@ export class DeliveryZonesService {
       ...zone,
       postalCodes: normalizePostalRules(readPostalRules(zone.postalCodes)),
     };
+  }
+
+  private deliveryCoverageMode() {
+    return this.configService.get("DELIVERY_COVERAGE_MODE", { infer: true });
   }
 }
 
