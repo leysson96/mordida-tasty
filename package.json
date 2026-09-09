@@ -30,7 +30,9 @@
     "admin:reset-2fa": "node scripts/admin-reset-2fa.mjs"
   },
   "overrides": {
-    "deepmerge-ts": "^8.0.2"
+    "deepmerge-ts": "^8.0.2",
+    "multer": "2.3.0",
+    "qs": "6.16.0"
   },
   "devDependencies": {
     "concurrently": "^9.2.0",
