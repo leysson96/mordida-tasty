@@ -58,6 +58,13 @@ Las imagenes subidas desde admin se envian a Cloudinary si `CLOUDINARY_CLOUD_NAM
 variables, desarrollo local usa `UPLOAD_DIR` y sirve los archivos desde
 `http://localhost:4000/uploads`.
 
+En produccion, Cloudinary es el almacenamiento principal para nuevas imagenes.
+Si las tres variables `CLOUDINARY_*` estan configuradas, la API no monta
+`/uploads`; ese directorio queda solo como fallback local o para una produccion
+con `UPLOAD_DIR` apuntando a un disco persistente real. Las imagenes antiguas
+que sigan guardadas como `/uploads/...` deben re-subirse desde admin para que
+obtengan una URL permanente de Cloudinary.
+
 El seed crea el admin con el email configurado en `MORDIDA_SEED_ADMIN_EMAIL` y la clave configurada en `MORDIDA_SEED_ADMIN_PASSWORD`.
 Tambien puede crear una cuenta limitada de cocina con `MORDIDA_SEED_KITCHEN_EMAIL` y `MORDIDA_SEED_KITCHEN_PASSWORD`.
 

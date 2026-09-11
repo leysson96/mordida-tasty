@@ -161,6 +161,21 @@ cambiar cualquiera de las variables `CLOUDINARY_*`, haz redeploy del servicio
 `mordida-tasty-api`. La web tambien debe estar desplegada con soporte para
 `https://res.cloudinary.com` en Next/Image y CSP.
 
+Comportamiento de `/uploads`:
+
+- En produccion con `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` y
+  `CLOUDINARY_API_SECRET` completos, la API no sirve `/uploads`. Todas las
+  subidas nuevas deben quedar en Cloudinary.
+- En desarrollo local, `/uploads` sigue disponible como fallback aunque tengas
+  Cloudinary configurado.
+- En una produccion sin Cloudinary, `/uploads` solo debe usarse si `UPLOAD_DIR`
+  apunta a un disco persistente real. No lo uses como almacenamiento principal
+  en Render gratis.
+- Si una imagen antigua aparece como `/uploads/...`, re-subela desde
+  `/admin/menu` para generar una URL permanente de Cloudinary.
+- Si cambias de cuenta Cloudinary, actualiza las tres variables `CLOUDINARY_*`
+  en Render API y ejecuta un nuevo deploy. No hace falta tocar codigo.
+
 ## Seed inicial
 
 - `MORDIDA_SEED_ADMIN_EMAIL`: email del administrador real.

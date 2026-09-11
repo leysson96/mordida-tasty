@@ -19,17 +19,21 @@ async function bootstrap() {
     app.set('trust proxy', 1);
   }
 
-  const uploadsDir = configService.get('UPLOAD_DIR', { infer: true });
-  const uploadsPath = isAbsolute(uploadsDir) ? uploadsDir : resolve(process.cwd(), uploadsDir);
-
-  mkdirSync(uploadsPath, { recursive: true });
+  const shouldServeLocalUploads =
+    !isProduction || !hasCompleteCloudinaryConfig(configService);
 
   app.use(
     helmet({
       crossOriginResourcePolicy: { policy: 'cross-origin' }
     })
   );
-  app.useStaticAssets(uploadsPath, { prefix: '/uploads/' });
+  if (shouldServeLocalUploads) {
+    const uploadsDir = configService.get('UPLOAD_DIR', { infer: true });
+    const uploadsPath = isAbsolute(uploadsDir) ? uploadsDir : resolve(process.cwd(), uploadsDir);
+
+    mkdirSync(uploadsPath, { recursive: true });
+    app.useStaticAssets(uploadsPath, { prefix: '/uploads/' });
+  }
   app.use(cookieParser());
   app.enableCors({
     origin: splitOrigins(configService.get('CORS_ORIGIN', { infer: true })),
@@ -44,6 +48,14 @@ async function bootstrap() {
   );
 
   await app.listen(configService.get('PORT', { infer: true }));
+}
+
+function hasCompleteCloudinaryConfig(configService: ConfigService<AppEnv, true>) {
+  return Boolean(
+    configService.get('CLOUDINARY_CLOUD_NAME', { infer: true }) &&
+      configService.get('CLOUDINARY_API_KEY', { infer: true }) &&
+      configService.get('CLOUDINARY_API_SECRET', { infer: true })
+  );
 }
 
 bootstrap();
