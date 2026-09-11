@@ -67,6 +67,20 @@ Configura `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` y
 efimero: las fotos guardadas ahi se pierden al reiniciar o redesplegar. Solo usa
 `UPLOAD_DIR` como almacenamiento principal si tienes un disco persistente real.
 
+Variables operativas importantes de API:
+
+```text
+FRONTEND_URL=https://mordidatasty.es
+API_PUBLIC_URL=https://mordida-tasty-api.onrender.com
+CORS_ORIGIN=https://mordidatasty.es,https://www.mordidatasty.es
+CHECKOUT_GRACE_MINUTES=15
+DELIVERY_COVERAGE_MODE=zones
+```
+
+Despues de cambiar estas variables, redepliega la API y prueba desde el dominio
+real. `CORS_ORIGIN` y `FRONTEND_URL` afectan login, registro, admin, cookies,
+correos y redirecciones de Stripe.
+
 Nota: el pre-deploy command puede requerir un servicio compatible de pago en
 Render. Si no esta disponible, ejecuta las migraciones desde una shell segura
 antes del primer trafico real.
@@ -80,6 +94,18 @@ npm ci --include=dev && npm run build -w @mordida/web && npm prune --omit=dev
 Start Command:
 npm run start -w @mordida/web
 ```
+
+Variables operativas importantes de la web:
+
+```text
+NEXT_PUBLIC_API_URL=https://mordida-tasty-api.onrender.com
+NEXT_PUBLIC_GTM_ID=
+NEXT_PUBLIC_GA_MEASUREMENT_ID=
+```
+
+Despues de cambiar cualquier `NEXT_PUBLIC_*`, usa `Save, rebuild, and deploy`.
+Un restart simple no alcanza porque esos valores quedan compilados en el bundle
+de Next.js.
 
 Si Render muestra que faltan paquetes como `@types/react`, no significa que
 falten en el repositorio. Significa que `NODE_ENV=production` hizo que `npm ci`
@@ -133,12 +159,30 @@ la experiencia con cookies.
 13. Hacer compra real de prueba con un producto barato.
 14. Revisar pedido, correo, tracking, webhook, ticket y reportes.
 
+## Runbook de cambios frecuentes
+
+| Necesitas cambiar | Donde se hace | Deploy | Validacion |
+| --- | --- | --- | --- |
+| Google Tag Manager | Render Web: `NEXT_PUBLIC_GTM_ID` | Rebuild web | Aceptar cookies y probar Tag Assistant |
+| Google Analytics directo | Render Web: `NEXT_PUBLIC_GA_MEASUREMENT_ID` | Rebuild web | Confirmar evento en tiempo real |
+| API que usa la web | Render Web: `NEXT_PUBLIC_API_URL` | Rebuild web | Home, checkout y cuenta cargan datos |
+| Origenes permitidos | Render API: `CORS_ORIGIN` | Redeploy API | Login cliente/admin desde dominio real |
+| URL publica del sitio | Render API: `FRONTEND_URL` | Redeploy API | Correos y Stripe vuelven al dominio correcto |
+| Stripe | Render API + Stripe Dashboard | Redeploy API | Pago test y webhook `2xx` |
+| Brevo/correo | Render API: `BREVO_*` o SMTP | Redeploy API | Registro, verificar email, recuperar contrasena |
+| Cloudinary | Render API: `CLOUDINARY_*` | Redeploy API | Subir imagen y reiniciar API |
+| Google Maps | Admin `/admin/menu` -> `Portada` | No | Boton `Como llegar` abre el punto exacto |
+| Nosotros/portada/redes | Admin `/admin/menu` -> `Portada` | No | Home desktop/mobile correcta |
+| Zonas de reparto | Admin + `DELIVERY_COVERAGE_MODE` si aplica | Solo variable | Codigo permitido y fuera de zona |
+| Efectivo | Operacion diaria en admin | No | Marcar cobrado y revisar reportes |
+
 ## Verificacion minima antes de abrir al publico
 
 ```bash
 npm run lint
 npm test
 npm run build
+npm.cmd run test:e2e
 ```
 
 Ademas, en produccion revisa:
@@ -150,6 +194,32 @@ Ademas, en produccion revisa:
 - una imagen subida desde `/admin/menu` se ve despues en la carta publica.
 - cocina solo puede ver y mover pedidos operativos.
 - admin no entra al panel sin 2FA activado.
+- pedido efectivo de recogida y delivery se puede marcar como cobrado.
+- reportes separan cobrado, efectivo pendiente y cancelado.
+- Google Maps abre la direccion exacta desde movil.
+- GTM/GA solo carga tras aceptar cookies.
+
+## Rollback
+
+Para corregir produccion, prioriza revertir por commit o desplegar un hotfix
+pequeno. No mezcles rollback con nuevas features.
+
+Flujo recomendado:
+
+1. Identifica el commit sano con `git log --oneline`.
+2. Revisa logs de Render API/Web y Stripe si el fallo toca pagos.
+3. Revert seguro:
+
+```bash
+git revert <commit>
+git push
+```
+
+4. Espera el deploy de Render.
+5. Repite el smoke test del flujo afectado.
+
+Si el cambio pendiente toca pagos, caja, migraciones o datos existentes, toma
+backup antes de aplicar hotfix o rollback.
 
 ## Recuperacion de 2FA admin
 

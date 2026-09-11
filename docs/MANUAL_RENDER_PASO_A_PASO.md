@@ -164,6 +164,7 @@ STRIPE_SECRET_KEY=sk_test_o_sk_live_de_Stripe
 STRIPE_WEBHOOK_SECRET=whsec_temporal_cambiar_despues
 STRIPE_SUCCESS_PATH=/seguimiento/{ORDER_NUMBER}?t={TRACKING_TOKEN}
 STRIPE_CANCEL_PATH=/checkout?cancelled=1
+CHECKOUT_GRACE_MINUTES=15
 SMTP_HOST=smtp_real
 SMTP_PORT=587
 SMTP_SECURE=false
@@ -173,6 +174,7 @@ SMTP_FROM=Mordida Tasty <no-reply@tudominio.es>
 SMTP_TIMEOUT_MS=10000
 BREVO_API_KEY=clave_api_brevo_recomendada_en_render_gratis
 BREVO_API_URL=https://api.brevo.com/v3/smtp/email
+DELIVERY_COVERAGE_MODE=zones
 CLOUDINARY_CLOUD_NAME=nombre_de_tu_nube
 CLOUDINARY_API_KEY=clave_api_cloudinary
 CLOUDINARY_API_SECRET=secreto_api_cloudinary
@@ -195,6 +197,10 @@ Notas:
 - Cuando uses dominio propio tipo `www.tudominio.es` y `api.tudominio.es`, usa
   `SESSION_COOKIE_SAME_SITE=lax`.
 - Deja `SESSION_COOKIE_DOMAIN` vacio al principio.
+- `CHECKOUT_GRACE_MINUTES=15` permite que un pedido ya creado pueda iniciar
+  Stripe durante 15 minutos si la tienda cierra justo despues de crearlo.
+- `DELIVERY_COVERAGE_MODE=zones` es el modo recomendado para produccion: solo
+  acepta reparto en zonas activas configuradas desde admin.
 
 Cuando guardes, Render empezara a construir y desplegar la API.
 
@@ -226,10 +232,17 @@ Variables de entorno de la web:
 NODE_ENV=production
 NODE_VERSION=22.19.0
 NEXT_PUBLIC_API_URL=https://mordida-tasty-api.onrender.com
+NEXT_PUBLIC_GTM_ID=
+NEXT_PUBLIC_GA_MEASUREMENT_ID=
 ```
 
 Importante: `NEXT_PUBLIC_API_URL` queda metida dentro del build de Next.js.
 Si cambias esa variable, usa `Save, rebuild, and deploy`, no solo reiniciar.
+
+Usa `NEXT_PUBLIC_GTM_ID` para Google Tag Manager. Si ese valor existe, la web
+carga GTM y no carga Analytics directo para evitar doble medicion. Usa
+`NEXT_PUBLIC_GA_MEASUREMENT_ID` solo si no vas a usar GTM. En ambos casos, el
+banner de cookies controla si se carga la medicion.
 
 Si Render muestra un error diciendo que falta `@types/react`, el origen es que
 el servicio esta construyendo con `NODE_ENV=production` y `npm ci` omitio las
@@ -448,6 +461,19 @@ Desde el panel admin revisa:
 - Extras/opciones.
 - Imagenes de portada y productos.
 
+Cambios frecuentes sin tocar codigo:
+
+- Google Maps: `/admin/menu` -> `Portada` -> `Enlace exacto Google Maps`.
+  Pegar el enlace copiado desde `Compartir` en Google Maps, no escribir una URL
+  manual si Maps envia al punto equivocado.
+- Ubicacion y Nosotros: `/admin/menu` -> `Portada`.
+- Fotos: `/admin/menu`, subir de nuevo cualquier imagen antigua rota para que
+  quede guardada en Cloudinary.
+- Zonas: ajustes/admin de delivery. Con `DELIVERY_COVERAGE_MODE=zones`, no
+  abras reparto si no hay zonas activas.
+- Efectivo: los pedidos se pueden aceptar, pero caja solo cuenta como cobrada
+  cuando admin marca `Efectivo cobrado`.
+
 La pantalla de cocina es:
 
 ```text
@@ -536,10 +562,36 @@ Haz esta prueba en orden:
 23. Redeplegar o reiniciar API.
 24. Confirmar que la imagen sigue visible.
 25. Probar recuperacion de contrasena.
+26. Crear pedido efectivo de recogida y marcar `Efectivo cobrado`.
+27. Crear pedido efectivo delivery indicando importe de pago y revisar cambio.
+28. Confirmar que reportes separan cobrado, pendiente efectivo y cancelado.
+29. Ejecutar smoke E2E local antes del deploy:
+
+```bash
+npm.cmd run test:e2e
+```
 
 No abras al publico hasta que esos puntos salgan bien.
 
-## 15. Como se actualiza el codigo despues
+## 15. Smoke test por tipo de cambio
+
+Usa esta tabla despues de cada deploy. Si un punto falla, no sigas probando
+features nuevas: lee logs, corrige o vuelve al commit anterior.
+
+| Cambio desplegado | Prueba minima |
+| --- | --- |
+| `NEXT_PUBLIC_API_URL` o CORS | Abrir home desde dominio real, registro/login cliente, admin login + 2FA |
+| GTM/GA | Aceptar cookies, probar Tag Assistant y confirmar que admin no se mide |
+| Stripe | Pago test completo, webhook `2xx`, pedido visible en admin y tracking |
+| Brevo/SMTP | Registro, verificacion de correo y recuperar contrasena |
+| Cloudinary/uploads | Subir imagen, reiniciar API y confirmar imagen visible |
+| Delivery zones | Codigo postal permitido, codigo fuera de zona y aviso admin |
+| Efectivo | Pedido CASH recogida, pedido CASH delivery con cambio, marcar cobrado |
+| Reportes | Filtrar por fechas, metodo de pago, estado y pagina de historial |
+| Cocina/ticket | Marcar listo, imprimir ticket operativo y revisar datos de delivery |
+| Seguridad/API | `GET /health`, pedido duplicado con mismo `Idempotency-Key`, logs sin 500 nuevos |
+
+## 16. Como se actualiza el codigo despues
 
 Cada cambio futuro sigue este flujo:
 
@@ -568,7 +620,29 @@ git push
 5. Render detecta el push a `main` y despliega automaticamente si Auto-Deploy
    esta activado.
 
-## 16. Si algo falla
+## 17. Rollback por commit
+
+Si produccion falla despues de un deploy:
+
+1. Deten nuevas pruebas de clientes.
+2. Revisa logs de Render API/Web y Stripe si el fallo toca pagos.
+3. Identifica el ultimo commit sano con `git log --oneline`.
+4. Si el cambio es pequeno, prepara un hotfix y despliega.
+5. Si afecta pagos, login, pedidos o imagenes, vuelve temporalmente al commit
+   sano desde Render o con un revert de Git.
+6. Repite el smoke test del flujo afectado antes de marcarlo resuelto.
+
+Comando local recomendado para revertir un commit ya subido, sin reescribir
+historial compartido:
+
+```bash
+git revert <commit>
+git push
+```
+
+No uses `git reset --hard` contra `main` compartida para corregir produccion.
+
+## 18. Si algo falla
 
 API no arranca:
 
@@ -628,7 +702,7 @@ npm run admin:reset-2fa -- --email=admin@tudominio.es
 
 Ejecutar solo desde Shell segura de Render.
 
-## 17. Checklist final
+## 19. Checklist final
 
 - [ ] Render conectado con GitHub.
 - [ ] PostgreSQL creado en Frankfurt.
@@ -651,6 +725,14 @@ Ejecutar solo desde Shell segura de Render.
 - [ ] Textos legales reales completados.
 - [ ] Dominio propio configurado.
 - [ ] Prueba real de compra terminada.
+- [ ] `CORS_ORIGIN` incluye todos los dominios reales usados por clientes.
+- [ ] `FRONTEND_URL` y `API_PUBLIC_URL` apuntan a dominios publicos correctos.
+- [ ] `CHECKOUT_GRACE_MINUTES` revisado.
+- [ ] `DELIVERY_COVERAGE_MODE=zones` o fallback global aceptado conscientemente.
+- [ ] GTM/GA probado con consentimiento de cookies.
+- [ ] Google Maps probado desde movil con el enlace exacto.
+- [ ] Pedido efectivo recogida y delivery probado con caja pendiente/cobrada.
+- [ ] Rollback por commit entendido por quien opera Render.
 
 ## Fuentes oficiales consultadas
 

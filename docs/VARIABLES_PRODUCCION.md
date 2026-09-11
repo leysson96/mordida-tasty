@@ -19,10 +19,23 @@ Cloudflare o el proveedor elegido.
 - `NEXT_PUBLIC_GA_MEASUREMENT_ID`: ID de medicion de Google Analytics 4 para la
   web. Tiene formato `G-XXXXXXXXXX`. Se usa solo si `NEXT_PUBLIC_GTM_ID` esta
   vacio.
+- `CHECKOUT_GRACE_MINUTES`: minutos de gracia para que un pedido ya creado
+  pueda iniciar Stripe si la tienda cierra justo despues. Default: `15`.
+- `DELIVERY_COVERAGE_MODE`: politica de cobertura de reparto. Valores:
+  `zones` para aceptar solo codigos postales configurados; `global_fallback`
+  para permitir reparto global con aviso visible en admin.
 
 Recomendacion: usar dominio propio con web y API bajo el mismo dominio raiz:
 `www.mordidatasty.es` y `api.mordidatasty.es`. Asi las cookies `httpOnly` son
 mas fiables que usando dominios temporales distintos de proveedores.
+
+Para `mordidatasty.es`, la API debe permitir todos los origenes reales que el
+cliente pueda abrir en navegador. Si se usan raiz y `www`, mantener ambos en
+`CORS_ORIGIN`, separados por coma. Despues de cambiar `CORS_ORIGIN`,
+`FRONTEND_URL` o `API_PUBLIC_URL`, redeplegar la API. Despues de cambiar
+`NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_GTM_ID` o `NEXT_PUBLIC_GA_MEASUREMENT_ID`,
+usar `Save, rebuild, and deploy` en la web porque Next.js los integra en el
+build.
 
 ## Analitica
 
@@ -44,6 +57,11 @@ Para probar Tag Manager con el boton de Google, abre la web publica, acepta
 "Aceptar medicion" en el banner de cookies y vuelve a ejecutar la prueba. Si no
 aceptas medicion, el sitio no carga la etiqueta por privacidad.
 
+Si manana quieres cambiar Analytics o Tag Manager no hay que tocar codigo:
+cambia `NEXT_PUBLIC_GTM_ID` o `NEXT_PUBLIC_GA_MEASUREMENT_ID` en Render Web y
+redepliega la web. Si usas GTM, los cambios de etiquetas se administran dentro
+de Google Tag Manager y luego se publican como una nueva version del contenedor.
+
 ## Contenido editable sin tocar codigo
 
 Estos cambios se hacen desde `/admin/menu`, pestaña `Portada`, y se guardan en
@@ -62,6 +80,48 @@ parecida. La forma recomendada es abrir la ubicacion correcta en Google Maps,
 usar `Compartir` -> `Copiar enlace`, pegar ese enlace en `/admin/menu` y guardar.
 Si ese campo queda vacio, la web genera la ruta usando la direccion visible como
 respaldo.
+
+Para corregir una ruta equivocada de Google Maps:
+
+1. Abre Google Maps en el punto exacto del local.
+2. Pulsa `Compartir`.
+3. Copia el enlace publico.
+4. Entra a `/admin/menu`, pestana `Portada`.
+5. Pega el enlace en `Enlace exacto Google Maps`.
+6. Guarda portada y prueba el boton `Como llegar` desde movil.
+
+No dependas solo del texto de la direccion cuando Google confunde el numero, la
+mano o un negocio cercano.
+
+## Zonas, delivery y efectivo
+
+Las zonas de delivery se administran desde el panel admin. En produccion, el
+modo recomendado para abrir al publico es:
+
+```text
+DELIVERY_COVERAGE_MODE=zones
+```
+
+Con `zones`, si no hay zonas activas, la API rechaza delivery y el admin muestra
+un aviso. Esto evita aceptar pedidos fuera de cobertura por accidente.
+
+Usa `global_fallback` solo de forma consciente y temporal, por ejemplo si el
+restaurante decide aceptar todo el reparto manualmente mientras termina de
+cargar zonas. Despues de cambiar `DELIVERY_COVERAGE_MODE`, redeplegar la API y
+probar un codigo postal permitido y otro fuera de zona.
+
+El pago en efectivo funciona asi:
+
+- El cliente puede elegir efectivo en recogida o delivery.
+- En delivery, el cliente debe indicar con cuanto paga para calcular el cambio.
+- El pedido efectivo nace operativo, pero el pago queda pendiente de caja hasta
+  marcar `Efectivo cobrado` desde admin.
+- Los reportes separan ingresos cobrados de efectivo pendiente para no inflar
+  caja.
+
+Despues de tocar cualquier flujo de efectivo, probar: pedido efectivo recogida,
+pedido efectivo delivery con cambio, boton `Efectivo cobrado`, ticket impreso y
+reportes.
 
 ## Cabeceras de seguridad
 
@@ -124,6 +184,19 @@ Eventos necesarios:
 - `checkout.session.completed`
 - `checkout.session.expired`
 - `payment_intent.payment_failed`
+
+`CHECKOUT_GRACE_MINUTES` controla la ventana de gracia de Stripe. Si la tienda
+cierra despues de crear un pedido, ese pedido puede iniciar Stripe dentro de esa
+ventana. Fuera de la ventana, el checkout se rechaza y el pedido queda expirado
+cuando corresponde. No uses valores menores de 1 ni mayores de 120.
+
+Cuando cambies claves Stripe o webhook:
+
+1. Cambia `STRIPE_SECRET_KEY` o `STRIPE_WEBHOOK_SECRET` en Render API.
+2. Redepliega la API.
+3. Haz un pago de prueba con Stripe test.
+4. Confirma en Stripe Dashboard que el webhook responde `2xx`.
+5. Confirma en admin que el pedido queda pagado/confirmado.
 
 ## SMTP
 
@@ -196,3 +269,20 @@ npm run admin:reset-2fa -- --email=admin@tudominio.es
 
 Luego ese administrador inicia sesion de nuevo y activa 2FA otra vez desde
 `/admin/2fa`.
+
+## Tabla rapida de cambios operativos
+
+| Cambio | Donde se cambia | Requiere deploy | Prueba obligatoria |
+| --- | --- | --- | --- |
+| GTM/GA | Render Web o Google Tag Manager | Si cambia `NEXT_PUBLIC_*`, rebuild web | Aceptar cookies y probar Tag Assistant |
+| URL API de la web | `NEXT_PUBLIC_API_URL` en Render Web | Rebuild web | Home carga menu y checkout consulta delivery |
+| CORS/origen web | `CORS_ORIGIN` en Render API | Redeploy API | Registro, login, admin y checkout desde dominio real |
+| URL publica web/API | `FRONTEND_URL`, `API_PUBLIC_URL` en Render API | Redeploy API | Correos, Stripe success URL y cookies |
+| Google Maps | `/admin/menu` -> `Portada` | No | Boton `Como llegar` abre el punto correcto |
+| Portada/Nosotros | `/admin/menu` -> `Portada` | No | Home muestra textos e imagen sin romper mobile |
+| Cloudinary | `CLOUDINARY_*` en Render API | Redeploy API | Subir imagen, reiniciar API y comprobar que persiste |
+| Stripe | `STRIPE_*` en Render API y Dashboard Stripe | Redeploy API | Pago test y webhook `2xx` |
+| Brevo/correo | `BREVO_*` o SMTP en Render API | Redeploy API | Registro, verificacion y recuperar contrasena |
+| Zonas delivery | Admin y `DELIVERY_COVERAGE_MODE` si aplica | Solo si cambia variable | Codigo permitido y codigo fuera de zona |
+| Efectivo | Flujo admin/caja | No si es operacion diaria | Marcar cobrado y revisar ticket/reportes |
+| Ventana checkout | `CHECKOUT_GRACE_MINUTES` en Render API | Redeploy API | Pedido dentro/fuera de ventana de gracia |
