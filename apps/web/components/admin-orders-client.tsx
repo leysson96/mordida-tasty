@@ -1,6 +1,12 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  type ComponentPropsWithoutRef,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   Banknote,
   CalendarOff,
@@ -126,6 +132,14 @@ const defaultLoyaltyProgram: LoyaltyProgram = {
   description:
     "Completa pedidos entregados y desbloquea una recompensa para tu proxima visita.",
 };
+
+function HydrationSafeInput(props: ComponentPropsWithoutRef<"input">) {
+  return <input {...props} suppressHydrationWarning />;
+}
+
+function HydrationSafeTextarea(props: ComponentPropsWithoutRef<"textarea">) {
+  return <textarea {...props} suppressHydrationWarning />;
+}
 
 export function AdminOrdersClient() {
   const [orders, setOrders] = useState<OrderSummary[]>([]);
@@ -716,7 +730,7 @@ export function AdminOrdersClient() {
           Buscar
           <div>
             <Search aria-hidden="true" size={18} />
-            <input
+            <HydrationSafeInput
               value={draftOrderFilters.q}
               onChange={(event) => updateDraftFilter("q", event.target.value)}
               placeholder="Pedido, cliente, email, telefono"
@@ -758,7 +772,7 @@ export function AdminOrdersClient() {
         </label>
         <label>
           Desde
-          <input
+          <HydrationSafeInput
             type="date"
             value={draftOrderFilters.from}
             onChange={(event) => updateDraftFilter("from", event.target.value)}
@@ -766,7 +780,7 @@ export function AdminOrdersClient() {
         </label>
         <label>
           Hasta
-          <input
+          <HydrationSafeInput
             type="date"
             value={draftOrderFilters.to}
             onChange={(event) => updateDraftFilter("to", event.target.value)}
@@ -1048,7 +1062,7 @@ export function AdminOrdersClient() {
                   <span>{ordersPause.paused ? "Pausado" : "Activo"}</span>
                 </div>
                 <label className="checkbox-label">
-                  <input
+                  <HydrationSafeInput
                     type="checkbox"
                     name="paused"
                     defaultChecked={ordersPause.paused}
@@ -1057,7 +1071,7 @@ export function AdminOrdersClient() {
                 </label>
                 <label>
                   Motivo
-                  <textarea
+                  <HydrationSafeTextarea
                     name="reason"
                     rows={2}
                     maxLength={180}
@@ -1085,15 +1099,23 @@ export function AdminOrdersClient() {
                 >
                   <label>
                     Desde
-                    <input name="startsAt" type="datetime-local" required />
+                    <HydrationSafeInput
+                      name="startsAt"
+                      type="datetime-local"
+                      required
+                    />
                   </label>
                   <label>
                     Hasta
-                    <input name="endsAt" type="datetime-local" required />
+                    <HydrationSafeInput
+                      name="endsAt"
+                      type="datetime-local"
+                      required
+                    />
                   </label>
                   <label>
                     Motivo
-                    <input
+                    <HydrationSafeInput
                       name="reason"
                       maxLength={180}
                       required
@@ -1131,7 +1153,7 @@ export function AdminOrdersClient() {
                       >
                         <label>
                           Desde
-                          <input
+                          <HydrationSafeInput
                             name="startsAt"
                             type="datetime-local"
                             defaultValue={toDateTimeLocal(closure.startsAt)}
@@ -1140,7 +1162,7 @@ export function AdminOrdersClient() {
                         </label>
                         <label>
                           Hasta
-                          <input
+                          <HydrationSafeInput
                             name="endsAt"
                             type="datetime-local"
                             defaultValue={toDateTimeLocal(closure.endsAt)}
@@ -1149,7 +1171,7 @@ export function AdminOrdersClient() {
                         </label>
                         <label>
                           Motivo
-                          <input
+                          <HydrationSafeInput
                             name="reason"
                             maxLength={180}
                             defaultValue={closure.reason}
@@ -1157,7 +1179,7 @@ export function AdminOrdersClient() {
                           />
                         </label>
                         <label className="checkbox-label">
-                          <input
+                          <HydrationSafeInput
                             type="checkbox"
                             name="active"
                             defaultChecked={closure.active}
@@ -1205,7 +1227,7 @@ export function AdminOrdersClient() {
               >
                 <label>
                   IVA %
-                  <input
+                  <HydrationSafeInput
                     type="number"
                     name="taxRate"
                     step="0.01"
@@ -1217,7 +1239,7 @@ export function AdminOrdersClient() {
                 </label>
                 <label>
                   Envio EUR
-                  <input
+                  <HydrationSafeInput
                     type="number"
                     name="deliveryFeeEuros"
                     step="0.01"
@@ -1250,7 +1272,7 @@ export function AdminOrdersClient() {
                 className="inline-form loyalty-settings-form"
               >
                 <label className="checkbox-label">
-                  <input
+                  <HydrationSafeInput
                     type="checkbox"
                     name="enabled"
                     checked={loyaltyProgram.enabled}
@@ -1265,7 +1287,7 @@ export function AdminOrdersClient() {
                 </label>
                 <label>
                   Nombre del club
-                  <input
+                  <HydrationSafeInput
                     name="title"
                     maxLength={60}
                     value={loyaltyProgram.title}
@@ -1279,7 +1301,7 @@ export function AdminOrdersClient() {
                 </label>
                 <label>
                   Mensaje
-                  <textarea
+                  <HydrationSafeTextarea
                     name="description"
                     rows={3}
                     maxLength={180}
@@ -1294,7 +1316,7 @@ export function AdminOrdersClient() {
                 </label>
                 <label>
                   Pedidos para premio
-                  <input
+                  <HydrationSafeInput
                     type="number"
                     name="goalOrders"
                     min="2"
@@ -1327,7 +1349,7 @@ export function AdminOrdersClient() {
                 </label>
                 <label>
                   Descuento %
-                  <input
+                  <HydrationSafeInput
                     type="number"
                     name="discountPercent"
                     min="1"
@@ -1344,7 +1366,7 @@ export function AdminOrdersClient() {
                 </label>
                 <label>
                   Producto gratis
-                  <input
+                  <HydrationSafeInput
                     name="freeProductName"
                     maxLength={80}
                     value={loyaltyProgram.freeProductName}
@@ -1387,7 +1409,7 @@ export function AdminOrdersClient() {
                 </div>
                 <label>
                   Zona horaria
-                  <input
+                  <HydrationSafeInput
                     name="timezone"
                     value={openingHours.timezone}
                     onChange={(event) => updateTimezone(event.target.value)}
@@ -1417,7 +1439,7 @@ export function AdminOrdersClient() {
                           >
                             <label>
                               Abre
-                              <input
+                              <HydrationSafeInput
                                 type="time"
                                 value={range.open}
                                 onChange={(event) =>
@@ -1432,7 +1454,7 @@ export function AdminOrdersClient() {
                             </label>
                             <label>
                               Cierra
-                              <input
+                              <HydrationSafeInput
                                 type="time"
                                 value={range.close}
                                 onChange={(event) =>
@@ -1490,7 +1512,7 @@ export function AdminOrdersClient() {
                     <a href={twoFactor.otpauthUrl}>Abrir app</a>
                     <label>
                       Codigo
-                      <input
+                      <HydrationSafeInput
                         name="code"
                         inputMode="numeric"
                         maxLength={6}
@@ -1540,7 +1562,7 @@ export function AdminOrdersClient() {
             </p>
             <label>
               Motivo
-              <textarea
+              <HydrationSafeTextarea
                 name="reason"
                 rows={4}
                 minLength={3}
@@ -1591,7 +1613,7 @@ export function AdminOrdersClient() {
             </p>
             <label>
               Motivo
-              <textarea
+              <HydrationSafeTextarea
                 name="reason"
                 rows={4}
                 minLength={3}

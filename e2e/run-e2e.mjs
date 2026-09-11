@@ -43,12 +43,11 @@ function startWebServer(portNumber) {
     ],
     {
       cwd: rootDir,
-      env: {
-        ...process.env,
+      env: childEnv({
         NEXT_PUBLIC_API_URL: "http://127.0.0.1:4010",
         NEXT_PUBLIC_GA_MEASUREMENT_ID: "",
         NEXT_PUBLIC_GTM_ID: "",
-      },
+      }),
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     },
@@ -75,11 +74,10 @@ async function runPlaywright(baseUrlValue, portNumber, extraArgs) {
     ],
     {
       cwd: rootDir,
-      env: {
-        ...process.env,
+      env: childEnv({
         E2E_BASE_URL: baseUrlValue,
         E2E_PORT: String(portNumber),
-      },
+      }),
       stdio: "inherit",
       windowsHide: true,
     },
@@ -139,6 +137,13 @@ function isPortAvailable(portNumber) {
     });
     server.listen(portNumber, "127.0.0.1");
   });
+}
+
+function childEnv(overrides = {}) {
+  const env = { ...process.env, ...overrides };
+  delete env.NO_COLOR;
+
+  return env;
 }
 
 async function stopWebServer(child) {

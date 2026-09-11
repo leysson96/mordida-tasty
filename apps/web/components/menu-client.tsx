@@ -82,6 +82,7 @@ export function MenuClient() {
           alt={siteContent.featuredProductName}
           fill
           priority
+          loading="eager"
           sizes="100vw"
           className="sales-hero-image"
         />
