@@ -39,6 +39,10 @@ const adminOptionGroupsInclude = {
   },
 } satisfies Prisma.ProductOptionGroupFindManyArgs;
 
+const allowedLocalImagePrefixes = ["/images/", "/uploads/"] as const;
+const cloudinaryImageHost = "res.cloudinary.com";
+const cloudinaryImagePathPattern = /^\/[^/]+\/image\/upload\/.+/;
+
 @Injectable()
 export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -456,22 +460,34 @@ function normalizeImageUrl(value?: string) {
     return undefined;
   }
 
-  if (imageUrl.startsWith("/images/") || imageUrl.startsWith("/uploads/")) {
+  if (isAllowedLocalImagePath(imageUrl)) {
     return imageUrl;
   }
 
   try {
     const parsed = new URL(imageUrl);
-    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+    if (isAllowedCloudinaryImageUrl(parsed)) {
       return parsed.toString();
     }
   } catch {
     throw new BadRequestException(
-      "Image must be a local path or an http(s) URL.",
+      "Image must be an internal asset, API upload or Cloudinary image URL.",
     );
   }
 
   throw new BadRequestException(
-    "Image must be a local path or an http(s) URL.",
+    "Image must be an internal asset, API upload or Cloudinary image URL.",
+  );
+}
+
+function isAllowedLocalImagePath(value: string) {
+  return allowedLocalImagePrefixes.some((prefix) => value.startsWith(prefix));
+}
+
+function isAllowedCloudinaryImageUrl(value: URL) {
+  return (
+    value.protocol === "https:" &&
+    value.hostname.toLowerCase() === cloudinaryImageHost &&
+    cloudinaryImagePathPattern.test(value.pathname)
   );
 }

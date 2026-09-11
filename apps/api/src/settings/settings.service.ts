@@ -83,6 +83,9 @@ const weekdays = [
   "saturday",
   "sunday",
 ] as const;
+const allowedLocalImagePrefixes = ["/images/", "/uploads/"] as const;
+const cloudinaryImageHost = "res.cloudinary.com";
+const cloudinaryImagePathPattern = /^\/[^/]+\/image\/upload\/.+/;
 const weekdaySet = new Set<string>(weekdays);
 const publicClosureSelect = {
   id: true,
@@ -738,23 +741,35 @@ export class SettingsService {
   private normalizeImagePath(value: unknown, fallback: string) {
     const imageUrl = cleanText(value, fallback);
 
-    if (imageUrl.startsWith("/images/") || imageUrl.startsWith("/uploads/")) {
+    if (this.isAllowedLocalImagePath(imageUrl)) {
       return imageUrl;
     }
 
     try {
       const parsed = new URL(imageUrl);
-      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      if (this.isAllowedCloudinaryImageUrl(parsed)) {
         return parsed.toString();
       }
     } catch {
       throw new BadRequestException(
-        "Image must be a local path or an http(s) URL.",
+        "Image must be an internal asset, API upload or Cloudinary image URL.",
       );
     }
 
     throw new BadRequestException(
-      "Image must be a local path or an http(s) URL.",
+      "Image must be an internal asset, API upload or Cloudinary image URL.",
+    );
+  }
+
+  private isAllowedLocalImagePath(value: string) {
+    return allowedLocalImagePrefixes.some((prefix) => value.startsWith(prefix));
+  }
+
+  private isAllowedCloudinaryImageUrl(value: URL) {
+    return (
+      value.protocol === "https:" &&
+      value.hostname.toLowerCase() === cloudinaryImageHost &&
+      cloudinaryImagePathPattern.test(value.pathname)
     );
   }
 

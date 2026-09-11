@@ -1,11 +1,16 @@
-import { NotFoundException } from "@nestjs/common";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { ProductsService } from "./products.service";
 
 describe("ProductsService", () => {
   const prisma = {
+    category: {
+      findUnique: jest.fn(),
+    },
     product: {
+      create: jest.fn(),
       findFirst: jest.fn(),
       findUnique: jest.fn(),
+      update: jest.fn(),
     },
     productOptionGroup: {
       findUnique: jest.fn(),
@@ -18,9 +23,14 @@ describe("ProductsService", () => {
       update: jest.fn(),
     },
   } as unknown as {
+    category: {
+      findUnique: jest.Mock;
+    };
     product: {
+      create: jest.Mock;
       findFirst: jest.Mock;
       findUnique: jest.Mock;
+      update: jest.Mock;
     };
     productOptionGroup: {
       findUnique: jest.Mock;
@@ -73,6 +83,89 @@ describe("ProductsService", () => {
     await expect(
       new ProductsService(prisma as never).getProductBySlug("hidden"),
     ).rejects.toThrow(NotFoundException);
+  });
+
+  it("accepts Cloudinary image URLs when creating products", async () => {
+    const cloudinaryUrl =
+      "https://res.cloudinary.com/demo/image/upload/v123/mordida/burger.jpg";
+    prisma.category.findUnique.mockResolvedValue({ id: "category-1" });
+    prisma.product.findUnique.mockResolvedValue(null);
+    prisma.product.create.mockResolvedValue({
+      id: "product-1",
+      imageUrl: cloudinaryUrl,
+    });
+
+    await expect(
+      new ProductsService(prisma as never).createProduct({
+        categoryId: "category-1",
+        description: "Burger",
+        imageUrl: ` ${cloudinaryUrl} `,
+        name: "Mordida",
+        priceCents: 750,
+      }),
+    ).resolves.toMatchObject({ id: "product-1", imageUrl: cloudinaryUrl });
+
+    expect(prisma.product.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          imageUrl: cloudinaryUrl,
+        }),
+      }),
+    );
+  });
+
+  it("accepts API upload paths when creating products", async () => {
+    prisma.category.findUnique.mockResolvedValue({ id: "category-1" });
+    prisma.product.findUnique.mockResolvedValue(null);
+    prisma.product.create.mockResolvedValue({
+      id: "product-1",
+      imageUrl: "/uploads/menu/burger.webp",
+    });
+
+    await new ProductsService(prisma as never).createProduct({
+      categoryId: "category-1",
+      description: "Burger",
+      imageUrl: "/uploads/menu/burger.webp",
+      name: "Mordida",
+      priceCents: 750,
+    });
+
+    expect(prisma.product.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          imageUrl: "/uploads/menu/burger.webp",
+        }),
+      }),
+    );
+  });
+
+  it("rejects external image URLs when creating products", async () => {
+    prisma.category.findUnique.mockResolvedValue({ id: "category-1" });
+    prisma.product.findUnique.mockResolvedValue(null);
+
+    await expect(
+      new ProductsService(prisma as never).createProduct({
+        categoryId: "category-1",
+        description: "Burger",
+        imageUrl: "https://example.com/burger.jpg",
+        name: "Mordida",
+        priceCents: 750,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.product.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects external image URLs when updating products", async () => {
+    prisma.product.findUnique.mockResolvedValue({ id: "product-1" });
+
+    await expect(
+      new ProductsService(prisma as never).updateProduct("product-1", {
+        imageUrl: "https://cdn.example.com/burger.jpg",
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.product.update).not.toHaveBeenCalled();
   });
 
   it("normalizes required option groups before creating them", async () => {
