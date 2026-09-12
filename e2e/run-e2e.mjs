@@ -1,13 +1,16 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { existsSync } from "node:fs";
 import net from "node:net";
+import path from "node:path";
 import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
 
 const rootDir = process.cwd();
+const webNodeModules = path.join(rootDir, "apps", "web", "node_modules");
 const isWindows = process.platform === "win32";
-const nextCli = "node_modules/next/dist/bin/next";
-const playwrightCli = "node_modules/@playwright/test/cli.js";
+const nextCli = resolveWorkspaceCli("next/dist/bin/next");
+const playwrightCli = resolveWorkspaceCli("@playwright/test/cli.js");
 const configuredBaseUrl = process.env.E2E_BASE_URL;
 
 const port = configuredBaseUrl
@@ -141,9 +144,26 @@ function isPortAvailable(portNumber) {
 
 function childEnv(overrides = {}) {
   const env = { ...process.env, ...overrides };
+  env.NODE_PATH = [webNodeModules, env.NODE_PATH]
+    .filter(Boolean)
+    .join(path.delimiter);
   delete env.NO_COLOR;
 
   return env;
+}
+
+function resolveWorkspaceCli(relativePath) {
+  const candidates = [
+    `apps/web/node_modules/${relativePath}`,
+    `node_modules/${relativePath}`,
+  ];
+  const cliPath = candidates.find((candidate) => existsSync(candidate));
+
+  if (!cliPath) {
+    throw new Error(`Could not find required CLI: ${relativePath}`);
+  }
+
+  return cliPath;
 }
 
 async function stopWebServer(child) {
