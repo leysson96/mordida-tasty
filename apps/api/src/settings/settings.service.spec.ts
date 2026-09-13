@@ -194,6 +194,145 @@ describe("SettingsService", () => {
     });
   });
 
+  it("keeps the promotion campaign disabled and empty by default", async () => {
+    await expect(service().getPromotionCampaign()).resolves.toEqual({
+      enabled: false,
+      badge: "",
+      title: "",
+      description: "",
+      productSlug: "",
+      imageUrl: "",
+      startsOn: "",
+      endsOn: "",
+      ctaLabel: "Pedir ahora",
+    });
+  });
+
+  it("stores a complete visual promotion campaign", async () => {
+    await expect(
+      service().setPromotionCampaign({
+        enabled: true,
+        badge: " Promo finde ",
+        title: " Mordida Smash especial ",
+        description: " Solo este finde en carta online. ",
+        productSlug: "mordida-smash",
+        startsOn: "2026-09-18",
+        endsOn: "2026-09-20",
+        ctaLabel: " Pedir ahora ",
+      }),
+    ).resolves.toEqual({
+      enabled: true,
+      badge: "Promo finde",
+      title: "Mordida Smash especial",
+      description: "Solo este finde en carta online.",
+      productSlug: "mordida-smash",
+      imageUrl: "",
+      startsOn: "2026-09-18",
+      endsOn: "2026-09-20",
+      ctaLabel: "Pedir ahora",
+    });
+
+    expect(prisma.setting.upsert).toHaveBeenCalledWith({
+      where: { key: "promotion_campaign" },
+      update: {
+        value: expect.objectContaining({
+          enabled: true,
+          productSlug: "mordida-smash",
+          startsOn: "2026-09-18",
+          endsOn: "2026-09-20",
+        }),
+      },
+      create: {
+        key: "promotion_campaign",
+        value: expect.objectContaining({
+          enabled: true,
+          productSlug: "mordida-smash",
+          startsOn: "2026-09-18",
+          endsOn: "2026-09-20",
+        }),
+      },
+    });
+  });
+
+  it("only exposes active public promotions in the Madrid business calendar", async () => {
+    const campaign = {
+      enabled: true,
+      badge: "Promo finde",
+      title: "Mordida Smash especial",
+      description: "Solo este finde en carta online.",
+      productSlug: "mordida-smash",
+      imageUrl: "",
+      startsOn: "2026-09-20",
+      endsOn: "2026-09-20",
+      ctaLabel: "Pedir ahora",
+    };
+    prisma.setting.findUnique.mockResolvedValueOnce({
+      key: "promotion_campaign",
+      value: campaign,
+    });
+
+    await expect(
+      service().getPublicPromotionCampaign(new Date("2026-09-19T22:15:00Z")),
+    ).resolves.toEqual(campaign);
+  });
+
+  it("returns an empty campaign publicly when the promotion is not active", async () => {
+    prisma.setting.findUnique.mockResolvedValueOnce({
+      key: "promotion_campaign",
+      value: {
+        enabled: true,
+        badge: "Promo finde",
+        title: "Mordida Smash especial",
+        description: "Solo este finde en carta online.",
+        productSlug: "mordida-smash",
+        imageUrl: "",
+        startsOn: "2026-09-20",
+        endsOn: "2026-09-20",
+        ctaLabel: "Pedir ahora",
+      },
+    });
+
+    await expect(
+      service().getPublicPromotionCampaign(new Date("2026-09-21T22:15:00Z")),
+    ).resolves.toEqual({
+      enabled: false,
+      badge: "",
+      title: "",
+      description: "",
+      productSlug: "",
+      imageUrl: "",
+      startsOn: "",
+      endsOn: "",
+      ctaLabel: "Pedir ahora",
+    });
+  });
+
+  it("rejects unsafe visual promotion values before saving", async () => {
+    await expect(
+      service().setPromotionCampaign({
+        enabled: true,
+        title: "Promo incompleta",
+      }),
+    ).rejects.toThrow(BadRequestException);
+
+    await expect(
+      service().setPromotionCampaign({
+        enabled: false,
+        startsOn: "2026-02-31",
+      }),
+    ).rejects.toThrow(BadRequestException);
+
+    await expect(
+      service().setPromotionCampaign({
+        enabled: false,
+        startsOn: "2026-09-21",
+        endsOn: "2026-09-20",
+      }),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(prisma.setting.upsert).not.toHaveBeenCalled();
+  });
+
   it("rejects unsafe loyalty program values", async () => {
     await expect(
       service().setLoyaltyProgram({ goalOrders: 1 }),

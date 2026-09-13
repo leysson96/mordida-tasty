@@ -9,9 +9,11 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
+  ValidateIf,
 } from "class-validator";
 
 export class UpdateTaxRateDto {
@@ -80,6 +82,54 @@ export class UpdateLoyaltyProgramDto {
   @IsString()
   @MaxLength(180)
   description?: string;
+}
+
+export class UpdatePromotionCampaignDto {
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  badge?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(90)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(260)
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(130)
+  productSlug?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(700)
+  imageUrl?: string;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== "")
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  startsOn?: string;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== "")
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  endsOn?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  ctaLabel?: string;
 }
 
 export class CreateSpecialClosureDto {

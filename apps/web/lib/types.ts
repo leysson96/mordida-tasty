@@ -185,6 +185,18 @@ export interface LoyaltyProgram {
   description: string;
 }
 
+export interface PromotionCampaign {
+  enabled: boolean;
+  badge: string;
+  title: string;
+  description: string;
+  productSlug: string;
+  imageUrl: string;
+  startsOn: string;
+  endsOn: string;
+  ctaLabel: string;
+}
+
 export interface CustomerLoyaltyProgress {
   program: LoyaltyProgram;
   completedOrders: number;
@@ -260,6 +272,7 @@ export interface PublicSettings {
   openNow: boolean;
   serviceStatus: ServiceStatus;
   siteContent: SiteContent;
+  promotionCampaign: PromotionCampaign;
   loyaltyProgram: LoyaltyProgram;
   legalVersion: string;
 }

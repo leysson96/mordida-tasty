@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import {
+  ArrowRight,
   Clock,
+  Flame,
   Heart,
   Instagram,
   MapPin,
@@ -18,9 +20,18 @@ import {
 import Link from "next/link";
 import { api, formatMoney } from "../lib/api";
 import { brandConfig } from "../lib/brand";
-import { Category, Product, PublicSettings, SiteContent } from "../lib/types";
+import {
+  Category,
+  Product,
+  PromotionCampaign,
+  PublicSettings,
+  SiteContent,
+} from "../lib/types";
 import { useCart } from "./cart-provider";
 import { ProductImage } from "./product-image";
+
+// Promotion dates are business-calendar dates, not UTC timestamps.
+const PROMOTION_TIMEZONE = "Europe/Madrid";
 
 export function MenuClient() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -72,6 +83,15 @@ export function MenuClient() {
       categories.find((category) => category.slug === selectedSlug) ??
       categories[0],
     [categories, selectedSlug],
+  );
+  const visiblePromotion = useMemo(
+    () =>
+      getVisiblePromotion(
+        publicSettings?.promotionCampaign,
+        categories,
+        new Date(),
+      ),
+    [categories, publicSettings?.promotionCampaign],
   );
 
   return (
@@ -170,6 +190,10 @@ export function MenuClient() {
           </div>
           <p>{siteContent.menuIntroText}</p>
         </div>
+
+        {visiblePromotion && (
+          <FeaturedPromotion promotion={visiblePromotion} />
+        )}
 
         {loading ? (
           <div className="empty-state">
@@ -322,6 +346,123 @@ function productHasOptions(product: Product) {
   return (product.optionGroups ?? []).some(
     (group) => group.active && group.choices.some((choice) => choice.active),
   );
+}
+
+type VisiblePromotion = PromotionCampaign & { product: Product };
+
+function FeaturedPromotion({ promotion }: { promotion: VisiblePromotion }) {
+  const title = splitPromotionTitle(promotion.title);
+  const productImage = {
+    ...promotion.product,
+    imageUrl: promotion.imageUrl || promotion.product.imageUrl,
+  };
+
+  return (
+    <section className="featured-promotion" aria-label="Promocion">
+      <Link
+        href={`/producto/${promotion.product.slug}`}
+        className="featured-promotion-media"
+      >
+        <span className="featured-promotion-image-shadow" aria-hidden="true" />
+        <span className="featured-promotion-image-frame">
+          <ProductImage product={productImage} />
+        </span>
+        <span className="featured-promotion-insignia">
+          <small>{promotion.badge}</small>
+          <strong>{promotion.product.name}</strong>
+        </span>
+      </Link>
+      <div className="featured-promotion-copy">
+        <span className="promo-badge">
+          <Flame aria-hidden="true" size={16} />
+          {promotion.badge}
+        </span>
+        <h2>
+          {title.lead && `${title.lead} `}
+          <span>{title.accent}</span>
+        </h2>
+        <p>{promotion.description}</p>
+        <div className="featured-promotion-actions">
+          <strong>{formatMoney(promotion.product.priceCents)}</strong>
+          <Link
+            href={`/producto/${promotion.product.slug}`}
+            className="button primary promo-button"
+          >
+            {promotion.ctaLabel}
+            <ArrowRight aria-hidden="true" size={18} />
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function splitPromotionTitle(title: string) {
+  const words = title.trim().split(/\s+/).filter(Boolean);
+  if (words.length <= 1) {
+    return { lead: "", accent: words[0] ?? title };
+  }
+
+  const accentSize = words.length >= 4 ? 2 : 1;
+  return {
+    lead: words.slice(0, -accentSize).join(" "),
+    accent: words.slice(-accentSize).join(" "),
+  };
+}
+
+function getVisiblePromotion(
+  promotion: PromotionCampaign | undefined,
+  categories: Category[],
+  now: Date,
+) {
+  if (!promotion?.enabled || !isPromotionInDateWindow(promotion, now)) {
+    return undefined;
+  }
+
+  const product = categories
+    .flatMap((category) => category.products ?? [])
+    .find((item) => item.slug === promotion.productSlug);
+
+  if (!product?.active || !product.available) {
+    return undefined;
+  }
+
+  const ready =
+    promotion.badge.trim() &&
+    promotion.title.trim() &&
+    promotion.description.trim() &&
+    promotion.productSlug.trim() &&
+    promotion.ctaLabel.trim();
+
+  if (!ready) {
+    return undefined;
+  }
+
+  return { ...promotion, product };
+}
+
+function isPromotionInDateWindow(promotion: PromotionCampaign, now: Date) {
+  if (!promotion.startsOn || !promotion.endsOn) {
+    return false;
+  }
+
+  const today = dateInTimezone(now, PROMOTION_TIMEZONE);
+  return promotion.startsOn <= today && today <= promotion.endsOn;
+}
+
+function dateInTimezone(date: Date, timezone: string) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: timezone,
+  }).formatToParts(date);
+
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const year = parts.find((part) => part.type === "year")?.value ?? "1970";
+
+  return `${year}-${month}-${day}`;
 }
 
 function buildWhatsAppUrl(phone: string | undefined, businessName: string) {

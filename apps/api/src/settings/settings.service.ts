@@ -37,6 +37,18 @@ export interface SiteContent {
   aboutText: string;
 }
 
+export interface PromotionCampaign {
+  enabled: boolean;
+  badge: string;
+  title: string;
+  description: string;
+  productSlug: string;
+  imageUrl: string;
+  startsOn: string;
+  endsOn: string;
+  ctaLabel: string;
+}
+
 export interface OrdersPause {
   paused: boolean;
   reason: string;
@@ -86,6 +98,7 @@ const weekdays = [
 const allowedLocalImagePrefixes = ["/images/", "/uploads/"] as const;
 const cloudinaryImageHost = "res.cloudinary.com";
 const cloudinaryImagePathPattern = /^\/[^/]+\/image\/upload\/.+/;
+const promotionTimezone = "Europe/Madrid";
 const weekdaySet = new Set<string>(weekdays);
 const publicClosureSelect = {
   id: true,
@@ -171,6 +184,23 @@ export class SettingsService {
     return this.normalizeLoyaltyProgram(setting?.value);
   }
 
+  async getPromotionCampaign() {
+    const setting = await this.prisma.setting.findUnique({
+      where: { key: "promotion_campaign" },
+    });
+
+    return this.normalizePromotionCampaign(setting?.value);
+  }
+
+  async getPublicPromotionCampaign(date = new Date()) {
+    const promotion = await this.getPromotionCampaign();
+    if (!this.isPromotionActiveOnBusinessDate(promotion, date)) {
+      return this.defaultPromotionCampaign();
+    }
+
+    return promotion;
+  }
+
   async setLoyaltyProgram(value: Partial<LoyaltyProgram>) {
     const current = await this.getLoyaltyProgram();
     const next = this.normalizeLoyaltyProgram({ ...current, ...value });
@@ -181,6 +211,22 @@ export class SettingsService {
         update: { value: next as unknown as Prisma.InputJsonValue },
         create: {
           key: "loyalty_program",
+          value: next as unknown as Prisma.InputJsonValue,
+        },
+      })
+      .then(() => next);
+  }
+
+  async setPromotionCampaign(value: Partial<PromotionCampaign>) {
+    const current = await this.getPromotionCampaign();
+    const next = this.normalizePromotionCampaign({ ...current, ...value });
+
+    return this.prisma.setting
+      .upsert({
+        where: { key: "promotion_campaign" },
+        update: { value: next as unknown as Prisma.InputJsonValue },
+        create: {
+          key: "promotion_campaign",
           value: next as unknown as Prisma.InputJsonValue,
         },
       })
@@ -521,6 +567,20 @@ export class SettingsService {
     };
   }
 
+  private defaultPromotionCampaign(): PromotionCampaign {
+    return {
+      enabled: false,
+      badge: "",
+      title: "",
+      description: "",
+      productSlug: "",
+      imageUrl: "",
+      startsOn: "",
+      endsOn: "",
+      ctaLabel: "Pedir ahora",
+    };
+  }
+
   private normalizeLoyaltyProgram(value: unknown): LoyaltyProgram {
     const defaults = this.defaultLoyaltyProgram();
     const source = isRecord(value) ? value : {};
@@ -572,6 +632,62 @@ export class SettingsService {
         180,
       ),
     };
+  }
+
+  private normalizePromotionCampaign(value: unknown): PromotionCampaign {
+    const defaults = this.defaultPromotionCampaign();
+    const source = isRecord(value) ? value : {};
+    const startsOn = cleanText(source.startsOn, "");
+    const endsOn = cleanText(source.endsOn, "");
+    const promotion = {
+      enabled:
+        typeof source.enabled === "boolean" ? source.enabled : defaults.enabled,
+      badge: cleanText(source.badge, "").slice(0, 40),
+      title: cleanText(source.title, "").slice(0, 90),
+      description: cleanText(source.description, "").slice(0, 260),
+      productSlug: cleanText(source.productSlug, "").slice(0, 130),
+      imageUrl: cleanText(source.imageUrl, "")
+        ? this.normalizeImagePath(source.imageUrl, "")
+        : "",
+      startsOn: startsOn ? parseDateOnly(startsOn, "startsOn") : "",
+      endsOn: endsOn ? parseDateOnly(endsOn, "endsOn") : "",
+      ctaLabel: cleanText(source.ctaLabel, defaults.ctaLabel).slice(0, 40),
+    };
+
+    if (promotion.startsOn && promotion.endsOn) {
+      assertDateRange(promotion.startsOn, promotion.endsOn);
+    }
+
+    if (promotion.enabled) {
+      const ready =
+        promotion.badge &&
+        promotion.title &&
+        promotion.description &&
+        promotion.productSlug &&
+        promotion.startsOn &&
+        promotion.endsOn &&
+        promotion.ctaLabel;
+
+      if (!ready) {
+        throw new BadRequestException(
+          "La promocion activa necesita producto, titulo, texto, etiqueta y fechas.",
+        );
+      }
+    }
+
+    return promotion;
+  }
+
+  private isPromotionActiveOnBusinessDate(
+    promotion: PromotionCampaign,
+    date: Date,
+  ) {
+    if (!promotion.enabled || !promotion.startsOn || !promotion.endsOn) {
+      return false;
+    }
+
+    const today = dateOnlyInTimezone(date, promotionTimezone);
+    return promotion.startsOn <= today && today <= promotion.endsOn;
   }
 
   private normalizeSiteContent(value: unknown): SiteContent {
@@ -878,4 +994,45 @@ function normalizeDate(value: string | Date, field: string) {
   }
 
   return date;
+}
+
+function parseDateOnly(value: string, field: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new BadRequestException(`${field} must use YYYY-MM-DD.`);
+  }
+
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const valid =
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day;
+
+  if (!valid) {
+    throw new BadRequestException(`${field} must be a valid date.`);
+  }
+
+  return value;
+}
+
+function assertDateRange(startsOn: string, endsOn: string) {
+  if (endsOn < startsOn) {
+    throw new BadRequestException(
+      "La fecha final de la promocion debe ser igual o posterior a la inicial.",
+    );
+  }
+}
+
+function dateOnlyInTimezone(date: Date, timezone: string) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: timezone,
+  }).formatToParts(date);
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const year = parts.find((part) => part.type === "year")?.value ?? "1970";
+
+  return `${year}-${month}-${day}`;
 }

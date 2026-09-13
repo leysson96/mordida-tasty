@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import {
+  BadgePercent,
   ChevronDown,
   ChevronRight,
   ImagePlus,
@@ -28,6 +29,7 @@ import {
   Category,
   ProductOptionChoice,
   ProductOptionGroup,
+  PromotionCampaign,
   SiteContent,
   UploadedImage,
 } from "../lib/types";
@@ -35,14 +37,29 @@ import { ProductImage } from "./product-image";
 
 interface AdminSettingsResponse {
   siteContent: SiteContent;
+  promotionCampaign: PromotionCampaign;
 }
 
-type MenuAdminSection = "products" | "categories" | "brand";
+type MenuAdminSection = "products" | "categories" | "brand" | "promotions";
+
+const defaultPromotionCampaign: PromotionCampaign = {
+  enabled: false,
+  badge: "",
+  title: "",
+  description: "",
+  productSlug: "",
+  imageUrl: "",
+  startsOn: "",
+  endsOn: "",
+  ctaLabel: "Pedir ahora",
+};
 
 export function AdminMenuClient() {
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [siteContent, setSiteContent] = useState<SiteContent>(brandConfig);
+  const [promotionCampaign, setPromotionCampaign] =
+    useState<PromotionCampaign>(defaultPromotionCampaign);
   const [activeSection, setActiveSection] =
     useState<MenuAdminSection>("products");
   const [productSearch, setProductSearch] = useState("");
@@ -113,6 +130,11 @@ export function AdminMenuClient() {
 
     return [...groups.values()].filter((group) => group.products.length > 0);
   }, [categories, filteredProducts]);
+  const selectedPromotionProduct = useMemo(
+    () =>
+      products.find((product) => product.slug === promotionCampaign.productSlug),
+    [products, promotionCampaign.productSlug],
+  );
 
   useEffect(() => {
     load();
@@ -128,6 +150,10 @@ export function AdminMenuClient() {
       setProducts(productData);
       setCategories(categoryData);
       setSiteContent({ ...brandConfig, ...settingsData.siteContent });
+      setPromotionCampaign({
+        ...defaultPromotionCampaign,
+        ...settingsData.promotionCampaign,
+      });
       setError(undefined);
     } catch (requestError) {
       handleAdminError(requestError, "No se pudo cargar.");
@@ -179,6 +205,49 @@ export function AdminMenuClient() {
       setError(undefined);
     } catch (requestError) {
       handleAdminError(requestError, "No se pudo guardar la portada.");
+    }
+  }
+
+  async function savePromotionCampaign(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+
+    try {
+      const uploadedPromotionImage = await uploadFormImage(
+        form,
+        "promotionImageFile",
+      );
+      const updated = await api<PromotionCampaign>(
+        "/admin/settings/promotion",
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            enabled: form.get("enabled") === "on",
+            badge: String(form.get("badge")),
+            title: String(form.get("title")),
+            description: String(form.get("description")),
+            productSlug: String(form.get("productSlug")),
+            imageUrl:
+              uploadedPromotionImage ??
+              String(
+                form.get("currentPromotionImage") ||
+                  promotionCampaign.imageUrl,
+              ),
+            startsOn: String(form.get("startsOn")),
+            endsOn: String(form.get("endsOn")),
+            ctaLabel: String(form.get("ctaLabel")),
+          }),
+        },
+      );
+      setPromotionCampaign(updated);
+      setMessage(
+        updated.enabled
+          ? "Promocion activada."
+          : "Promocion guardada como inactiva.",
+      );
+      setError(undefined);
+    } catch (requestError) {
+      handleAdminError(requestError, "No se pudo guardar la promocion.");
     }
   }
 
@@ -509,6 +578,13 @@ export function AdminMenuClient() {
     );
   }
 
+  function updatePromotionDraft<K extends keyof PromotionCampaign>(
+    key: K,
+    value: PromotionCampaign[K],
+  ) {
+    setPromotionCampaign((current) => ({ ...current, [key]: value }));
+  }
+
   function handleAdminError(requestError: unknown, fallback: string) {
     if (redirectOnAdminAuthError(requestError)) {
       return;
@@ -559,6 +635,15 @@ export function AdminMenuClient() {
             <span>Portada</span>
             <small>{siteContent.initials}</small>
           </button>
+          <button
+            type="button"
+            className={activeSection === "promotions" ? "active" : ""}
+            onClick={() => setActiveSection("promotions")}
+          >
+            <BadgePercent aria-hidden="true" size={19} />
+            <span>Promos</span>
+            <small>{promotionCampaign.enabled ? "On" : "Off"}</small>
+          </button>
         </nav>
 
         <section className="menu-admin-stats" aria-label="Resumen del menu">
@@ -578,7 +663,178 @@ export function AdminMenuClient() {
             <span>Grupos extra</span>
             <strong>{menuStats.optionGroups}</strong>
           </article>
+          <article>
+            <span>Promocion</span>
+            <strong>{promotionCampaign.enabled ? "Activa" : "Off"}</strong>
+          </article>
         </section>
+
+        {activeSection === "promotions" && (
+          <form
+            className="form-panel promotion-admin-form"
+            onSubmit={savePromotionCampaign}
+          >
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Campana visual</p>
+                <h2>Promociones</h2>
+              </div>
+              <BadgePercent aria-hidden="true" size={26} />
+            </div>
+            <div className="promotion-admin-grid">
+              <div className="promotion-admin-preview">
+                <span>{promotionCampaign.badge || "Promo inactiva"}</span>
+                <div className="promotion-admin-image">
+                  {promotionCampaign.imageUrl ? (
+                    <Image
+                      src={promotionCampaign.imageUrl}
+                      alt={promotionCampaign.title || "Promocion"}
+                      width={720}
+                      height={520}
+                    />
+                  ) : selectedPromotionProduct ? (
+                    <ProductImage product={selectedPromotionProduct} />
+                  ) : (
+                    <div className="image-fallback" aria-label="Promocion">
+                      MT
+                    </div>
+                  )}
+                </div>
+                <h3>{promotionCampaign.title || "Sin promocion activa"}</h3>
+                <p>
+                  {promotionCampaign.description ||
+                    "Configura una promocion real y activala cuando este lista."}
+                </p>
+              </div>
+              <div className="form-grid">
+                <label className="checkbox-label full-field">
+                  <input
+                    type="checkbox"
+                    name="enabled"
+                    checked={promotionCampaign.enabled}
+                    onChange={(event) =>
+                      updatePromotionDraft("enabled", event.currentTarget.checked)
+                    }
+                  />
+                  Mostrar promocion en la carta
+                </label>
+                <label>
+                  Producto
+                  <select
+                    name="productSlug"
+                    value={promotionCampaign.productSlug}
+                    onChange={(event) =>
+                      updatePromotionDraft(
+                        "productSlug",
+                        event.currentTarget.value,
+                      )
+                    }
+                  >
+                    <option value="">Seleccionar producto</option>
+                    {products.map((product) => (
+                      <option key={product.id} value={product.slug}>
+                        {product.name}
+                        {!product.available ? " (agotado)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Etiqueta
+                  <input
+                    name="badge"
+                    value={promotionCampaign.badge}
+                    onChange={(event) =>
+                      updatePromotionDraft("badge", event.currentTarget.value)
+                    }
+                    placeholder="Promo de hoy"
+                    maxLength={40}
+                  />
+                </label>
+                <label className="full-field">
+                  Titulo
+                  <input
+                    name="title"
+                    value={promotionCampaign.title}
+                    onChange={(event) =>
+                      updatePromotionDraft("title", event.currentTarget.value)
+                    }
+                    placeholder="Nombre real de la promo"
+                    maxLength={90}
+                  />
+                </label>
+                <label className="full-field">
+                  Texto corto
+                  <textarea
+                    name="description"
+                    rows={3}
+                    value={promotionCampaign.description}
+                    onChange={(event) =>
+                      updatePromotionDraft(
+                        "description",
+                        event.currentTarget.value,
+                      )
+                    }
+                    placeholder="Explica la promo sin precios inventados."
+                    maxLength={260}
+                  />
+                </label>
+                <label>
+                  Inicio
+                  <input
+                    name="startsOn"
+                    type="date"
+                    value={promotionCampaign.startsOn}
+                    onChange={(event) =>
+                      updatePromotionDraft("startsOn", event.currentTarget.value)
+                    }
+                  />
+                </label>
+                <label>
+                  Fin
+                  <input
+                    name="endsOn"
+                    type="date"
+                    value={promotionCampaign.endsOn}
+                    onChange={(event) =>
+                      updatePromotionDraft("endsOn", event.currentTarget.value)
+                    }
+                  />
+                </label>
+                <label>
+                  Texto del boton
+                  <input
+                    name="ctaLabel"
+                    value={promotionCampaign.ctaLabel}
+                    onChange={(event) =>
+                      updatePromotionDraft("ctaLabel", event.currentTarget.value)
+                    }
+                    placeholder="Pedir ahora"
+                    maxLength={40}
+                  />
+                </label>
+                <label className="full-field">
+                  Imagen promocional
+                  <input
+                    name="promotionImageFile"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                  />
+                  <input
+                    type="hidden"
+                    name="currentPromotionImage"
+                    value={promotionCampaign.imageUrl}
+                    readOnly
+                  />
+                </label>
+              </div>
+            </div>
+            <button className="button primary" type="submit">
+              <Save aria-hidden="true" size={18} />
+              Guardar promocion
+            </button>
+          </form>
+        )}
 
         {activeSection === "brand" && (
           <form

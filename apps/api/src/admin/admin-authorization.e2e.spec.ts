@@ -111,6 +111,7 @@ describe("Admin authorization E2E", () => {
     getDeliveryFeeCents: jest.fn(),
     getServiceStatus: jest.fn(),
     getSiteContent: jest.fn(),
+    getPromotionCampaign: jest.fn(),
     getLoyaltyProgram: jest.fn(),
     getOrdersPause: jest.fn(),
     listSpecialClosures: jest.fn(),
@@ -119,6 +120,7 @@ describe("Admin authorization E2E", () => {
     setOpeningHours: jest.fn(),
     setOrdersPause: jest.fn(),
     setLoyaltyProgram: jest.fn(),
+    setPromotionCampaign: jest.fn(),
     listAdminZones: jest.fn(),
     listSpecialClosuresAdmin: jest.fn(),
     createSpecialClosure: jest.fn(),
@@ -228,9 +230,16 @@ describe("Admin authorization E2E", () => {
       .send({ enabled: false })
       .expect(403);
 
+    await request(app.getHttpServer())
+      .patch("/admin/settings/promotion")
+      .set("Authorization", bearer("client-token"))
+      .send({ enabled: false })
+      .expect(403);
+
     expect(productsService.listAdminProducts).not.toHaveBeenCalled();
     expect(settingsService.setOrdersPause).not.toHaveBeenCalled();
     expect(settingsService.setLoyaltyProgram).not.toHaveBeenCalled();
+    expect(settingsService.setPromotionCampaign).not.toHaveBeenCalled();
   });
 
   it("blocks kitchen tokens from admin-only management routes", async () => {
@@ -258,6 +267,12 @@ describe("Admin authorization E2E", () => {
       .expect(403);
 
     await request(app.getHttpServer())
+      .patch("/admin/settings/promotion")
+      .set("Authorization", bearer("kitchen-token"))
+      .send({ enabled: true, title: "No autorizado" })
+      .expect(403);
+
+    await request(app.getHttpServer())
       .post("/admin/users")
       .set("Authorization", bearer("kitchen-token"))
       .send({
@@ -271,6 +286,7 @@ describe("Admin authorization E2E", () => {
     expect(productsService.createProduct).not.toHaveBeenCalled();
     expect(settingsService.setDeliveryFeeCents).not.toHaveBeenCalled();
     expect(settingsService.setLoyaltyProgram).not.toHaveBeenCalled();
+    expect(settingsService.setPromotionCampaign).not.toHaveBeenCalled();
     expect(staffService.createStaff).not.toHaveBeenCalled();
   });
 
