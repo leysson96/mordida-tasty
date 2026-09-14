@@ -11,6 +11,7 @@ import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PrivacyModule } from './privacy/privacy.module';
+import { PromotionsModule } from './promotions/promotions.module';
 import { ProductsModule } from './products/products.module';
 import { SettingsModule } from './settings/settings.module';
 import { OriginGuard } from './common/guards/origin.guard';
@@ -32,6 +33,7 @@ import { OriginGuard } from './common/guards/origin.guard';
     SettingsModule,
     AuthModule,
     ProductsModule,
+    PromotionsModule,
     CustomersModule,
     OrdersModule,
     PaymentsModule,

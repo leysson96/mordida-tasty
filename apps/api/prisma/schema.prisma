@@ -60,6 +60,27 @@ enum LoyaltyRedemptionStatus {
   RELEASED
 }
 
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+enum DiscountScope {
+  PRODUCTS
+  CATEGORY
+  ORDER_TOTAL
+}
+
+enum DiscountWeekday {
+  MON
+  TUE
+  WED
+  THU
+  FRI
+  SAT
+  SUN
+}
+
 model User {
   id                  String                   @id @default(uuid())
   email               String                   @unique
@@ -130,14 +151,15 @@ model CustomerAddress {
 }
 
 model Category {
-  id        String    @id @default(uuid())
+  id        String     @id @default(uuid())
   name      String
-  slug      String    @unique
-  sortOrder Int       @default(0)
-  active    Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  slug      String     @unique
+  sortOrder Int        @default(0)
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
   products  Product[]
+  discounts Discount[]
 }
 
 model Product {
@@ -156,9 +178,45 @@ model Product {
   category     Category             @relation(fields: [categoryId], references: [id])
   orderItems   OrderItem[]
   optionGroups ProductOptionGroup[]
+  discounts    DiscountProduct[]
 
   @@index([categoryId])
   @@index([active, available])
+}
+
+model Discount {
+  id          String            @id @default(uuid())
+  name        String
+  description String?
+  active      Boolean           @default(false)
+  type        DiscountType
+  value       Int
+  scope       DiscountScope
+  startsAt    DateTime
+  endsAt      DateTime
+  weekdays    DiscountWeekday[] @default([])
+  stackable   Boolean           @default(false)
+  priority    Int               @default(0)
+  categoryId  String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  category    Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  products    DiscountProduct[]
+
+  @@index([active, startsAt, endsAt])
+  @@index([scope, active, priority])
+  @@index([categoryId])
+}
+
+model DiscountProduct {
+  discountId String
+  productId  String
+  createdAt  DateTime @default(now())
+  discount   Discount @relation(fields: [discountId], references: [id], onDelete: Cascade)
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([discountId, productId])
+  @@index([productId])
 }
 
 model ProductOptionGroup {
@@ -255,20 +313,20 @@ model Order {
 }
 
 model LoyaltyRedemption {
-  id                      String                   @id @default(uuid())
+  id                      String                  @id @default(uuid())
   userId                  String
-  orderId                 String                   @unique
+  orderId                 String                  @unique
   rewardType              LoyaltyRewardType
-  status                  LoyaltyRedemptionStatus  @default(RESERVED)
+  status                  LoyaltyRedemptionStatus @default(RESERVED)
   rewardLabel             String
   discountCents           Int
   goalOrdersSnapshot      Int
   completedOrdersSnapshot Int
-  createdAt               DateTime                 @default(now())
+  createdAt               DateTime                @default(now())
   appliedAt               DateTime?
   releasedAt              DateTime?
-  user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  order                   Order                    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user                    User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order                   Order                   @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([userId, status])
   @@index([createdAt])
