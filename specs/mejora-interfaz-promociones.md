@@ -68,6 +68,12 @@ mostrar promocion visual
 - Las fechas son `YYYY-MM-DD` y se evalua el dia actual en `Europe/Madrid`.
 - Si la promocion esta incompleta o apunta a un producto no disponible, el cliente ve el menu normal.
 - Solo rol ADMIN puede guardar la promocion, igual que el resto de `/admin/menu`.
+- Flujo de autorizacion del proyecto:
+  - `Local`: se puede analizar, editar y probar en la maquina local.
+  - `Commit local`: se puede guardar cambios en git local cuando forme parte del flujo normal de trabajo.
+  - `Push a GitHub`: solo se permite cuando el propietario diga explicitamente `sube a GitHub`.
+  - `Despliegue a Render/produccion`: solo se permite despues de autorizacion explicita del propietario y de que las pruebas hayan dado resultado positivo.
+  - Esta regla aplica siempre, incluso si una fase parece completa y lista; nada se sube sin autorizacion explicita.
 
 ## Fuera de alcance
 - Descuentos reales en checkout.
