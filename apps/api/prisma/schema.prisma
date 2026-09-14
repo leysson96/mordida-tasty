@@ -333,29 +333,40 @@ model LoyaltyRedemption {
 }
 
 model OrderItem {
-  id             String            @id @default(uuid())
-  orderId        String
-  productId      String?
-  productName    String
-  unitPriceCents Int
-  quantity       Int
-  lineTotalCents Int
-  removedAt      DateTime?
-  removedReason  String?
-  removedById    String?
-  refundedCents  Int               @default(0)
-  stripeRefundId String?           @unique
-  createdAt      DateTime          @default(now())
-  order          Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product        Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
-  removedBy      User?             @relation("OrderItemRemovedBy", fields: [removedById], references: [id], onDelete: SetNull)
-  refunds        PaymentRefund[]
-  options        OrderItemOption[]
+  id                         String            @id @default(uuid())
+  orderId                    String
+  productId                  String?
+  productName                String
+  originalUnitPriceCents     Int?
+  unitPriceCents             Int
+  discountedUnitPriceCents   Int?
+  quantity                   Int
+  originalLineTotalCents     Int?
+  promotionDiscountId        String?
+  promotionDiscountName      String?
+  promotionDiscountType      DiscountType?
+  promotionDiscountValue     Int?
+  promotionDiscountPriority  Int?
+  promotionDiscountUnitCents Int               @default(0)
+  promotionDiscountCents     Int               @default(0)
+  lineTotalCents             Int
+  removedAt                  DateTime?
+  removedReason              String?
+  removedById                String?
+  refundedCents              Int               @default(0)
+  stripeRefundId             String?           @unique
+  createdAt                  DateTime          @default(now())
+  order                      Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product                    Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  removedBy                  User?             @relation("OrderItemRemovedBy", fields: [removedById], references: [id], onDelete: SetNull)
+  refunds                    PaymentRefund[]
+  options                    OrderItemOption[]
 
   @@index([orderId])
   @@index([productId])
   @@index([removedAt])
   @@index([removedById])
+  @@index([promotionDiscountId])
 }
 
 model OrderItemOption {

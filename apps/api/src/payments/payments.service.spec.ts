@@ -516,6 +516,73 @@ describe("PaymentsService", () => {
     );
   });
 
+  it("uses backend-discounted item prices when creating Stripe checkout sessions", async () => {
+    ordersService.getForCheckout.mockResolvedValue({
+      id: "order-promo",
+      orderNumber: "MT-0002",
+      trackingToken: "track_promo",
+      status: OrderStatus.CREATED,
+      createdAt: new Date("2026-09-01T19:00:00.000Z"),
+      stripeSessionId: null,
+      paymentMethod: OrderPaymentMethod.CARD,
+      customerEmail: "cliente@example.com",
+      currency: "eur",
+      discountCents: 0,
+      totalCents: 1904,
+      deliveryFeeCents: 0,
+      items: [
+        {
+          id: "item-promo",
+          productName: "Mordida Smash",
+          quantity: 2,
+          originalUnitPriceCents: 1190,
+          unitPriceCents: 952,
+          discountedUnitPriceCents: 952,
+          promotionDiscountId: "discount-20",
+          promotionDiscountName: "Promo lunes",
+          promotionDiscountCents: 476,
+          removedAt: null,
+          options: [],
+        },
+      ],
+    });
+    stripe.checkout.sessions.create.mockResolvedValue({
+      id: "cs_promo",
+      url: "https://stripe.test/checkout-promo",
+      payment_intent: "pi_promo",
+      expires_at: 1_787_000_000,
+    });
+
+    await expect(
+      service().createCheckoutSession({
+        orderId: "order-promo",
+        trackingToken: "track_promo",
+      }),
+    ).resolves.toEqual({
+      orderNumber: "MT-0002",
+      checkoutUrl: "https://stripe.test/checkout-promo",
+    });
+
+    expect(stripe.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        line_items: [
+          expect.objectContaining({
+            quantity: 2,
+            price_data: expect.objectContaining({
+              currency: "eur",
+              unit_amount: 952,
+              product_data: {
+                name: "Mordida Smash",
+              },
+            }),
+          }),
+        ],
+      }),
+      { idempotencyKey: "checkout:order-promo" },
+    );
+    expect(stripe.coupons.create).not.toHaveBeenCalled();
+  });
+
   it("rejects checkout when the tracking token is wrong", async () => {
     ordersService.getForCheckout.mockResolvedValue({
       id: "order-1",

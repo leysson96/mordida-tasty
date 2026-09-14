@@ -1,6 +1,9 @@
 import { BadRequestException } from "@nestjs/common";
 import {
   DeliveryMethod,
+  DiscountScope,
+  DiscountType,
+  DiscountWeekday,
   LoyaltyRedemptionStatus,
   LoyaltyRewardType,
   OrderPaymentMethod,
@@ -9,6 +12,10 @@ import {
   PaymentStatus,
 } from "@prisma/client";
 import { OrdersService } from "./orders.service";
+import {
+  DiscountForResolution,
+  PromotionsService,
+} from "../promotions/promotions.service";
 
 describe("OrdersService", () => {
   const prisma = {
@@ -44,6 +51,11 @@ describe("OrdersService", () => {
     ),
   };
 
+  const promotions = {
+    listActiveDiscountsForCheckout: jest.fn(),
+    resolveLineDiscount: jest.fn(),
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     prisma.order.findUnique.mockResolvedValue(null);
@@ -68,6 +80,12 @@ describe("OrdersService", () => {
       deliveryFeeCents: 250,
       minimumOrderCents: 0,
     });
+    promotions.listActiveDiscountsForCheckout.mockResolvedValue([]);
+    promotions.resolveLineDiscount.mockImplementation((input) =>
+      new PromotionsService({} as never, config as never).resolveLineDiscount(
+        input,
+      ),
+    );
   });
 
   afterEach(() => {
@@ -81,6 +99,7 @@ describe("OrdersService", () => {
       deliveryZones as never,
       mailService as never,
       config as never,
+      promotions as never,
     );
   }
 
@@ -262,6 +281,287 @@ describe("OrdersService", () => {
           deliveryFeeCents: 390,
           subtotalCents: 2380,
           totalCents: 2770,
+        }),
+      }),
+    );
+  });
+
+  it("keeps normal backend prices when no promotion discount applies", async () => {
+    const productId = "00000000-0000-4000-8000-000000000001";
+    const categoryId = "00000000-0000-4000-8000-000000000099";
+    prisma.product.findMany.mockResolvedValue([
+      {
+        id: productId,
+        categoryId,
+        name: "Mordida Smash",
+        priceCents: 1190,
+        available: true,
+        optionGroups: [],
+      },
+    ]);
+
+    const tx = makeCreateOrderTransaction(10);
+    prisma.$transaction.mockImplementation((callback) => callback(tx));
+
+    await expect(
+      service().createOrder(
+        {
+          customerName: "Cliente Test",
+          customerEmail: "cliente@example.com",
+          customerPhone: "+34611752804",
+          deliveryMethod: DeliveryMethod.PICKUP,
+          items: [{ productId, quantity: 2 }],
+          acceptLegal: true,
+        },
+        "checkout-no-promo-key",
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        subtotalCents: 2380,
+        totalCents: 2380,
+      }),
+    );
+
+    expect(promotions.listActiveDiscountsForCheckout).toHaveBeenCalledWith({
+      productIds: [productId],
+      categoryIds: [categoryId],
+    });
+    expect(tx.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          subtotalCents: 2380,
+          totalCents: 2380,
+          items: {
+            create: [
+              expect.objectContaining({
+                productId,
+                originalUnitPriceCents: 1190,
+                unitPriceCents: 1190,
+                discountedUnitPriceCents: 1190,
+                quantity: 2,
+                originalLineTotalCents: 2380,
+                promotionDiscountUnitCents: 0,
+                promotionDiscountCents: 0,
+                lineTotalCents: 2380,
+              }),
+            ],
+          },
+        }),
+      }),
+    );
+  });
+
+  it("applies an active promotion discount and stores the order item snapshot", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-09-14T12:00:00.000Z"));
+
+    const productId = "00000000-0000-4000-8000-000000000001";
+    const categoryId = "00000000-0000-4000-8000-000000000099";
+    const discount = makeDiscount({
+      id: "discount-20",
+      name: "Promo lunes",
+      type: DiscountType.PERCENTAGE,
+      value: 2000,
+      priority: 5,
+      weekdays: [DiscountWeekday.MON],
+      products: [{ productId }],
+    });
+    prisma.product.findMany.mockResolvedValue([
+      {
+        id: productId,
+        categoryId,
+        name: "Mordida Smash",
+        priceCents: 1190,
+        available: true,
+        optionGroups: [],
+      },
+    ]);
+    promotions.listActiveDiscountsForCheckout.mockResolvedValue([discount]);
+
+    const tx = makeCreateOrderTransaction(11);
+    prisma.$transaction.mockImplementation((callback) => callback(tx));
+
+    await expect(
+      service().createOrder(
+        {
+          customerName: "Cliente Test",
+          customerEmail: "cliente@example.com",
+          customerPhone: "+34611752804",
+          deliveryMethod: DeliveryMethod.PICKUP,
+          items: [{ productId, quantity: 2 }],
+          acceptLegal: true,
+        },
+        "checkout-active-promo-key",
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        subtotalCents: 1904,
+        totalCents: 1904,
+      }),
+    );
+
+    expect(tx.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          subtotalCents: 1904,
+          totalCents: 1904,
+          items: {
+            create: [
+              expect.objectContaining({
+                productId,
+                originalUnitPriceCents: 1190,
+                unitPriceCents: 952,
+                discountedUnitPriceCents: 952,
+                quantity: 2,
+                originalLineTotalCents: 2380,
+                promotionDiscountId: "discount-20",
+                promotionDiscountName: "Promo lunes",
+                promotionDiscountType: DiscountType.PERCENTAGE,
+                promotionDiscountValue: 2000,
+                promotionDiscountPriority: 5,
+                promotionDiscountUnitCents: 238,
+                promotionDiscountCents: 476,
+                lineTotalCents: 1904,
+              }),
+            ],
+          },
+        }),
+      }),
+    );
+  });
+
+  it("ignores promotion discounts that are outside their valid date window", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-09-14T12:00:00.000Z"));
+
+    const productId = "00000000-0000-4000-8000-000000000001";
+    const categoryId = "00000000-0000-4000-8000-000000000099";
+    prisma.product.findMany.mockResolvedValue([
+      {
+        id: productId,
+        categoryId,
+        name: "Mordida Smash",
+        priceCents: 1190,
+        available: true,
+        optionGroups: [],
+      },
+    ]);
+    promotions.listActiveDiscountsForCheckout.mockResolvedValue([
+      makeDiscount({
+        id: "expired-discount",
+        endsAt: new Date("2026-09-01T23:59:59.000Z"),
+        products: [{ productId }],
+      }),
+    ]);
+
+    const tx = makeCreateOrderTransaction(12);
+    prisma.$transaction.mockImplementation((callback) => callback(tx));
+
+    await expect(
+      service().createOrder(
+        {
+          customerName: "Cliente Test",
+          customerEmail: "cliente@example.com",
+          customerPhone: "+34611752804",
+          deliveryMethod: DeliveryMethod.PICKUP,
+          items: [{ productId, quantity: 1 }],
+          acceptLegal: true,
+        },
+        "checkout-expired-promo-key",
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        subtotalCents: 1190,
+        totalCents: 1190,
+      }),
+    );
+
+    expect(tx.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          items: {
+            create: [
+              expect.objectContaining({
+                promotionDiscountId: undefined,
+                promotionDiscountCents: 0,
+                unitPriceCents: 1190,
+                lineTotalCents: 1190,
+              }),
+            ],
+          },
+        }),
+      }),
+    );
+  });
+
+  it("uses promotion priority before discount amount when two discounts match", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-09-14T12:00:00.000Z"));
+
+    const productId = "00000000-0000-4000-8000-000000000001";
+    const categoryId = "00000000-0000-4000-8000-000000000099";
+    prisma.product.findMany.mockResolvedValue([
+      {
+        id: productId,
+        categoryId,
+        name: "Mordida Smash",
+        priceCents: 1190,
+        available: true,
+        optionGroups: [],
+      },
+    ]);
+    promotions.listActiveDiscountsForCheckout.mockResolvedValue([
+      makeDiscount({
+        id: "discount-bigger",
+        name: "Mayor importe",
+        type: DiscountType.PERCENTAGE,
+        value: 5000,
+        priority: 1,
+        products: [{ productId }],
+      }),
+      makeDiscount({
+        id: "discount-priority",
+        name: "Mayor prioridad",
+        type: DiscountType.PERCENTAGE,
+        value: 1000,
+        priority: 10,
+        products: [{ productId }],
+      }),
+    ]);
+
+    const tx = makeCreateOrderTransaction(13);
+    prisma.$transaction.mockImplementation((callback) => callback(tx));
+
+    await expect(
+      service().createOrder(
+        {
+          customerName: "Cliente Test",
+          customerEmail: "cliente@example.com",
+          customerPhone: "+34611752804",
+          deliveryMethod: DeliveryMethod.PICKUP,
+          items: [{ productId, quantity: 1 }],
+          acceptLegal: true,
+        },
+        "checkout-priority-promo-key",
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        subtotalCents: 1071,
+        totalCents: 1071,
+      }),
+    );
+
+    expect(tx.order.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          items: {
+            create: [
+              expect.objectContaining({
+                promotionDiscountId: "discount-priority",
+                promotionDiscountPriority: 10,
+                promotionDiscountCents: 119,
+                unitPriceCents: 1071,
+                lineTotalCents: 1071,
+              }),
+            ],
+          },
         }),
       }),
     );
@@ -1219,3 +1519,51 @@ describe("OrdersService", () => {
     ]);
   });
 });
+
+function makeCreateOrderTransaction(sequenceValue: number) {
+  return {
+    sequenceCounter: {
+      upsert: jest.fn().mockResolvedValue({ value: sequenceValue }),
+    },
+    order: {
+      create: jest.fn(({ data }) => ({
+        id: `order-${sequenceValue}`,
+        orderNumber: data.orderNumber,
+        status: data.status,
+        paymentMethod: data.paymentMethod,
+        subtotalCents: data.subtotalCents,
+        discountCents: data.discountCents,
+        deliveryFeeCents: data.deliveryFeeCents,
+        totalCents: data.totalCents,
+        items: data.items.create,
+        statusHistory: [],
+      })),
+    },
+  };
+}
+
+function makeDiscount(
+  overrides: Partial<DiscountForResolution> = {},
+): DiscountForResolution {
+  const id = overrides.id ?? "discount-test";
+  const now = new Date("2026-09-14T12:00:00.000Z");
+
+  return {
+    id,
+    name: overrides.name ?? "Promo test",
+    description: overrides.description ?? null,
+    active: overrides.active ?? true,
+    type: overrides.type ?? DiscountType.PERCENTAGE,
+    value: overrides.value ?? 1000,
+    scope: overrides.scope ?? DiscountScope.PRODUCTS,
+    startsAt: overrides.startsAt ?? new Date("2026-09-01T00:00:00.000Z"),
+    endsAt: overrides.endsAt ?? new Date("2026-09-30T23:59:59.000Z"),
+    weekdays: overrides.weekdays ?? [],
+    stackable: overrides.stackable ?? false,
+    priority: overrides.priority ?? 0,
+    categoryId: overrides.categoryId ?? null,
+    createdAt: overrides.createdAt ?? now,
+    updatedAt: overrides.updatedAt ?? now,
+    products: overrides.products ?? [],
+  };
+}

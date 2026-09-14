@@ -23,6 +23,11 @@ import { LEGAL_VERSION } from "../legal/legal-version";
 import { MailService } from "../mail/mail.service";
 import { DeliveryZonesService } from "../settings/delivery-zones.service";
 import { PrismaService } from "../prisma/prisma.service";
+import {
+  DiscountForResolution,
+  PromotionsService,
+  ResolvedLineDiscount,
+} from "../promotions/promotions.service";
 import { SettingsService } from "../settings/settings.service";
 import { CreateOrderDto } from "./dto/create-order.dto";
 import {
@@ -123,9 +128,20 @@ export interface AdminOrderHistoryResult {
 
 interface CheckoutOrderLine {
   productId: string;
+  categoryId: string;
   productName: string;
+  originalUnitPriceCents: number;
   unitPriceCents: number;
+  discountedUnitPriceCents: number;
   quantity: number;
+  originalLineTotalCents: number;
+  promotionDiscountId?: string;
+  promotionDiscountName?: string;
+  promotionDiscountType?: ResolvedLineDiscount["discountType"];
+  promotionDiscountValue?: number;
+  promotionDiscountPriority?: number;
+  promotionDiscountUnitCents: number;
+  promotionDiscountCents: number;
   lineTotalCents: number;
   options: Array<{
     groupName: string;
@@ -179,6 +195,7 @@ export class OrdersService {
     private readonly deliveryZonesService: DeliveryZonesService,
     private readonly mailService: MailService,
     private readonly configService: ConfigService<AppEnv, true>,
+    private readonly promotionsService: PromotionsService,
   ) {}
 
   async createOrder(
@@ -237,9 +254,25 @@ export class OrdersService {
       }
     }
 
+    const categoryIds = [
+      ...new Set(
+        products
+          .map((product) => product.categoryId)
+          .filter(
+            (categoryId): categoryId is string =>
+              typeof categoryId === "string" && categoryId.length > 0,
+          ),
+      ),
+    ];
+    const activeDiscounts =
+      await this.promotionsService.listActiveDiscountsForCheckout({
+        productIds,
+        categoryIds,
+      });
+
     const orderLines = dto.items.map((item) => {
       const product = productMap.get(item.productId)!;
-      return this.buildOrderLine(item, product);
+      return this.buildOrderLine(item, product, activeDiscounts);
     });
 
     const subtotalCents = orderLines.reduce(
@@ -375,8 +408,19 @@ export class OrdersService {
                 create: orderLines.map((line) => ({
                   productId: line.productId,
                   productName: line.productName,
+                  originalUnitPriceCents: line.originalUnitPriceCents,
                   unitPriceCents: line.unitPriceCents,
+                  discountedUnitPriceCents: line.discountedUnitPriceCents,
                   quantity: line.quantity,
+                  originalLineTotalCents: line.originalLineTotalCents,
+                  promotionDiscountId: line.promotionDiscountId,
+                  promotionDiscountName: line.promotionDiscountName,
+                  promotionDiscountType: line.promotionDiscountType,
+                  promotionDiscountValue: line.promotionDiscountValue,
+                  promotionDiscountPriority: line.promotionDiscountPriority,
+                  promotionDiscountUnitCents:
+                    line.promotionDiscountUnitCents,
+                  promotionDiscountCents: line.promotionDiscountCents,
                   lineTotalCents: line.lineTotalCents,
                   options:
                     line.options.length > 0
@@ -780,20 +824,46 @@ export class OrdersService {
   private buildOrderLine(
     item: CreateOrderDto["items"][number],
     product: CheckoutProduct,
+    discounts: DiscountForResolution[],
   ): CheckoutOrderLine {
     const options = this.resolveOrderItemOptions(item.options ?? [], product);
+    const categoryId = product.categoryId ?? "";
     const optionUnitPriceCents = options.reduce(
       (sum, option) => sum + option.priceCents,
       0,
     );
-    const unitPriceCents = product.priceCents + optionUnitPriceCents;
+    const originalUnitPriceCents = product.priceCents + optionUnitPriceCents;
+    const originalLineTotalCents = originalUnitPriceCents * item.quantity;
+    const promotionDiscount = this.promotionsService.resolveLineDiscount({
+      productId: product.id,
+      categoryId,
+      unitPriceCents: originalUnitPriceCents,
+      quantity: item.quantity,
+      discounts,
+    });
+    const unitPriceCents =
+      promotionDiscount?.discountedUnitPriceCents ?? originalUnitPriceCents;
+    const lineTotalCents =
+      promotionDiscount?.lineTotalCents ?? originalLineTotalCents;
 
     return {
       productId: product.id,
+      categoryId,
       productName: product.name,
+      originalUnitPriceCents,
       unitPriceCents,
+      discountedUnitPriceCents: unitPriceCents,
       quantity: item.quantity,
-      lineTotalCents: unitPriceCents * item.quantity,
+      originalLineTotalCents,
+      promotionDiscountId: promotionDiscount?.discountId,
+      promotionDiscountName: promotionDiscount?.discountName,
+      promotionDiscountType: promotionDiscount?.discountType,
+      promotionDiscountValue: promotionDiscount?.discountValue,
+      promotionDiscountPriority: promotionDiscount?.priority,
+      promotionDiscountUnitCents:
+        promotionDiscount?.unitDiscountCents ?? 0,
+      promotionDiscountCents: promotionDiscount?.lineDiscountCents ?? 0,
+      lineTotalCents,
       options,
     };
   }
