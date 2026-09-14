@@ -545,6 +545,17 @@ export class OrdersService {
         .map((item) => ({
           productName: item.productName,
           quantity: item.quantity,
+          unitPriceCents: item.unitPriceCents,
+          originalUnitPriceCents: item.originalUnitPriceCents,
+          discountedUnitPriceCents: item.discountedUnitPriceCents,
+          originalLineTotalCents: item.originalLineTotalCents,
+          promotionDiscountId: item.promotionDiscountId,
+          promotionDiscountName: item.promotionDiscountName,
+          promotionDiscountType: item.promotionDiscountType,
+          promotionDiscountValue: item.promotionDiscountValue,
+          promotionDiscountPriority: item.promotionDiscountPriority,
+          promotionDiscountUnitCents: item.promotionDiscountUnitCents,
+          promotionDiscountCents: item.promotionDiscountCents,
           lineTotalCents: item.lineTotalCents,
           options: item.options.map((option) => ({
             groupName: option.groupName,
@@ -697,31 +708,60 @@ export class OrdersService {
       date,
       revenueCents: 0,
       orderCount: 0,
+      promotionDiscountCents: 0,
+      grossProductRevenueCents: 0,
     }));
     const salesByDayMap = new Map(salesByDay.map((day) => [day.date, day]));
     const productMap = new Map<
       string,
-      { productName: string; quantity: number; revenueCents: number }
+      {
+        productName: string;
+        quantity: number;
+        revenueCents: number;
+        promotionDiscountCents: number;
+        grossRevenueCents: number;
+      }
     >();
+    let promotionDiscountCents = 0;
+    let grossProductRevenueCents = 0;
 
     for (const order of collectedOrders) {
+      const activeItems = order.items.filter(
+        (orderItem) => !orderItem.removedAt,
+      );
+      const orderPromotionDiscountCents = activeItems.reduce(
+        (sum, item) => sum + this.itemPromotionDiscountCents(item),
+        0,
+      );
+      const orderGrossProductRevenueCents = activeItems.reduce(
+        (sum, item) => sum + this.itemGrossLineTotalCents(item),
+        0,
+      );
+      promotionDiscountCents += orderPromotionDiscountCents;
+      grossProductRevenueCents += orderGrossProductRevenueCents;
+
       const dayKey = this.dateOnlyInTimezone(order.createdAt, range.timezone);
       const day = salesByDayMap.get(dayKey);
       if (day) {
         day.revenueCents += order.totalCents;
         day.orderCount += 1;
+        day.promotionDiscountCents += orderPromotionDiscountCents;
+        day.grossProductRevenueCents += orderGrossProductRevenueCents;
       }
 
-      for (const item of order.items.filter(
-        (orderItem) => !orderItem.removedAt,
-      )) {
+      for (const item of activeItems) {
         const current = productMap.get(item.productName) ?? {
           productName: item.productName,
           quantity: 0,
           revenueCents: 0,
+          promotionDiscountCents: 0,
+          grossRevenueCents: 0,
         };
         current.quantity += item.quantity;
         current.revenueCents += item.lineTotalCents;
+        current.promotionDiscountCents +=
+          this.itemPromotionDiscountCents(item);
+        current.grossRevenueCents += this.itemGrossLineTotalCents(item);
         productMap.set(item.productName, current);
       }
     }
@@ -733,6 +773,8 @@ export class OrdersService {
       orderCount,
       averageTicketCents:
         orderCount > 0 ? Math.round(totalRevenueCents / orderCount) : 0,
+      promotionDiscountCents,
+      grossProductRevenueCents,
       paymentBreakdown,
       salesByDay,
       topProducts: [...productMap.values()]
@@ -1071,6 +1113,19 @@ export class OrdersService {
       return 0;
     }
     return Math.round(totalCents - totalCents / (1 + taxRate));
+  }
+
+  private itemPromotionDiscountCents(
+    item: SalesReportOrder["items"][number],
+  ) {
+    return Math.max(0, item.promotionDiscountCents ?? 0);
+  }
+
+  private itemGrossLineTotalCents(item: SalesReportOrder["items"][number]) {
+    return (
+      item.originalLineTotalCents ??
+      item.lineTotalCents + this.itemPromotionDiscountCents(item)
+    );
   }
 
   private isUniqueError(error: unknown) {

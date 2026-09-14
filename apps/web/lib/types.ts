@@ -95,6 +95,16 @@ export interface OrderItem {
   productName: string;
   quantity: number;
   unitPriceCents?: number;
+  originalUnitPriceCents?: number | null;
+  discountedUnitPriceCents?: number | null;
+  originalLineTotalCents?: number | null;
+  promotionDiscountId?: string | null;
+  promotionDiscountName?: string | null;
+  promotionDiscountType?: "PERCENT" | "FIXED_AMOUNT" | null;
+  promotionDiscountValue?: number | null;
+  promotionDiscountPriority?: number | null;
+  promotionDiscountUnitCents?: number | null;
+  promotionDiscountCents?: number | null;
   lineTotalCents: number;
   removedAt?: string | null;
   removedReason?: string | null;

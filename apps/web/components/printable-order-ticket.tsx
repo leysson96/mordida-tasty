@@ -1,5 +1,9 @@
 import { formatMoney } from "../lib/api";
-import { formatOrderItemOptions } from "../lib/order-format";
+import {
+  formatOrderItemOptions,
+  formatOrderItemPromotion,
+  hasPromotionDiscount,
+} from "../lib/order-format";
 import { paymentSummaryText } from "../lib/payment-format";
 import type { OrderSummary } from "../lib/types";
 
@@ -71,6 +75,11 @@ export function PrintableOrderTicket({
               {item.quantity} x {item.productName}
               {item.options && item.options.length > 0 && (
                 <small>{formatOrderItemOptions(item)}</small>
+              )}
+              {hasPromotionDiscount(item) && (
+                <small className="promotion-discount-note">
+                  {formatOrderItemPromotion(item)}
+                </small>
               )}
             </span>
             <strong>{formatMoney(item.lineTotalCents)}</strong>

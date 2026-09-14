@@ -47,7 +47,11 @@ import {
   orderStatusLabels,
   removableOrderItemStatuses,
 } from "../lib/order-state";
-import { formatOrderItemOptions } from "../lib/order-format";
+import {
+  formatOrderItemOptions,
+  formatOrderItemPromotion,
+  hasPromotionDiscount,
+} from "../lib/order-format";
 import {
   DeliveryZone,
   DeliveryMethod,
@@ -898,6 +902,11 @@ export function AdminOrdersClient() {
                         <strong>{item.productName}</strong>
                         {item.options && item.options.length > 0 && (
                           <small>{formatOrderItemOptions(item)}</small>
+                        )}
+                        {hasPromotionDiscount(item) && (
+                          <small className="promotion-discount-note">
+                            {formatOrderItemPromotion(item)}
+                          </small>
                         )}
                         {item.removedAt && (
                           <small>

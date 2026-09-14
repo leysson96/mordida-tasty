@@ -30,7 +30,11 @@ import {
   redirectOnAdminAuthError,
 } from "../lib/admin-errors";
 import { orderStatusLabels } from "../lib/order-state";
-import { formatOrderItemOptions } from "../lib/order-format";
+import {
+  formatOrderItemOptions,
+  formatOrderItemPromotion,
+  hasPromotionDiscount,
+} from "../lib/order-format";
 import { paymentMethodLabel, paymentSummaryText } from "../lib/payment-format";
 import type {
   AdminOrderHistoryResponse,
@@ -46,15 +50,21 @@ interface SalesReportResponse {
   totalRevenueCents: number;
   orderCount: number;
   averageTicketCents: number;
+  promotionDiscountCents: number;
+  grossProductRevenueCents: number;
   salesByDay: Array<{
     date: string;
     revenueCents: number;
     orderCount: number;
+    promotionDiscountCents: number;
+    grossProductRevenueCents: number;
   }>;
   topProducts: Array<{
     productName: string;
     quantity: number;
     revenueCents: number;
+    promotionDiscountCents: number;
+    grossRevenueCents: number;
   }>;
 }
 
@@ -344,6 +354,11 @@ export function AdminReportsClient() {
           <strong>{formatMoney(report?.averageTicketCents ?? 0)}</strong>
           <small>Promedio por pedido</small>
         </article>
+        <article>
+          <span>Descuentos promo</span>
+          <strong>-{formatMoney(report?.promotionDiscountCents ?? 0)}</strong>
+          <small>Impacto aplicado</small>
+        </article>
       </section>
 
       {report && (
@@ -442,6 +457,11 @@ export function AdminReportsClient() {
                     <div>
                       <strong>{product.productName}</strong>
                       <small>{product.quantity} uds.</small>
+                      {product.promotionDiscountCents > 0 && (
+                        <small className="promotion-discount-note">
+                          Promo -{formatMoney(product.promotionDiscountCents)}
+                        </small>
+                      )}
                       <span className="report-product-meter">
                         <span style={{ width: `${width}%` }} />
                       </span>
@@ -806,6 +826,11 @@ function OrderHistoryDetail({
                 <strong>{item.productName}</strong>
                 {item.options && item.options.length > 0 && (
                   <small>{formatOrderItemOptions(item)}</small>
+                )}
+                {hasPromotionDiscount(item) && (
+                  <small className="promotion-discount-note">
+                    {formatOrderItemPromotion(item)}
+                  </small>
                 )}
                 {item.removedAt && (
                   <small>{item.removedReason ?? "Producto quitado"}</small>

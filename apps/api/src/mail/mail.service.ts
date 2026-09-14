@@ -33,6 +33,9 @@ interface OrderReceiptEmail {
   items: Array<{
     productName: string;
     quantity: number;
+    originalLineTotalCents?: number | null;
+    promotionDiscountName?: string | null;
+    promotionDiscountCents?: number | null;
     lineTotalCents: number;
     options?: Array<{
       groupName: string;
@@ -140,12 +143,7 @@ export class MailService {
         `Total: ${formatMoney(order.totalCents)}`,
         "",
         "Productos:",
-        ...order.items.map(
-          (item) =>
-            `${item.quantity} x ${item.productName} - ${formatMoney(
-              item.lineTotalCents,
-            )}${this.optionText(item.options)}`,
-        ),
+        ...order.items.map((item) => this.receiptItemText(item)),
         "",
         `Sigue tu pedido aqui: ${trackingUrl}`,
       ].join("\n"),
@@ -264,6 +262,7 @@ export class MailService {
             <td style="${tableCellStyle}">
               <strong>${item.quantity} x ${escapeHtml(item.productName)}</strong>
               ${this.optionHtml(item.options)}
+              ${this.promotionHtml(item)}
             </td>
             <td align="right" style="${tableCellStyle}; white-space: nowrap;"><strong>${formatMoney(item.lineTotalCents)}</strong></td>
           </tr>
@@ -375,6 +374,40 @@ export class MailService {
     return order.deliveryMethod === DeliveryMethod.DELIVERY
       ? "Efectivo en entrega"
       : "Efectivo en local";
+  }
+
+  private receiptItemText(item: OrderReceiptEmail["items"][number]) {
+    const base = `${item.quantity} x ${item.productName} - ${formatMoney(
+      item.lineTotalCents,
+    )}${this.optionText(item.options)}`;
+    const promotionText = this.promotionText(item);
+
+    return promotionText ? `${base}\n  ${promotionText}` : base;
+  }
+
+  private promotionText(item: OrderReceiptEmail["items"][number]) {
+    const discountCents = item.promotionDiscountCents ?? 0;
+    if (discountCents <= 0) {
+      return "";
+    }
+
+    const label = item.promotionDiscountName?.trim() || "Promo aplicada";
+    const originalLineTotalCents = item.originalLineTotalCents ?? 0;
+    const previous =
+      originalLineTotalCents > item.lineTotalCents
+        ? ` (antes ${formatMoney(originalLineTotalCents)})`
+        : "";
+
+    return `${label}: -${formatMoney(discountCents)}${previous}`;
+  }
+
+  private promotionHtml(item: OrderReceiptEmail["items"][number]) {
+    const promotionText = this.promotionText(item);
+    if (!promotionText) {
+      return "";
+    }
+
+    return `<div style="${smallTextStyle}; color:#23775f;">${escapeHtml(promotionText)}</div>`;
   }
 
   private deliverySummary(

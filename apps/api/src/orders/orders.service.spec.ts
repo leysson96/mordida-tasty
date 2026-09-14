@@ -1397,6 +1397,8 @@ describe("OrdersService", () => {
         date: "2026-08-30",
         revenueCents: 1200,
         orderCount: 1,
+        promotionDiscountCents: 0,
+        grossProductRevenueCents: 0,
       },
     ]);
   });
@@ -1498,6 +1500,8 @@ describe("OrdersService", () => {
     expect(report.totalRevenueCents).toBe(2700);
     expect(report.orderCount).toBe(2);
     expect(report.averageTicketCents).toBe(1350);
+    expect(report.promotionDiscountCents).toBe(0);
+    expect(report.grossProductRevenueCents).toBe(2700);
     expect(report.paymentBreakdown).toEqual({
       collected: { orderCount: 2, amountCents: 2700 },
       pendingCash: { orderCount: 1, amountCents: 2000 },
@@ -1508,6 +1512,8 @@ describe("OrdersService", () => {
         date: "2026-08-30",
         revenueCents: 2700,
         orderCount: 2,
+        promotionDiscountCents: 0,
+        grossProductRevenueCents: 2700,
       },
     ]);
     expect(report.topProducts).toEqual([
@@ -1515,6 +1521,64 @@ describe("OrdersService", () => {
         productName: "Mordida Smash",
         quantity: 2,
         revenueCents: 2700,
+        promotionDiscountCents: 0,
+        grossRevenueCents: 2700,
+      },
+    ]);
+  });
+
+  it("reports promotion discounts without changing collected net revenue", async () => {
+    const collectedAt = new Date("2026-08-30T10:00:00.000Z");
+    prisma.order.findMany.mockResolvedValue([
+      {
+        createdAt: collectedAt,
+        status: OrderStatus.PAID,
+        paymentMethod: OrderPaymentMethod.CARD,
+        totalCents: 952,
+        paidAt: collectedAt,
+        payments: [
+          {
+            provider: PaymentProvider.STRIPE,
+            status: PaymentStatus.SUCCEEDED,
+          },
+        ],
+        items: [
+          {
+            productName: "Mordida Smash",
+            quantity: 1,
+            originalLineTotalCents: 1190,
+            lineTotalCents: 952,
+            promotionDiscountCents: 238,
+            removedAt: null,
+          },
+        ],
+      },
+    ]);
+
+    const report = await service().salesReport({
+      from: "2026-08-30",
+      to: "2026-08-30",
+    });
+
+    expect(report.totalRevenueCents).toBe(952);
+    expect(report.promotionDiscountCents).toBe(238);
+    expect(report.grossProductRevenueCents).toBe(1190);
+    expect(report.salesByDay).toEqual([
+      {
+        date: "2026-08-30",
+        revenueCents: 952,
+        orderCount: 1,
+        promotionDiscountCents: 238,
+        grossProductRevenueCents: 1190,
+      },
+    ]);
+    expect(report.topProducts).toEqual([
+      {
+        productName: "Mordida Smash",
+        quantity: 1,
+        revenueCents: 952,
+        promotionDiscountCents: 238,
+        grossRevenueCents: 1190,
       },
     ]);
   });

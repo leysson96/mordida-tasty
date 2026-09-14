@@ -1183,6 +1183,14 @@ p {
   font-weight: 850;
 }
 
+.summary-item-copy .promotion-discount-note,
+.order-line-copy .promotion-discount-note,
+.print-ticket .promotion-discount-note,
+.report-product-row .promotion-discount-note,
+.history-detail-items .promotion-discount-note {
+  color: var(--color-green);
+}
+
 .print-ticket span small {
   display: block;
 }
@@ -2192,7 +2200,7 @@ textarea {
 
 .admin-metrics {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
   margin-bottom: 14px;
 }

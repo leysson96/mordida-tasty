@@ -1261,6 +1261,88 @@ describe("PaymentsService", () => {
     });
   });
 
+  it("refunds the discounted line total when removing a promotional item", async () => {
+    const paidOrder = {
+      id: "order-promo",
+      orderNumber: "MT-0002",
+      status: OrderStatus.PAID,
+      currency: "eur",
+      deliveryFeeCents: 0,
+      discountCents: 0,
+      taxRate: 0.1,
+      items: [
+        {
+          id: "item-promo",
+          productName: "Mordida Smash",
+          originalLineTotalCents: 1190,
+          lineTotalCents: 952,
+          promotionDiscountCents: 238,
+          removedAt: null,
+        },
+        {
+          id: "item-keep",
+          productName: "Patatas",
+          lineTotalCents: 390,
+          removedAt: null,
+        },
+      ],
+      payments: [
+        {
+          id: "payment-promo",
+          status: PaymentStatus.SUCCEEDED,
+          amountCents: 1342,
+          stripePaymentIntentId: "pi_promo",
+        },
+      ],
+    };
+    const summary = { id: "order-promo", items: [], statusHistory: [] };
+    prisma.order.findUnique.mockResolvedValue(paidOrder);
+    prisma.order.findUniqueOrThrow.mockResolvedValue(summary);
+    prisma.paymentRefund.aggregate.mockResolvedValue({
+      _sum: { amountCents: 952 },
+    });
+    stripe.refunds.create.mockResolvedValue({ id: "re_promo" });
+
+    await expect(
+      service().removeOrderItemWithRefund({
+        orderId: "order-promo",
+        itemId: "item-promo",
+        reason: "Sin stock",
+        actorId: "admin-1",
+      }),
+    ).resolves.toEqual({
+      order: summary,
+      refundedCents: 952,
+      stripeRefundId: "re_promo",
+    });
+
+    expect(stripe.refunds.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment_intent: "pi_promo",
+        amount: 952,
+        metadata: expect.objectContaining({
+          orderItemId: "item-promo",
+          productName: "Mordida Smash",
+        }),
+      }),
+      { idempotencyKey: "order-item-remove:item-promo" },
+    );
+    expect(prisma.orderItem.update).toHaveBeenCalledWith({
+      where: { id: "item-promo" },
+      data: expect.objectContaining({
+        refundedCents: 952,
+        stripeRefundId: "re_promo",
+      }),
+    });
+    expect(prisma.order.update).toHaveBeenCalledWith({
+      where: { id: "order-promo" },
+      data: expect.objectContaining({
+        subtotalCents: 390,
+        totalCents: 390,
+      }),
+    });
+  });
+
   it("does not create another Stripe refund for an already removed item", async () => {
     const removedAt = new Date();
     prisma.order.findUnique.mockResolvedValue({
@@ -1388,6 +1470,76 @@ describe("PaymentsService", () => {
         changedById: "admin-1",
       }),
     });
+  });
+
+  it("refunds only the charged amount when cancelling a promotional order", async () => {
+    const paidOrder = {
+      id: "order-promo",
+      orderNumber: "MT-0003",
+      status: OrderStatus.CONFIRMED,
+      currency: "eur",
+      stripePaymentIntentId: null,
+      items: [
+        {
+          id: "item-promo",
+          productName: "Mordida Smash",
+          originalLineTotalCents: 2380,
+          lineTotalCents: 1904,
+          promotionDiscountCents: 476,
+          removedAt: null,
+        },
+      ],
+      refunds: [],
+      payments: [
+        {
+          id: "payment-promo",
+          status: PaymentStatus.SUCCEEDED,
+          amountCents: 1904,
+          stripePaymentIntentId: "pi_promo",
+        },
+      ],
+    };
+    const summary = {
+      id: "order-promo",
+      status: OrderStatus.CANCELLED,
+      totalCents: 0,
+      items: [],
+      statusHistory: [],
+    };
+    prisma.order.findUnique.mockResolvedValue(paidOrder);
+    prisma.order.findUniqueOrThrow.mockResolvedValue(summary);
+    prisma.paymentRefund.aggregate.mockResolvedValue({
+      _sum: { amountCents: 1904 },
+    });
+    stripe.refunds.create.mockResolvedValue({ id: "re_promo_full" });
+
+    await expect(
+      service().cancelPaidOrderWithRefund({
+        orderId: "order-promo",
+        reason: "Cliente solicita cancelacion",
+        actorId: "admin-1",
+      }),
+    ).resolves.toEqual({
+      order: summary,
+      refundedCents: 1904,
+      stripeRefundId: "re_promo_full",
+    });
+
+    expect(stripe.refunds.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment_intent: "pi_promo",
+        amount: 1904,
+      }),
+      { idempotencyKey: "order-cancel:order-promo" },
+    );
+    expect(prisma.paymentRefund.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          amountCents: 1904,
+          stripePaymentIntentId: "pi_promo",
+        }),
+      }),
+    );
   });
 
   it("subtracts previous partial refunds before cancelling a paid order", async () => {

@@ -19,7 +19,11 @@ import {
   orderStatusLabels,
   trackingProgressStatuses,
 } from "../lib/order-state";
-import { formatOrderItemOptions } from "../lib/order-format";
+import {
+  formatOrderItemOptions,
+  formatOrderItemPromotion,
+  hasPromotionDiscount,
+} from "../lib/order-format";
 import { paymentMethodLabel, paymentSummaryText } from "../lib/payment-format";
 import type { OrderStatus, OrderSummary } from "../lib/types";
 import { useCart } from "./cart-provider";
@@ -243,6 +247,11 @@ export function TrackingClient({
               </strong>
               {item.options && item.options.length > 0 && (
                 <small>{formatOrderItemOptions(item)}</small>
+              )}
+              {hasPromotionDiscount(item) && (
+                <small className="promotion-discount-note">
+                  {formatOrderItemPromotion(item)}
+                </small>
               )}
             </span>
             <strong>{formatMoney(item.lineTotalCents)}</strong>
