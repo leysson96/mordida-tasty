@@ -26,17 +26,23 @@ const storageKey = "mordida_cart";
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
+  const [storageReady, setStorageReady] = useState(false);
 
   useEffect(() => {
     const stored = window.localStorage.getItem(storageKey);
     if (stored) {
       setItems((JSON.parse(stored) as CartItem[]).map(normalizeCartItem));
     }
+    setStorageReady(true);
   }, []);
 
   useEffect(() => {
+    if (!storageReady) {
+      return;
+    }
+
     window.localStorage.setItem(storageKey, JSON.stringify(items));
-  }, [items]);
+  }, [items, storageReady]);
 
   const addItem = useCallback(
     (product: Product, options: CartItemOption[] = []) => {
