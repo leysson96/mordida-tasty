@@ -4,11 +4,18 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard, OptionalJwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { QuoteOrderDto } from './dto/quote-order.dto';
 import { OrdersService } from './orders.service';
 
 @Controller('orders')
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
+
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Post('quote')
+  quoteOrder(@Body() dto: QuoteOrderDto) {
+    return this.ordersService.quoteOrder(dto);
+  }
 
   @UseGuards(OptionalJwtAuthGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })

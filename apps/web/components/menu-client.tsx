@@ -20,6 +20,7 @@ import {
 import Link from "next/link";
 import { api, formatMoney } from "../lib/api";
 import { brandConfig } from "../lib/brand";
+import { productUnitPriceDisplay } from "../lib/product-pricing";
 import {
   Category,
   Product,
@@ -255,7 +256,7 @@ export function MenuClient() {
                       <p>{product.description}</p>
                     </div>
                     <div className="product-actions">
-                      <strong>{formatMoney(product.priceCents)}</strong>
+                      <ProductUnitPrice product={product} />
                       {productHasOptions(product) ? (
                         <Link
                           href={`/producto/${product.slug}`}
@@ -383,7 +384,7 @@ function FeaturedPromotion({ promotion }: { promotion: VisiblePromotion }) {
         </h2>
         <p>{promotion.description}</p>
         <div className="featured-promotion-actions">
-          <strong>{formatMoney(promotion.product.priceCents)}</strong>
+          <ProductUnitPrice product={promotion.product} featured />
           <Link
             href={`/producto/${promotion.product.slug}`}
             className="button primary promo-button"
@@ -394,6 +395,34 @@ function FeaturedPromotion({ promotion }: { promotion: VisiblePromotion }) {
         </div>
       </div>
     </section>
+  );
+}
+
+function ProductUnitPrice({
+  product,
+  featured = false,
+}: {
+  product: Product;
+  featured?: boolean;
+}) {
+  const price = productUnitPriceDisplay(product);
+
+  if (!price.hasPromotion) {
+    return <strong>{formatMoney(price.finalUnitPriceCents)}</strong>;
+  }
+
+  return (
+    <span className={featured ? "price-stack hero-price" : "price-stack"}>
+      <span className="price-before">
+        {formatMoney(price.originalUnitPriceCents)}
+      </span>
+      <strong className="price-final">
+        {formatMoney(price.finalUnitPriceCents)}
+      </strong>
+      {price.promotionName && (
+        <small className="price-promo-label">{price.promotionName}</small>
+      )}
+    </span>
   );
 }
 

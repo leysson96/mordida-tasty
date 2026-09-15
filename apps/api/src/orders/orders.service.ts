@@ -29,7 +29,8 @@ import {
   ResolvedLineDiscount,
 } from "../promotions/promotions.service";
 import { SettingsService } from "../settings/settings.service";
-import { CreateOrderDto } from "./dto/create-order.dto";
+import { CreateOrderDto, CreateOrderItemDto } from "./dto/create-order.dto";
+import { QuoteOrderDto } from "./dto/quote-order.dto";
 import {
   activeKitchenStatuses,
   assertOrderTransition,
@@ -227,54 +228,7 @@ export class OrdersService {
       throw new BadRequestException("La direccion de entrega es obligatoria.");
     }
 
-    const productIds = [...new Set(dto.items.map((item) => item.productId))];
-    const products = await this.prisma.product.findMany({
-      where: {
-        id: { in: productIds },
-        active: true,
-        category: {
-          active: true,
-        },
-      },
-      include: checkoutProductInclude,
-    });
-    const productMap = new Map(
-      products.map((product) => [product.id, product]),
-    );
-
-    for (const item of dto.items) {
-      const product = productMap.get(item.productId);
-      if (!product) {
-        throw new BadRequestException(`Product not found: ${item.productId}`);
-      }
-      if (!product.available) {
-        throw new BadRequestException(
-          `Product is not available: ${product.name}`,
-        );
-      }
-    }
-
-    const categoryIds = [
-      ...new Set(
-        products
-          .map((product) => product.categoryId)
-          .filter(
-            (categoryId): categoryId is string =>
-              typeof categoryId === "string" && categoryId.length > 0,
-          ),
-      ),
-    ];
-    const activeDiscounts =
-      await this.promotionsService.listActiveDiscountsForCheckout({
-        productIds,
-        categoryIds,
-      });
-
-    const orderLines = dto.items.map((item) => {
-      const product = productMap.get(item.productId)!;
-      return this.buildOrderLine(item, product, activeDiscounts);
-    });
-
+    const orderLines = await this.resolveCheckoutOrderLines(dto.items);
     const subtotalCents = orderLines.reduce(
       (sum, item) => sum + item.lineTotalCents,
       0,
@@ -486,6 +440,46 @@ export class OrdersService {
       }
       throw error;
     }
+  }
+
+  async quoteOrder(dto: QuoteOrderDto) {
+    const orderLines = await this.resolveCheckoutOrderLines(dto.items);
+    const subtotalCents = orderLines.reduce(
+      (sum, item) => sum + item.lineTotalCents,
+      0,
+    );
+    const grossSubtotalCents = orderLines.reduce(
+      (sum, item) => sum + item.originalLineTotalCents,
+      0,
+    );
+    const promotionDiscountCents = orderLines.reduce(
+      (sum, item) => sum + item.promotionDiscountCents,
+      0,
+    );
+
+    return {
+      subtotalCents,
+      grossSubtotalCents,
+      promotionDiscountCents,
+      items: orderLines.map((line, itemIndex) => ({
+        itemIndex,
+        productId: line.productId,
+        productName: line.productName,
+        quantity: line.quantity,
+        originalUnitPriceCents: line.originalUnitPriceCents,
+        unitPriceCents: line.unitPriceCents,
+        discountedUnitPriceCents: line.discountedUnitPriceCents,
+        originalLineTotalCents: line.originalLineTotalCents,
+        promotionDiscountId: line.promotionDiscountId,
+        promotionDiscountName: line.promotionDiscountName,
+        promotionDiscountType: line.promotionDiscountType,
+        promotionDiscountValue: line.promotionDiscountValue,
+        promotionDiscountPriority: line.promotionDiscountPriority,
+        promotionDiscountUnitCents: line.promotionDiscountUnitCents,
+        promotionDiscountCents: line.promotionDiscountCents,
+        lineTotalCents: line.lineTotalCents,
+      })),
+    };
   }
 
   private async sendOrderReceiptSafely(order: OrderWithDetails) {
@@ -861,6 +855,60 @@ export class OrdersService {
     if (orderUserId && orderUserId !== user?.id) {
       throw new ForbiddenException("You cannot access this order.");
     }
+  }
+
+  private async resolveCheckoutOrderLines(items: CreateOrderItemDto[]) {
+    const productIds = [...new Set(items.map((item) => item.productId))];
+    const products = await this.prisma.product.findMany({
+      where: {
+        id: { in: productIds },
+        active: true,
+        category: {
+          active: true,
+        },
+      },
+      include: checkoutProductInclude,
+    });
+    const productMap = new Map(
+      products.map((product) => [product.id, product]),
+    );
+
+    for (const item of items) {
+      const product = productMap.get(item.productId);
+      if (!product) {
+        throw new BadRequestException(`Product not found: ${item.productId}`);
+      }
+      if (!product.available) {
+        throw new BadRequestException(
+          `Product is not available: ${product.name}`,
+        );
+      }
+    }
+
+    const categoryIds = [
+      ...new Set(
+        products
+          .map((product) => product.categoryId)
+          .filter(
+            (categoryId): categoryId is string =>
+              typeof categoryId === "string" && categoryId.length > 0,
+          ),
+      ),
+    ];
+    const activeDiscounts =
+      await this.promotionsService.listActiveDiscountsForCheckout({
+        productIds,
+        categoryIds,
+      });
+
+    return items.map((item) => {
+      const product = productMap.get(item.productId);
+      if (!product) {
+        throw new BadRequestException(`Product not found: ${item.productId}`);
+      }
+
+      return this.buildOrderLine(item, product, activeDiscounts);
+    });
   }
 
   private buildOrderLine(

@@ -6,6 +6,10 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import {
+  DiscountForResolution,
+  PromotionsService,
+} from "../promotions/promotions.service";
 import { CreateCategoryDto, UpdateCategoryDto } from "./dto/category.dto";
 import {
   CreateProductOptionChoiceDto,
@@ -39,28 +43,59 @@ const adminOptionGroupsInclude = {
   },
 } satisfies Prisma.ProductOptionGroupFindManyArgs;
 
+const publicProductInclude = {
+  optionGroups: publicOptionGroupsInclude,
+} satisfies Prisma.ProductInclude;
+
+const publicMenuCategoryInclude = {
+  products: {
+    where: { active: true },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    include: publicProductInclude,
+  },
+} satisfies Prisma.CategoryInclude;
+
+const publicProductDetailInclude = {
+  category: true,
+  optionGroups: publicOptionGroupsInclude,
+} satisfies Prisma.ProductInclude;
+
+type PublicMenuCategory = Prisma.CategoryGetPayload<{
+  include: typeof publicMenuCategoryInclude;
+}>;
+
+interface ProductForPromotionPricing {
+  id: string;
+  categoryId: string | null;
+  priceCents: number;
+}
+
 const allowedLocalImagePrefixes = ["/images/", "/uploads/"] as const;
 const cloudinaryImageHost = "res.cloudinary.com";
 const cloudinaryImagePathPattern = /^\/[^/]+\/image\/upload\/.+/;
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly promotionsService: PromotionsService,
+  ) {}
 
-  listMenu() {
-    return this.prisma.category.findMany({
+  async listMenu() {
+    const categories: PublicMenuCategory[] = await this.prisma.category.findMany({
       where: { active: true },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-      include: {
-        products: {
-          where: { active: true },
-          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-          include: {
-            optionGroups: publicOptionGroupsInclude,
-          },
-        },
-      },
+      include: publicMenuCategoryInclude,
     });
+    const products = categories.flatMap((category) => category.products);
+    const discounts = await this.activeDiscountsForProducts(products);
+
+    return categories.map((category) => ({
+      ...category,
+      products: category.products.map((product) =>
+        this.withPromotionPricing(product, discounts),
+      ),
+    }));
   }
 
   async getProductBySlug(slug: string) {
@@ -72,17 +107,15 @@ export class ProductsService {
           active: true,
         },
       },
-      include: {
-        category: true,
-        optionGroups: publicOptionGroupsInclude,
-      },
+      include: publicProductDetailInclude,
     });
 
     if (!product) {
       throw new NotFoundException("Product not found.");
     }
 
-    return product;
+    const discounts = await this.activeDiscountsForProducts([product]);
+    return this.withPromotionPricing(product, discounts);
   }
 
   listAdminProducts() {
@@ -399,6 +432,53 @@ export class ProductsService {
     }
 
     return value;
+  }
+
+  private async activeDiscountsForProducts<T extends ProductForPromotionPricing>(
+    products: T[],
+  ) {
+    if (products.length === 0) {
+      return [];
+    }
+
+    return this.promotionsService.listActiveDiscountsForCheckout({
+      productIds: products.map((product) => product.id),
+      categoryIds: products
+        .map((product) => product.categoryId)
+        .filter(
+          (categoryId): categoryId is string =>
+            typeof categoryId === "string" && categoryId.length > 0,
+        ),
+    });
+  }
+
+  private withPromotionPricing<T extends ProductForPromotionPricing>(
+    product: T,
+    discounts: DiscountForResolution[],
+  ) {
+    const discount = this.promotionsService.resolveLineDiscount({
+      productId: product.id,
+      categoryId: product.categoryId ?? "",
+      unitPriceCents: product.priceCents,
+      quantity: 1,
+      discounts,
+    });
+
+    return {
+      ...product,
+      promotionPricing: discount
+        ? {
+            discountId: discount.discountId,
+            discountName: discount.discountName,
+            discountType: discount.discountType,
+            discountValue: discount.discountValue,
+            priority: discount.priority,
+            originalUnitPriceCents: discount.originalUnitPriceCents,
+            discountedUnitPriceCents: discount.discountedUnitPriceCents,
+            unitDiscountCents: discount.unitDiscountCents,
+          }
+        : null,
+    };
   }
 
   private async uniqueCategorySlug(input: string, excludingId?: string) {

@@ -5,7 +5,10 @@ import Link from "next/link";
 import { ArrowLeft, Plus } from "lucide-react";
 import { api, formatMoney } from "../lib/api";
 import { brandConfig } from "../lib/brand";
-import { CartItemOption, Product } from "../lib/types";
+import { cartItemOptionsPayload } from "../lib/order-quote";
+import { productUnitPriceDisplay } from "../lib/product-pricing";
+import type { CartItemPricingInput } from "../lib/product-pricing";
+import type { CartItemOption, OrderQuote, OrderQuoteLine, Product } from "../lib/types";
 import { useCart } from "./cart-provider";
 import { ProductImage } from "./product-image";
 
@@ -16,6 +19,9 @@ export function ProductDetailClient({ slug }: { slug: string }) {
   const [selectedChoices, setSelectedChoices] = useState<
     Record<string, string[]>
   >({});
+  const [priceQuote, setPriceQuote] = useState<OrderQuoteLine>();
+  const [priceQuoteError, setPriceQuoteError] = useState<string>();
+  const [priceQuoteLoading, setPriceQuoteLoading] = useState(false);
   const { addItem } = useCart();
 
   useEffect(() => {
@@ -54,9 +60,95 @@ export function ProductDetailClient({ slug }: { slug: string }) {
     });
   }, [optionGroups, product, selectedChoices]);
 
-  const unitPriceCents =
-    (product?.priceCents ?? 0) +
-    selectedCartOptions.reduce((sum, option) => sum + option.priceCents, 0);
+  const quoteOptionsPayload = useMemo(
+    () => cartItemOptionsPayload(selectedCartOptions),
+    [selectedCartOptions],
+  );
+  const selectionComplete = useMemo(
+    () =>
+      optionGroups.every((group) => {
+        const selectedCount = selectedChoices[group.id]?.length ?? 0;
+        const minimumChoices = group.required
+          ? Math.max(1, group.minChoices)
+          : group.minChoices;
+
+        return selectedCount >= minimumChoices;
+      }),
+    [optionGroups, selectedChoices],
+  );
+  const optionsUnitPriceCents = selectedCartOptions.reduce(
+    (sum, option) => sum + option.priceCents,
+    0,
+  );
+  const baseUnitPriceCents = (product?.priceCents ?? 0) + optionsUnitPriceCents;
+  const productBasePrice = product
+    ? productUnitPriceDisplay(product)
+    : undefined;
+  const priceDisplay = resolveDetailPriceDisplay({
+    productBasePrice,
+    priceQuote,
+    baseUnitPriceCents,
+    hasSelectedOptions: selectedCartOptions.length > 0,
+  });
+
+  useEffect(() => {
+    if (!product?.available || !selectionComplete) {
+      setPriceQuote(undefined);
+      setPriceQuoteError(undefined);
+      setPriceQuoteLoading(false);
+      return;
+    }
+
+    let active = true;
+    setPriceQuote(undefined);
+    setPriceQuoteError(undefined);
+    const timeout = window.setTimeout(() => {
+      setPriceQuoteLoading(true);
+      api<OrderQuote>("/orders/quote", {
+        method: "POST",
+        body: JSON.stringify({
+          items: [
+            {
+              productId: product.id,
+              quantity: 1,
+              options: quoteOptionsPayload,
+            },
+          ],
+        }),
+      })
+        .then((quote) => {
+          if (active) {
+            setPriceQuote(quote.items[0]);
+            setPriceQuoteError(undefined);
+          }
+        })
+        .catch((requestError: Error) => {
+          if (active) {
+            setPriceQuote(undefined);
+            setPriceQuoteError(requestError.message);
+          }
+        })
+        .finally(() => {
+          if (active) {
+            setPriceQuoteLoading(false);
+          }
+        });
+    }, 200);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [product?.available, product?.id, quoteOptionsPayload, selectionComplete]);
+
+  const addItemPricing: CartItemPricingInput | undefined = priceQuote
+    ? {
+        unitPriceCents: priceQuote.unitPriceCents,
+        originalUnitPriceCents: priceQuote.originalUnitPriceCents,
+        promotionDiscountName: priceQuote.promotionDiscountName,
+        promotionDiscountUnitCents: priceQuote.promotionDiscountUnitCents,
+      }
+    : undefined;
 
   if (error) {
     return <main className="page-shell empty-state error">{error}</main>;
@@ -126,7 +218,7 @@ export function ProductDetailClient({ slug }: { slug: string }) {
       }
     }
 
-    addItem(product, selectedCartOptions);
+    addItem(product, selectedCartOptions, addItemPricing);
     setSelectionError(undefined);
   }
 
@@ -207,7 +299,10 @@ export function ProductDetailClient({ slug }: { slug: string }) {
           )}
           {selectionError && <p className="form-error">{selectionError}</p>}
           <div className="detail-actions">
-            <strong>{formatMoney(unitPriceCents)}</strong>
+            <ProductDetailPrice
+              price={priceDisplay}
+              loading={priceQuoteLoading}
+            />
             <button
               type="button"
               className="button primary"
@@ -218,8 +313,85 @@ export function ProductDetailClient({ slug }: { slug: string }) {
               Anadir
             </button>
           </div>
+          {priceQuoteError && (
+            <p className="form-error">No se pudo actualizar el precio.</p>
+          )}
         </div>
       </section>
     </main>
   );
+}
+
+function ProductDetailPrice({
+  price,
+  loading,
+}: {
+  price: {
+    hasPromotion: boolean;
+    originalUnitPriceCents: number;
+    finalUnitPriceCents: number;
+    promotionName?: string | null;
+  };
+  loading: boolean;
+}) {
+  if (!price.hasPromotion) {
+    return (
+      <span className="price-stack detail-price">
+        <strong>{formatMoney(price.finalUnitPriceCents)}</strong>
+        {loading && <small>Actualizando precio</small>}
+      </span>
+    );
+  }
+
+  return (
+    <span className="price-stack detail-price">
+      <span className="price-before">
+        {formatMoney(price.originalUnitPriceCents)}
+      </span>
+      <strong className="price-final">
+        {formatMoney(price.finalUnitPriceCents)}
+      </strong>
+      {price.promotionName && (
+        <small className="price-promo-label">{price.promotionName}</small>
+      )}
+    </span>
+  );
+}
+
+function resolveDetailPriceDisplay({
+  productBasePrice,
+  priceQuote,
+  baseUnitPriceCents,
+  hasSelectedOptions,
+}: {
+  productBasePrice:
+    | ReturnType<typeof productUnitPriceDisplay>
+    | undefined;
+  priceQuote: OrderQuoteLine | undefined;
+  baseUnitPriceCents: number;
+  hasSelectedOptions: boolean;
+}) {
+  if (priceQuote) {
+    const hasPromotion =
+      priceQuote.promotionDiscountUnitCents > 0 &&
+      priceQuote.discountedUnitPriceCents < priceQuote.originalUnitPriceCents;
+
+    return {
+      hasPromotion,
+      originalUnitPriceCents: priceQuote.originalUnitPriceCents,
+      finalUnitPriceCents: priceQuote.unitPriceCents,
+      promotionName: hasPromotion ? priceQuote.promotionDiscountName : null,
+    };
+  }
+
+  if (productBasePrice && !hasSelectedOptions) {
+    return productBasePrice;
+  }
+
+  return {
+    hasPromotion: false,
+    originalUnitPriceCents: baseUnitPriceCents,
+    finalUnitPriceCents: baseUnitPriceCents,
+    promotionName: null,
+  };
 }

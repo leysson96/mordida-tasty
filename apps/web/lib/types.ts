@@ -8,6 +8,8 @@ export type OrderPaymentMethod = "CARD" | "CASH";
 
 export type LoyaltyRewardType = "DISCOUNT_PERCENT" | "FREE_PRODUCT";
 
+export type PromotionDiscountType = "PERCENTAGE" | "FIXED_AMOUNT";
+
 export type OrderStatus =
   | "CREATED"
   | "PENDING_PAYMENT"
@@ -32,6 +34,18 @@ export interface Product {
   available: boolean;
   sortOrder: number;
   optionGroups?: ProductOptionGroup[];
+  promotionPricing?: ProductPromotionPricing | null;
+}
+
+export interface ProductPromotionPricing {
+  discountId: string;
+  discountName: string;
+  discountType: PromotionDiscountType;
+  discountValue: number;
+  priority: number;
+  originalUnitPriceCents: number;
+  discountedUnitPriceCents: number;
+  unitDiscountCents: number;
 }
 
 export interface ProductOptionChoice {
@@ -80,6 +94,9 @@ export interface CartItem {
   imageUrl?: string | null;
   quantity: number;
   options: CartItemOption[];
+  originalUnitPriceCents?: number | null;
+  promotionDiscountName?: string | null;
+  promotionDiscountUnitCents?: number | null;
 }
 
 export interface CartItemOption {
@@ -100,7 +117,7 @@ export interface OrderItem {
   originalLineTotalCents?: number | null;
   promotionDiscountId?: string | null;
   promotionDiscountName?: string | null;
-  promotionDiscountType?: "PERCENT" | "FIXED_AMOUNT" | null;
+  promotionDiscountType?: PromotionDiscountType | null;
   promotionDiscountValue?: number | null;
   promotionDiscountPriority?: number | null;
   promotionDiscountUnitCents?: number | null;
@@ -115,6 +132,32 @@ export interface OrderItem {
     choiceName: string;
     priceCents: number;
   }>;
+}
+
+export interface OrderQuoteLine {
+  itemIndex: number;
+  productId: string;
+  productName: string;
+  quantity: number;
+  originalUnitPriceCents: number;
+  unitPriceCents: number;
+  discountedUnitPriceCents: number;
+  originalLineTotalCents: number;
+  promotionDiscountId?: string | null;
+  promotionDiscountName?: string | null;
+  promotionDiscountType?: PromotionDiscountType | null;
+  promotionDiscountValue?: number | null;
+  promotionDiscountPriority?: number | null;
+  promotionDiscountUnitCents: number;
+  promotionDiscountCents: number;
+  lineTotalCents: number;
+}
+
+export interface OrderQuote {
+  subtotalCents: number;
+  grossSubtotalCents: number;
+  promotionDiscountCents: number;
+  items: OrderQuoteLine[];
 }
 
 export interface OrderSummary {

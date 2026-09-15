@@ -14,10 +14,18 @@ import {
 } from "lucide-react";
 import { ApiError, api, formatMoney } from "../../lib/api";
 import {
+  cartItemsPayload,
+  quoteCartItems,
+} from "../../lib/order-quote";
+import { cartLinePriceDisplay } from "../../lib/product-pricing";
+import type { LinePriceDisplay } from "../../lib/product-pricing";
+import {
   Address,
+  CartItem,
   CustomerLoyaltyProgress,
   DeliveryMethod,
   DeliveryQuote,
+  OrderQuote,
   OrderPaymentMethod,
   OrderSummary,
   PublicSettings,
@@ -56,6 +64,9 @@ export default function CheckoutPage() {
   const [deliveryQuote, setDeliveryQuote] = useState<DeliveryQuote>();
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string>();
+  const [cartQuote, setCartQuote] = useState<OrderQuote>();
+  const [cartQuoteLoading, setCartQuoteLoading] = useState(false);
+  const [cartQuoteError, setCartQuoteError] = useState<string>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -124,6 +135,44 @@ export default function CheckoutPage() {
   }, []);
 
   useEffect(() => {
+    if (items.length === 0) {
+      setCartQuote(undefined);
+      setCartQuoteError(undefined);
+      setCartQuoteLoading(false);
+      return;
+    }
+
+    let active = true;
+    setCartQuoteLoading(true);
+    quoteCartItems(items)
+      .then((quote) => {
+        if (active) {
+          setCartQuote(quote);
+          setCartQuoteError(undefined);
+        }
+      })
+      .catch((requestError: Error) => {
+        if (active) {
+          setCartQuote(undefined);
+          setCartQuoteError(requestError.message);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setCartQuoteLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [items]);
+
+  const pricedSubtotalCents = cartQuote?.subtotalCents ?? subtotalCents;
+  const grossSubtotalCents = cartQuote?.grossSubtotalCents ?? subtotalCents;
+  const promotionDiscountCents = cartQuote?.promotionDiscountCents ?? 0;
+
+  useEffect(() => {
     if (deliveryMethod !== "DELIVERY") {
       setDeliveryQuote(undefined);
       setQuoteError(undefined);
@@ -146,7 +195,7 @@ export default function CheckoutPage() {
       api<DeliveryQuote>(
         `/settings/delivery-quote?postalCode=${encodeURIComponent(
           cleanPostalCode,
-        )}&subtotalCents=${subtotalCents}`,
+        )}&subtotalCents=${pricedSubtotalCents}`,
       )
         .then((quote) => {
           if (!active) {
@@ -177,7 +226,7 @@ export default function CheckoutPage() {
       active = false;
       window.clearTimeout(timeout);
     };
-  }, [deliveryMethod, postalCode, subtotalCents]);
+  }, [deliveryMethod, postalCode, pricedSubtotalCents]);
 
   const hasDeliveryZones = (publicSettings?.deliveryZones.length ?? 0) > 0;
   const deliveryFeeCents =
@@ -205,11 +254,12 @@ export default function CheckoutPage() {
     () =>
       estimateLoyaltyDiscountCents({
         items,
+        cartQuote,
         loyalty,
-        subtotalCents,
+        subtotalCents: pricedSubtotalCents,
         useLoyaltyReward,
       }),
-    [items, loyalty, subtotalCents, useLoyaltyReward],
+    [cartQuote, items, loyalty, pricedSubtotalCents, useLoyaltyReward],
   );
   const loyaltyRewardBlocked = Boolean(
     useLoyaltyReward &&
@@ -218,8 +268,9 @@ export default function CheckoutPage() {
       loyaltyDiscountCents <= 0,
   );
   const totalCents = useMemo(
-    () => Math.max(0, subtotalCents + deliveryFeeCents - loyaltyDiscountCents),
-    [deliveryFeeCents, loyaltyDiscountCents, subtotalCents],
+    () =>
+      Math.max(0, pricedSubtotalCents + deliveryFeeCents - loyaltyDiscountCents),
+    [deliveryFeeCents, loyaltyDiscountCents, pricedSubtotalCents],
   );
   const cashTenderedCents = useMemo(
     () => parseMoneyInputCents(cashTenderedEuros),
@@ -339,11 +390,7 @@ export default function CheckoutPage() {
                   notes: String(form.get("notes") ?? ""),
                 }
               : undefined,
-          items: items.map((item) => ({
-            productId: item.productId,
-            quantity: item.quantity,
-            options: cartItemOptionsPayload(item.options),
-          })),
+          items: cartItemsPayload(items),
           acceptLegal: form.get("acceptLegal") === "on",
         }),
       });
@@ -778,25 +825,50 @@ export default function CheckoutPage() {
 
         <aside className="summary-panel checkout-summary">
           <h2>Resumen</h2>
-          {items.map((item) => (
-            <div key={item.id}>
-              <span className="summary-item-copy">
-                <strong>
-                  {item.quantity} x {item.name}
-                </strong>
-                {item.options.length > 0 && (
-                  <small>
-                    {item.options
-                      .map(
-                        (option) => `${option.groupName}: ${option.choiceName}`,
-                      )
-                      .join(", ")}
-                  </small>
-                )}
-              </span>
-              <strong>{formatMoney(item.priceCents * item.quantity)}</strong>
-            </div>
-          ))}
+          {items.map((item, index) => {
+            const lineQuote = cartQuote?.items.find(
+              (line) => line.itemIndex === index,
+            );
+            const linePrice = cartLinePriceDisplay(item, lineQuote);
+
+            return (
+              <div key={item.id}>
+                <span className="summary-item-copy">
+                  <strong>
+                    {item.quantity} x {item.name}
+                  </strong>
+                  {item.options.length > 0 && (
+                    <small>
+                      {item.options
+                        .map(
+                          (option) =>
+                            `${option.groupName}: ${option.choiceName}`,
+                        )
+                        .join(", ")}
+                    </small>
+                  )}
+                  {linePrice.hasPromotion && linePrice.promotionName && (
+                    <small className="promotion-discount-note">
+                      {linePrice.promotionName}
+                    </small>
+                  )}
+                </span>
+                <SummaryLinePrice price={linePrice} />
+              </div>
+            );
+          })}
+          {promotionDiscountCents > 0 && (
+            <>
+              <div>
+                <span>Subtotal antes</span>
+                <strong>{formatMoney(grossSubtotalCents)}</strong>
+              </div>
+              <div className="summary-discount-row">
+                <span>Promos aplicadas</span>
+                <strong>-{formatMoney(promotionDiscountCents)}</strong>
+              </div>
+            </>
+          )}
           <div>
             <span>Envio</span>
             <strong>{formatMoney(deliveryFeeCents)}</strong>
@@ -825,13 +897,19 @@ export default function CheckoutPage() {
             </p>
           )}
           {ordersClosed && <p className="form-error">{ordersClosedReason}</p>}
+          {cartQuoteLoading && (
+            <p className="delivery-summary-note">Actualizando promociones...</p>
+          )}
+          {cartQuoteError && <p className="form-error">{cartQuoteError}</p>}
           {error && <p className="form-error">{error}</p>}
           <button
             className="button primary full"
             type="submit"
             disabled={
               loading ||
+              cartQuoteLoading ||
               items.length === 0 ||
+              Boolean(cartQuoteError) ||
               ordersClosed ||
               (deliveryMethod === "DELIVERY" && !publicSettings) ||
               deliveryBlocked ||
@@ -864,24 +942,6 @@ export default function CheckoutPage() {
   );
 }
 
-function cartItemOptionsPayload(
-  options: Array<{ groupId: string; choiceId: string }>,
-) {
-  const byGroup = new Map<string, string[]>();
-
-  for (const option of options) {
-    byGroup.set(option.groupId, [
-      ...(byGroup.get(option.groupId) ?? []),
-      option.choiceId,
-    ]);
-  }
-
-  return [...byGroup.entries()].map(([groupId, choiceIds]) => ({
-    groupId,
-    choiceIds,
-  }));
-}
-
 function parseMoneyInputCents(value: string) {
   const normalized = value.trim().replace(",", ".");
   if (!normalized) {
@@ -898,11 +958,13 @@ function parseMoneyInputCents(value: string) {
 
 function estimateLoyaltyDiscountCents({
   items,
+  cartQuote,
   loyalty,
   subtotalCents,
   useLoyaltyReward,
 }: {
-  items: ReturnType<typeof useCart>["items"];
+  items: CartItem[];
+  cartQuote?: OrderQuote;
   loyalty?: CustomerLoyaltyProgress;
   subtotalCents: number;
   useLoyaltyReward: boolean;
@@ -926,11 +988,39 @@ function estimateLoyaltyDiscountCents({
   const targetProduct = normalizeComparableText(
     loyalty.program.freeProductName,
   );
-  const matchingItem = items.find(
+  const matchingItemIndex = items.findIndex(
     (item) => normalizeComparableText(item.name) === targetProduct,
   );
+  if (matchingItemIndex < 0) {
+    return 0;
+  }
 
-  return matchingItem ? Math.min(subtotalCents, matchingItem.priceCents) : 0;
+  const matchingItem = items[matchingItemIndex];
+  const matchingQuote = cartQuote?.items.find(
+    (line) => line.itemIndex === matchingItemIndex,
+  );
+
+  return Math.min(
+    subtotalCents,
+    matchingQuote?.unitPriceCents ?? matchingItem.priceCents,
+  );
+}
+
+function SummaryLinePrice({ price }: { price: LinePriceDisplay }) {
+  if (!price.hasPromotion) {
+    return <strong>{formatMoney(price.finalLineTotalCents)}</strong>;
+  }
+
+  return (
+    <span className="price-stack checkout-line-price">
+      <span className="price-before">
+        {formatMoney(price.originalLineTotalCents)}
+      </span>
+      <strong className="price-final">
+        {formatMoney(price.finalLineTotalCents)}
+      </strong>
+    </span>
+  );
 }
 
 function normalizeComparableText(value: string) {

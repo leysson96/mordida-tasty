@@ -2,20 +2,25 @@
 
 import {
   createContext,
-  ReactNode,
   useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
 } from "react";
-import { CartItem, CartItemOption, Product } from "../lib/types";
+import type { ReactNode } from "react";
+import type { CartItem, CartItemOption, Product } from "../lib/types";
+import type { CartItemPricingInput } from "../lib/product-pricing";
 
 interface CartContextValue {
   items: CartItem[];
   totalItems: number;
   subtotalCents: number;
-  addItem: (product: Product, options?: CartItemOption[]) => void;
+  addItem: (
+    product: Product,
+    options?: CartItemOption[],
+    pricing?: CartItemPricingInput,
+  ) => void;
   updateQuantity: (itemId: string, quantity: number) => void;
   removeItem: (itemId: string) => void;
   clear: () => void;
@@ -45,13 +50,34 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [items, storageReady]);
 
   const addItem = useCallback(
-    (product: Product, options: CartItemOption[] = []) => {
+    (
+      product: Product,
+      options: CartItemOption[] = [],
+      pricing?: CartItemPricingInput,
+    ) => {
       setItems((current) => {
         const normalizedOptions = sortCartOptions(options);
         const id = buildCartLineId(product.id, normalizedOptions);
-        const unitPriceCents =
+        const baseUnitPriceCents =
           product.priceCents +
           normalizedOptions.reduce((sum, option) => sum + option.priceCents, 0);
+        const productPromotionPricing =
+          normalizedOptions.length === 0 &&
+          product.promotionPricing &&
+          product.promotionPricing.unitDiscountCents > 0
+            ? {
+                unitPriceCents:
+                  product.promotionPricing.discountedUnitPriceCents,
+                originalUnitPriceCents:
+                  product.promotionPricing.originalUnitPriceCents,
+                promotionDiscountName: product.promotionPricing.discountName,
+                promotionDiscountUnitCents:
+                  product.promotionPricing.unitDiscountCents,
+              }
+            : undefined;
+        const selectedPricing = pricing ?? productPromotionPricing;
+        const unitPriceCents =
+          selectedPricing?.unitPriceCents ?? baseUnitPriceCents;
         const found = current.find((item) => item.id === id);
         if (found) {
           return current.map((item) =>
@@ -70,6 +96,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
             imageUrl: product.imageUrl,
             options: normalizedOptions,
             quantity: 1,
+            originalUnitPriceCents:
+              selectedPricing?.originalUnitPriceCents ?? unitPriceCents,
+            promotionDiscountName:
+              selectedPricing?.promotionDiscountName ?? null,
+            promotionDiscountUnitCents:
+              selectedPricing?.promotionDiscountUnitCents ?? 0,
           },
         ];
       });
@@ -113,10 +145,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
 function normalizeCartItem(item: CartItem) {
   const options = sortCartOptions(item.options ?? []);
+  const originalUnitPriceCents =
+    item.originalUnitPriceCents && item.originalUnitPriceCents > 0
+      ? item.originalUnitPriceCents
+      : item.priceCents;
   return {
     ...item,
     id: item.id ?? buildCartLineId(item.productId, options),
     options,
+    originalUnitPriceCents,
+    promotionDiscountName: item.promotionDiscountName ?? null,
+    promotionDiscountUnitCents: item.promotionDiscountUnitCents ?? 0,
   };
 }
 

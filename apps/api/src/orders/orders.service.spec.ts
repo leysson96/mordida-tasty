@@ -429,6 +429,92 @@ describe("OrdersService", () => {
     );
   });
 
+  it("quotes backend promotion prices with selected options without creating an order", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-09-14T12:00:00.000Z"));
+
+    const productId = "00000000-0000-4000-8000-000000000001";
+    const categoryId = "00000000-0000-4000-8000-000000000099";
+    const groupId = "00000000-0000-4000-8000-000000000020";
+    const choiceId = "00000000-0000-4000-8000-000000000021";
+    const discount = makeDiscount({
+      id: "discount-quote",
+      name: "Promo cotizada",
+      type: DiscountType.PERCENTAGE,
+      value: 1000,
+      priority: 7,
+      weekdays: [DiscountWeekday.MON],
+      products: [{ productId }],
+    });
+    prisma.product.findMany.mockResolvedValue([
+      {
+        id: productId,
+        categoryId,
+        name: "Mordida Smash",
+        priceCents: 1000,
+        available: true,
+        optionGroups: [
+          {
+            id: groupId,
+            name: "Extras",
+            required: false,
+            minChoices: 0,
+            maxChoices: 1,
+            choices: [
+              {
+                id: choiceId,
+                name: "Bacon",
+                priceCents: 200,
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    promotions.listActiveDiscountsForCheckout.mockResolvedValue([discount]);
+
+    await expect(
+      service().quoteOrder({
+        items: [
+          {
+            productId,
+            quantity: 2,
+            options: [{ groupId, choiceIds: [choiceId] }],
+          },
+        ],
+      }),
+    ).resolves.toEqual({
+      subtotalCents: 2160,
+      grossSubtotalCents: 2400,
+      promotionDiscountCents: 240,
+      items: [
+        {
+          itemIndex: 0,
+          productId,
+          productName: "Mordida Smash",
+          quantity: 2,
+          originalUnitPriceCents: 1200,
+          unitPriceCents: 1080,
+          discountedUnitPriceCents: 1080,
+          originalLineTotalCents: 2400,
+          promotionDiscountId: "discount-quote",
+          promotionDiscountName: "Promo cotizada",
+          promotionDiscountType: DiscountType.PERCENTAGE,
+          promotionDiscountValue: 1000,
+          promotionDiscountPriority: 7,
+          promotionDiscountUnitCents: 120,
+          promotionDiscountCents: 240,
+          lineTotalCents: 2160,
+        },
+      ],
+    });
+
+    expect(promotions.listActiveDiscountsForCheckout).toHaveBeenCalledWith({
+      productIds: [productId],
+      categoryIds: [categoryId],
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it("ignores promotion discounts that are outside their valid date window", async () => {
     jest.useFakeTimers().setSystemTime(new Date("2026-09-14T12:00:00.000Z"));
 

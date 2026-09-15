@@ -1,9 +1,11 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common";
+import { DiscountType } from "@prisma/client";
 import { ProductsService } from "./products.service";
 
 describe("ProductsService", () => {
   const prisma = {
     category: {
+      findMany: jest.fn(),
       findUnique: jest.fn(),
     },
     product: {
@@ -24,6 +26,7 @@ describe("ProductsService", () => {
     },
   } as unknown as {
     category: {
+      findMany: jest.Mock;
       findUnique: jest.Mock;
     };
     product: {
@@ -43,9 +46,90 @@ describe("ProductsService", () => {
       update: jest.Mock;
     };
   };
+  const promotions = {
+    listActiveDiscountsForCheckout: jest.fn(),
+    resolveLineDiscount: jest.fn(),
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
+    promotions.listActiveDiscountsForCheckout.mockResolvedValue([]);
+    promotions.resolveLineDiscount.mockReturnValue(undefined);
+  });
+
+  function service() {
+    return new ProductsService(prisma as never, promotions as never);
+  }
+
+  it("adds backend-calculated promotion pricing to public menu products", async () => {
+    const discount = {
+      id: "discount-1",
+      name: "Promo lunes",
+    };
+    prisma.category.findMany.mockResolvedValue([
+      {
+        id: "category-1",
+        name: "Hamburguesas",
+        products: [
+          {
+            id: "product-1",
+            categoryId: "category-1",
+            name: "Mordida Smash",
+            priceCents: 1190,
+            optionGroups: [],
+          },
+        ],
+      },
+    ]);
+    promotions.listActiveDiscountsForCheckout.mockResolvedValue([discount]);
+    promotions.resolveLineDiscount.mockReturnValue({
+      discountId: "discount-1",
+      discountName: "Promo lunes",
+      discountType: DiscountType.PERCENTAGE,
+      discountValue: 2000,
+      priority: 20,
+      originalUnitPriceCents: 1190,
+      discountedUnitPriceCents: 952,
+      unitDiscountCents: 238,
+      quantity: 1,
+      originalLineTotalCents: 1190,
+      lineDiscountCents: 238,
+      lineTotalCents: 952,
+    });
+
+    await expect(service().listMenu()).resolves.toEqual([
+      expect.objectContaining({
+        products: [
+          expect.objectContaining({
+            id: "product-1",
+            promotionPricing: {
+              discountId: "discount-1",
+              discountName: "Promo lunes",
+              discountType: DiscountType.PERCENTAGE,
+              discountValue: 2000,
+              priority: 20,
+              originalUnitPriceCents: 1190,
+              discountedUnitPriceCents: 952,
+              unitDiscountCents: 238,
+            },
+          }),
+        ],
+      }),
+    ]);
+
+    expect(promotions.listActiveDiscountsForCheckout).toHaveBeenCalledWith({
+      productIds: ["product-1"],
+      categoryIds: ["category-1"],
+    });
+    expect(promotions.resolveLineDiscount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        productId: "product-1",
+        categoryId: "category-1",
+        unitPriceCents: 1190,
+        quantity: 1,
+        discounts: [discount],
+      }),
+    );
   });
 
   it("only exposes product detail pages for active products in active categories", async () => {
@@ -53,13 +137,16 @@ describe("ProductsService", () => {
       id: "product-1",
       slug: "mordida-smash",
       active: true,
+      categoryId: "category-1",
+      priceCents: 1190,
       category: { active: true },
     });
 
     await expect(
-      new ProductsService(prisma as never).getProductBySlug("mordida-smash"),
+      service().getProductBySlug("mordida-smash"),
     ).resolves.toMatchObject({
       id: "product-1",
+      promotionPricing: null,
     });
 
     expect(prisma.product.findFirst).toHaveBeenCalledWith({
@@ -75,13 +162,17 @@ describe("ProductsService", () => {
         optionGroups: expect.any(Object),
       },
     });
+    expect(promotions.listActiveDiscountsForCheckout).toHaveBeenCalledWith({
+      productIds: ["product-1"],
+      categoryIds: ["category-1"],
+    });
   });
 
   it("returns not found when the public product lookup is filtered out", async () => {
     prisma.product.findFirst.mockResolvedValue(null);
 
     await expect(
-      new ProductsService(prisma as never).getProductBySlug("hidden"),
+      service().getProductBySlug("hidden"),
     ).rejects.toThrow(NotFoundException);
   });
 
@@ -96,7 +187,7 @@ describe("ProductsService", () => {
     });
 
     await expect(
-      new ProductsService(prisma as never).createProduct({
+      service().createProduct({
         categoryId: "category-1",
         description: "Burger",
         imageUrl: ` ${cloudinaryUrl} `,
@@ -122,7 +213,7 @@ describe("ProductsService", () => {
       imageUrl: "/uploads/menu/burger.webp",
     });
 
-    await new ProductsService(prisma as never).createProduct({
+    await service().createProduct({
       categoryId: "category-1",
       description: "Burger",
       imageUrl: "/uploads/menu/burger.webp",
@@ -144,7 +235,7 @@ describe("ProductsService", () => {
     prisma.product.findUnique.mockResolvedValue(null);
 
     await expect(
-      new ProductsService(prisma as never).createProduct({
+      service().createProduct({
         categoryId: "category-1",
         description: "Burger",
         imageUrl: "https://example.com/burger.jpg",
@@ -160,7 +251,7 @@ describe("ProductsService", () => {
     prisma.product.findUnique.mockResolvedValue({ id: "product-1" });
 
     await expect(
-      new ProductsService(prisma as never).updateProduct("product-1", {
+      service().updateProduct("product-1", {
         imageUrl: "https://cdn.example.com/burger.jpg",
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -181,7 +272,7 @@ describe("ProductsService", () => {
     });
 
     await expect(
-      new ProductsService(prisma as never).createOptionGroup("product-1", {
+      service().createOptionGroup("product-1", {
         name: " Punto ",
         required: true,
         maxChoices: 2,
