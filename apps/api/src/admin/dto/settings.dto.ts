@@ -111,6 +111,11 @@ export class UpdatePromotionCampaignDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(80)
+  discountId?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(700)
   imageUrl?: string;
 

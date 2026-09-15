@@ -43,6 +43,7 @@ export interface PromotionCampaign {
   title: string;
   description: string;
   productSlug: string;
+  discountId: string;
   imageUrl: string;
   startsOn: string;
   endsOn: string;
@@ -574,6 +575,7 @@ export class SettingsService {
       title: "",
       description: "",
       productSlug: "",
+      discountId: "",
       imageUrl: "",
       startsOn: "",
       endsOn: "",
@@ -646,6 +648,7 @@ export class SettingsService {
       title: cleanText(source.title, "").slice(0, 90),
       description: cleanText(source.description, "").slice(0, 260),
       productSlug: cleanText(source.productSlug, "").slice(0, 130),
+      discountId: cleanText(source.discountId, "").slice(0, 80),
       imageUrl: cleanText(source.imageUrl, "")
         ? this.normalizeImagePath(source.imageUrl, "")
         : "",

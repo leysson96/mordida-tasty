@@ -10,6 +10,17 @@ export type LoyaltyRewardType = "DISCOUNT_PERCENT" | "FREE_PRODUCT";
 
 export type PromotionDiscountType = "PERCENTAGE" | "FIXED_AMOUNT";
 
+export type DiscountScope = "PRODUCTS" | "CATEGORY" | "ORDER_TOTAL";
+
+export type DiscountWeekday =
+  | "MON"
+  | "TUE"
+  | "WED"
+  | "THU"
+  | "FRI"
+  | "SAT"
+  | "SUN";
+
 export type OrderStatus =
   | "CREATED"
   | "PENDING_PAYMENT"
@@ -83,6 +94,47 @@ export interface Category {
 
 export interface AdminProduct extends Product {
   category: Category;
+}
+
+export interface CategorySummary {
+  id: string;
+  name: string;
+  slug: string;
+  active: boolean;
+}
+
+export interface AdminDiscountProduct {
+  id: string;
+  categoryId: string;
+  name: string;
+  slug: string;
+  priceCents: number;
+  active: boolean;
+  available: boolean;
+  category: CategorySummary;
+}
+
+export interface AdminDiscount {
+  id: string;
+  name: string;
+  description?: string | null;
+  active: boolean;
+  type: PromotionDiscountType;
+  value: number;
+  scope: DiscountScope;
+  startsAt: string;
+  endsAt: string;
+  startsOn: string;
+  endsOn: string;
+  weekdays: DiscountWeekday[];
+  stackable: boolean;
+  priority: number;
+  categoryId?: string | null;
+  category?: CategorySummary | null;
+  productIds: string[];
+  products: AdminDiscountProduct[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CartItem {
@@ -244,6 +296,7 @@ export interface PromotionCampaign {
   title: string;
   description: string;
   productSlug: string;
+  discountId: string;
   imageUrl: string;
   startsOn: string;
   endsOn: string;

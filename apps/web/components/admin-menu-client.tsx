@@ -25,11 +25,15 @@ import {
 } from "../lib/admin-errors";
 import { brandConfig } from "../lib/brand";
 import {
+  AdminDiscount,
   AdminProduct,
   Category,
+  DiscountScope,
+  DiscountWeekday,
   ProductOptionChoice,
   ProductOptionGroup,
   PromotionCampaign,
+  PromotionDiscountType,
   SiteContent,
   UploadedImage,
 } from "../lib/types";
@@ -48,15 +52,44 @@ const defaultPromotionCampaign: PromotionCampaign = {
   title: "",
   description: "",
   productSlug: "",
+  discountId: "",
   imageUrl: "",
   startsOn: "",
   endsOn: "",
   ctaLabel: "Pedir ahora",
 };
 
+type EditableDiscountScope = Extract<DiscountScope, "PRODUCTS" | "CATEGORY">;
+
+interface AdminDiscountPayload {
+  name: string;
+  description: string;
+  active: boolean;
+  type: PromotionDiscountType;
+  value: number;
+  scope: EditableDiscountScope;
+  startsOn: string;
+  endsOn: string;
+  weekdays: DiscountWeekday[];
+  priority: number;
+  productIds?: string[];
+  categoryId?: string;
+}
+
+const weekdayOptions: Array<{ value: DiscountWeekday; label: string }> = [
+  { value: "MON", label: "Lun" },
+  { value: "TUE", label: "Mar" },
+  { value: "WED", label: "Mie" },
+  { value: "THU", label: "Jue" },
+  { value: "FRI", label: "Vie" },
+  { value: "SAT", label: "Sab" },
+  { value: "SUN", label: "Dom" },
+];
+
 export function AdminMenuClient() {
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [discounts, setDiscounts] = useState<AdminDiscount[]>([]);
   const [siteContent, setSiteContent] = useState<SiteContent>(brandConfig);
   const [promotionCampaign, setPromotionCampaign] =
     useState<PromotionCampaign>(defaultPromotionCampaign);
@@ -64,6 +97,10 @@ export function AdminMenuClient() {
     useState<MenuAdminSection>("products");
   const [productSearch, setProductSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [newDiscountScope, setNewDiscountScope] =
+    useState<EditableDiscountScope>("PRODUCTS");
+  const [newDiscountType, setNewDiscountType] =
+    useState<PromotionDiscountType>("PERCENTAGE");
   const [expandedProductId, setExpandedProductId] = useState<string>();
   const [error, setError] = useState<string>();
   const [message, setMessage] = useState<string>();
@@ -85,8 +122,9 @@ export function AdminMenuClient() {
           (product.optionGroups?.filter((group) => group.active).length ?? 0),
         0,
       ),
+      activeDiscounts: discounts.filter((discount) => discount.active).length,
     }),
-    [activeCategories.length, products],
+    [activeCategories.length, discounts, products],
   );
   const filteredProducts = useMemo(() => {
     const search = normalizeSearch(productSearch);
@@ -142,13 +180,16 @@ export function AdminMenuClient() {
 
   async function load() {
     try {
-      const [productData, categoryData, settingsData] = await Promise.all([
-        api<AdminProduct[]>("/admin/products"),
-        api<Category[]>("/admin/categories"),
-        api<AdminSettingsResponse>("/admin/settings"),
-      ]);
+      const [productData, categoryData, settingsData, discountData] =
+        await Promise.all([
+          api<AdminProduct[]>("/admin/products"),
+          api<Category[]>("/admin/categories"),
+          api<AdminSettingsResponse>("/admin/settings"),
+          api<AdminDiscount[]>("/admin/discounts"),
+        ]);
       setProducts(productData);
       setCategories(categoryData);
+      setDiscounts(discountData);
       setSiteContent({ ...brandConfig, ...settingsData.siteContent });
       setPromotionCampaign({
         ...defaultPromotionCampaign,
@@ -227,6 +268,7 @@ export function AdminMenuClient() {
             title: String(form.get("title")),
             description: String(form.get("description")),
             productSlug: String(form.get("productSlug")),
+            discountId: String(form.get("discountId")),
             imageUrl:
               uploadedPromotionImage ??
               String(
@@ -248,6 +290,71 @@ export function AdminMenuClient() {
       setError(undefined);
     } catch (requestError) {
       handleAdminError(requestError, "No se pudo guardar la promocion.");
+    }
+  }
+
+  async function createDiscountRule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+
+    try {
+      await api<AdminDiscount>("/admin/discounts", {
+        method: "POST",
+        body: JSON.stringify(
+          discountPayloadFromForm(form, newDiscountScope, newDiscountType),
+        ),
+      });
+      formElement.reset();
+      setNewDiscountScope("PRODUCTS");
+      setNewDiscountType("PERCENTAGE");
+      setMessage("Regla de descuento creada.");
+      setError(undefined);
+      await load();
+    } catch (requestError) {
+      handleAdminError(requestError, "No se pudo crear el descuento.");
+    }
+  }
+
+  async function updateDiscountRule(
+    discount: AdminDiscount,
+    event: FormEvent<HTMLFormElement>,
+    scope: EditableDiscountScope,
+    type: PromotionDiscountType,
+  ) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+
+    try {
+      await api<AdminDiscount>(`/admin/discounts/${discount.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(discountPayloadFromForm(form, scope, type)),
+      });
+      setMessage("Regla de descuento guardada.");
+      setError(undefined);
+      await load();
+    } catch (requestError) {
+      handleAdminError(requestError, "No se pudo guardar el descuento.");
+    }
+  }
+
+  async function deactivateDiscountRule(discount: AdminDiscount) {
+    const confirmed = window.confirm(
+      `Desactivar "${discount.name}"? Los pedidos historicos conservaran el descuento ya aplicado.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await api<AdminDiscount>(`/admin/discounts/${discount.id}`, {
+        method: "DELETE",
+      });
+      setMessage("Regla de descuento desactivada.");
+      setError(undefined);
+      await load();
+    } catch (requestError) {
+      handleAdminError(requestError, "No se pudo desactivar el descuento.");
     }
   }
 
@@ -642,7 +749,7 @@ export function AdminMenuClient() {
           >
             <BadgePercent aria-hidden="true" size={19} />
             <span>Promos</span>
-            <small>{promotionCampaign.enabled ? "On" : "Off"}</small>
+            <small>{menuStats.activeDiscounts}</small>
           </button>
         </nav>
 
@@ -664,176 +771,337 @@ export function AdminMenuClient() {
             <strong>{menuStats.optionGroups}</strong>
           </article>
           <article>
-            <span>Promocion</span>
-            <strong>{promotionCampaign.enabled ? "Activa" : "Off"}</strong>
+            <span>Promos descuento</span>
+            <strong>{menuStats.activeDiscounts}</strong>
           </article>
         </section>
 
         {activeSection === "promotions" && (
-          <form
-            className="form-panel promotion-admin-form"
-            onSubmit={savePromotionCampaign}
-          >
-            <div className="section-heading">
-              <div>
-                <p className="eyebrow">Campana visual</p>
-                <h2>Promociones</h2>
-              </div>
-              <BadgePercent aria-hidden="true" size={26} />
-            </div>
-            <div className="promotion-admin-grid">
-              <div className="promotion-admin-preview">
-                <span>{promotionCampaign.badge || "Promo inactiva"}</span>
-                <div className="promotion-admin-image">
-                  {promotionCampaign.imageUrl ? (
-                    <Image
-                      src={promotionCampaign.imageUrl}
-                      alt={promotionCampaign.title || "Promocion"}
-                      width={720}
-                      height={520}
+          <section className="menu-admin-section promotion-admin-section">
+            <details className="admin-create-panel discount-create-panel" open>
+              <summary>
+                <span>
+                  <Plus aria-hidden="true" size={18} />
+                  Nueva regla de descuento
+                </span>
+                <ChevronDown aria-hidden="true" size={18} />
+              </summary>
+              <form className="discount-rule-form" onSubmit={createDiscountRule}>
+                <div className="form-grid">
+                  <label>
+                    Nombre
+                    <input name="name" maxLength={120} required />
+                  </label>
+                  <label>
+                    Tipo
+                    <select
+                      name="type"
+                      value={newDiscountType}
+                      onChange={(event) =>
+                        setNewDiscountType(
+                          event.currentTarget.value as PromotionDiscountType,
+                        )
+                      }
+                    >
+                      <option value="PERCENTAGE">Porcentaje</option>
+                      <option value="FIXED_AMOUNT">Monto fijo</option>
+                    </select>
+                  </label>
+                  <label>
+                    Valor {newDiscountType === "PERCENTAGE" ? "(%)" : "(EUR)"}
+                    <input
+                      name="value"
+                      type="number"
+                      step={newDiscountType === "PERCENTAGE" ? "0.01" : "0.01"}
+                      min="0.01"
+                      max={newDiscountType === "PERCENTAGE" ? "100" : undefined}
+                      required
                     />
-                  ) : selectedPromotionProduct ? (
-                    <ProductImage product={selectedPromotionProduct} />
-                  ) : (
-                    <div className="image-fallback" aria-label="Promocion">
-                      MT
-                    </div>
-                  )}
+                  </label>
+                  <label>
+                    Alcance
+                    <select
+                      name="scope"
+                      value={newDiscountScope}
+                      onChange={(event) =>
+                        setNewDiscountScope(
+                          event.currentTarget.value as EditableDiscountScope,
+                        )
+                      }
+                    >
+                      <option value="PRODUCTS">Productos</option>
+                      <option value="CATEGORY">Categoria</option>
+                    </select>
+                  </label>
+                  <label>
+                    Inicio
+                    <input name="startsOn" type="date" required />
+                  </label>
+                  <label>
+                    Fin
+                    <input name="endsOn" type="date" required />
+                  </label>
+                  <label>
+                    Prioridad
+                    <input
+                      name="priority"
+                      type="number"
+                      min="0"
+                      max="10000"
+                      defaultValue="0"
+                    />
+                  </label>
+                  <label className="checkbox-label">
+                    <input type="checkbox" name="active" />
+                    Activar al guardar
+                  </label>
+                  <label className="full-field">
+                    Descripcion interna
+                    <textarea
+                      name="description"
+                      rows={2}
+                      maxLength={260}
+                      placeholder="Opcional"
+                    />
+                  </label>
+                  <WeekdayPicker />
+                  <DiscountTargetFields
+                    scope={newDiscountScope}
+                    products={products}
+                    categories={activeCategories}
+                  />
                 </div>
-                <h3>{promotionCampaign.title || "Sin promocion activa"}</h3>
-                <p>
-                  {promotionCampaign.description ||
-                    "Configura una promocion real y activala cuando este lista."}
-                </p>
+                <button className="button primary" type="submit">
+                  <Plus aria-hidden="true" size={18} />
+                  Crear descuento
+                </button>
+              </form>
+            </details>
+
+            <section className="form-panel discount-admin-panel">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Reglas reales</p>
+                  <h2>Descuentos</h2>
+                </div>
+                <BadgePercent aria-hidden="true" size={26} />
               </div>
-              <div className="form-grid">
-                <label className="checkbox-label full-field">
-                  <input
-                    type="checkbox"
-                    name="enabled"
-                    checked={promotionCampaign.enabled}
-                    onChange={(event) =>
-                      updatePromotionDraft("enabled", event.currentTarget.checked)
-                    }
-                  />
-                  Mostrar promocion en la carta
-                </label>
-                <label>
-                  Producto
-                  <select
-                    name="productSlug"
-                    value={promotionCampaign.productSlug}
-                    onChange={(event) =>
-                      updatePromotionDraft(
-                        "productSlug",
-                        event.currentTarget.value,
-                      )
-                    }
-                  >
-                    <option value="">Seleccionar producto</option>
-                    {products.map((product) => (
-                      <option key={product.id} value={product.slug}>
-                        {product.name}
-                        {!product.available ? " (agotado)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Etiqueta
-                  <input
-                    name="badge"
-                    value={promotionCampaign.badge}
-                    onChange={(event) =>
-                      updatePromotionDraft("badge", event.currentTarget.value)
-                    }
-                    placeholder="Promo de hoy"
-                    maxLength={40}
-                  />
-                </label>
-                <label className="full-field">
-                  Titulo
-                  <input
-                    name="title"
-                    value={promotionCampaign.title}
-                    onChange={(event) =>
-                      updatePromotionDraft("title", event.currentTarget.value)
-                    }
-                    placeholder="Nombre real de la promo"
-                    maxLength={90}
-                  />
-                </label>
-                <label className="full-field">
-                  Texto corto
-                  <textarea
-                    name="description"
-                    rows={3}
-                    value={promotionCampaign.description}
-                    onChange={(event) =>
-                      updatePromotionDraft(
-                        "description",
-                        event.currentTarget.value,
-                      )
-                    }
-                    placeholder="Explica la promo sin precios inventados."
-                    maxLength={260}
-                  />
-                </label>
-                <label>
-                  Inicio
-                  <input
-                    name="startsOn"
-                    type="date"
-                    value={promotionCampaign.startsOn}
-                    onChange={(event) =>
-                      updatePromotionDraft("startsOn", event.currentTarget.value)
-                    }
-                  />
-                </label>
-                <label>
-                  Fin
-                  <input
-                    name="endsOn"
-                    type="date"
-                    value={promotionCampaign.endsOn}
-                    onChange={(event) =>
-                      updatePromotionDraft("endsOn", event.currentTarget.value)
-                    }
-                  />
-                </label>
-                <label>
-                  Texto del boton
-                  <input
-                    name="ctaLabel"
-                    value={promotionCampaign.ctaLabel}
-                    onChange={(event) =>
-                      updatePromotionDraft("ctaLabel", event.currentTarget.value)
-                    }
-                    placeholder="Pedir ahora"
-                    maxLength={40}
-                  />
-                </label>
-                <label className="full-field">
-                  Imagen promocional
-                  <input
-                    name="promotionImageFile"
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                  />
-                  <input
-                    type="hidden"
-                    name="currentPromotionImage"
-                    value={promotionCampaign.imageUrl}
-                    readOnly
-                  />
-                </label>
+
+              {discounts.length === 0 ? (
+                <div className="empty-state">
+                  No hay descuentos configurados.
+                </div>
+              ) : (
+                <div className="discount-admin-list">
+                  {discounts.map((discount) => (
+                    <DiscountRuleEditor
+                      key={discount.id}
+                      discount={discount}
+                      products={products}
+                      categories={categories}
+                      onSubmit={updateDiscountRule}
+                      onDeactivate={deactivateDiscountRule}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <form
+              className="form-panel promotion-admin-form"
+              onSubmit={savePromotionCampaign}
+            >
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Campana visual</p>
+                  <h2>Banner de portada</h2>
+                </div>
+                <BadgePercent aria-hidden="true" size={26} />
               </div>
-            </div>
-            <button className="button primary" type="submit">
-              <Save aria-hidden="true" size={18} />
-              Guardar promocion
-            </button>
-          </form>
+              <div className="promotion-admin-grid">
+                <div className="promotion-admin-preview">
+                  <span>{promotionCampaign.badge || "Promo inactiva"}</span>
+                  <div className="promotion-admin-image">
+                    {promotionCampaign.imageUrl ? (
+                      <Image
+                        src={promotionCampaign.imageUrl}
+                        alt={promotionCampaign.title || "Promocion"}
+                        width={720}
+                        height={520}
+                      />
+                    ) : selectedPromotionProduct ? (
+                      <ProductImage product={selectedPromotionProduct} />
+                    ) : (
+                      <div className="image-fallback" aria-label="Promocion">
+                        MT
+                      </div>
+                    )}
+                  </div>
+                  <h3>{promotionCampaign.title || "Sin promocion activa"}</h3>
+                  <p>
+                    {promotionCampaign.description ||
+                      "Configura una promocion real y activala cuando este lista."}
+                  </p>
+                </div>
+                <div className="form-grid">
+                  <label className="checkbox-label full-field">
+                    <input
+                      type="checkbox"
+                      name="enabled"
+                      checked={promotionCampaign.enabled}
+                      onChange={(event) =>
+                        updatePromotionDraft(
+                          "enabled",
+                          event.currentTarget.checked,
+                        )
+                      }
+                    />
+                    Mostrar promocion en la carta
+                  </label>
+                  <label>
+                    Regla vinculada
+                    <select
+                      name="discountId"
+                      value={promotionCampaign.discountId}
+                      onChange={(event) =>
+                        updatePromotionDraft(
+                          "discountId",
+                          event.currentTarget.value,
+                        )
+                      }
+                    >
+                      <option value="">Sin regla vinculada</option>
+                      {discounts.map((discount) => (
+                        <option key={discount.id} value={discount.id}>
+                          {discount.name}
+                          {discount.active ? "" : " (inactiva)"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Producto
+                    <select
+                      name="productSlug"
+                      value={promotionCampaign.productSlug}
+                      onChange={(event) =>
+                        updatePromotionDraft(
+                          "productSlug",
+                          event.currentTarget.value,
+                        )
+                      }
+                    >
+                      <option value="">Seleccionar producto</option>
+                      {products.map((product) => (
+                        <option key={product.id} value={product.slug}>
+                          {product.name}
+                          {!product.available ? " (agotado)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Etiqueta
+                    <input
+                      name="badge"
+                      value={promotionCampaign.badge}
+                      onChange={(event) =>
+                        updatePromotionDraft("badge", event.currentTarget.value)
+                      }
+                      placeholder="Promo de hoy"
+                      maxLength={40}
+                    />
+                  </label>
+                  <label className="full-field">
+                    Titulo
+                    <input
+                      name="title"
+                      value={promotionCampaign.title}
+                      onChange={(event) =>
+                        updatePromotionDraft("title", event.currentTarget.value)
+                      }
+                      placeholder="Nombre real de la promo"
+                      maxLength={90}
+                    />
+                  </label>
+                  <label className="full-field">
+                    Texto corto
+                    <textarea
+                      name="description"
+                      rows={3}
+                      value={promotionCampaign.description}
+                      onChange={(event) =>
+                        updatePromotionDraft(
+                          "description",
+                          event.currentTarget.value,
+                        )
+                      }
+                      placeholder="Explica la promo sin precios inventados."
+                      maxLength={260}
+                    />
+                  </label>
+                  <label>
+                    Inicio
+                    <input
+                      name="startsOn"
+                      type="date"
+                      value={promotionCampaign.startsOn}
+                      onChange={(event) =>
+                        updatePromotionDraft(
+                          "startsOn",
+                          event.currentTarget.value,
+                        )
+                      }
+                    />
+                  </label>
+                  <label>
+                    Fin
+                    <input
+                      name="endsOn"
+                      type="date"
+                      value={promotionCampaign.endsOn}
+                      onChange={(event) =>
+                        updatePromotionDraft("endsOn", event.currentTarget.value)
+                      }
+                    />
+                  </label>
+                  <label>
+                    Texto del boton
+                    <input
+                      name="ctaLabel"
+                      value={promotionCampaign.ctaLabel}
+                      onChange={(event) =>
+                        updatePromotionDraft(
+                          "ctaLabel",
+                          event.currentTarget.value,
+                        )
+                      }
+                      placeholder="Pedir ahora"
+                      maxLength={40}
+                    />
+                  </label>
+                  <label className="full-field">
+                    Imagen promocional
+                    <input
+                      name="promotionImageFile"
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                    />
+                    <input
+                      type="hidden"
+                      name="currentPromotionImage"
+                      value={promotionCampaign.imageUrl}
+                      readOnly
+                    />
+                  </label>
+                </div>
+              </div>
+              <button className="button primary" type="submit">
+                <Save aria-hidden="true" size={18} />
+                Guardar promocion
+              </button>
+            </form>
+          </section>
         )}
 
         {activeSection === "brand" && (
@@ -1791,6 +2059,347 @@ export function AdminMenuClient() {
       </section>
     </main>
   );
+}
+
+interface DiscountRuleEditorProps {
+  discount: AdminDiscount;
+  products: AdminProduct[];
+  categories: Category[];
+  onSubmit: (
+    discount: AdminDiscount,
+    event: FormEvent<HTMLFormElement>,
+    scope: EditableDiscountScope,
+    type: PromotionDiscountType,
+  ) => Promise<void>;
+  onDeactivate: (discount: AdminDiscount) => Promise<void>;
+}
+
+function DiscountRuleEditor({
+  discount,
+  products,
+  categories,
+  onSubmit,
+  onDeactivate,
+}: DiscountRuleEditorProps) {
+  const [scope, setScope] = useState<EditableDiscountScope>(
+    discount.scope === "CATEGORY" ? "CATEGORY" : "PRODUCTS",
+  );
+  const [type, setType] = useState<PromotionDiscountType>(discount.type);
+
+  useEffect(() => {
+    setScope(discount.scope === "CATEGORY" ? "CATEGORY" : "PRODUCTS");
+    setType(discount.type);
+  }, [discount.id, discount.scope, discount.type]);
+
+  return (
+    <article className={`discount-rule-card ${discount.active ? "" : "off"}`}>
+      <div className="discount-rule-head">
+        <div>
+          <span className={`status-pill ${discount.active ? "" : "danger"}`}>
+            {discount.active ? "Activa" : "Inactiva"}
+          </span>
+          <h3>{discount.name}</h3>
+          <p>
+            {formatDiscountValue(discount)} - {discountScopeLabel(discount)} -{" "}
+            {validityLabel(discount.weekdays)}
+          </p>
+        </div>
+        <strong>Prioridad {discount.priority}</strong>
+      </div>
+
+      <form
+        className="discount-rule-form"
+        onSubmit={(event) => onSubmit(discount, event, scope, type)}
+      >
+        <div className="form-grid">
+          <label>
+            Nombre
+            <input
+              name="name"
+              defaultValue={discount.name}
+              maxLength={120}
+              required
+            />
+          </label>
+          <label>
+            Tipo
+            <select
+              name="type"
+              value={type}
+              onChange={(event) =>
+                setType(event.currentTarget.value as PromotionDiscountType)
+              }
+            >
+              <option value="PERCENTAGE">Porcentaje</option>
+              <option value="FIXED_AMOUNT">Monto fijo</option>
+            </select>
+          </label>
+          <label>
+            Valor {type === "PERCENTAGE" ? "(%)" : "(EUR)"}
+            <input
+              name="value"
+              type="number"
+              step="0.01"
+              min="0.01"
+              max={type === "PERCENTAGE" ? "100" : undefined}
+              defaultValue={discountValueForForm(discount)}
+              required
+            />
+          </label>
+          <label>
+            Alcance
+            <select
+              name="scope"
+              value={scope}
+              onChange={(event) =>
+                setScope(event.currentTarget.value as EditableDiscountScope)
+              }
+            >
+              <option value="PRODUCTS">Productos</option>
+              <option value="CATEGORY">Categoria</option>
+            </select>
+          </label>
+          <label>
+            Inicio
+            <input
+              name="startsOn"
+              type="date"
+              defaultValue={discount.startsOn}
+              required
+            />
+          </label>
+          <label>
+            Fin
+            <input
+              name="endsOn"
+              type="date"
+              defaultValue={discount.endsOn}
+              required
+            />
+          </label>
+          <label>
+            Prioridad
+            <input
+              name="priority"
+              type="number"
+              min="0"
+              max="10000"
+              defaultValue={discount.priority}
+            />
+          </label>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              name="active"
+              defaultChecked={discount.active}
+            />
+            Activa
+          </label>
+          <label className="full-field">
+            Descripcion interna
+            <textarea
+              name="description"
+              rows={2}
+              maxLength={260}
+              defaultValue={discount.description ?? ""}
+              placeholder="Opcional"
+            />
+          </label>
+          <WeekdayPicker defaultWeekdays={discount.weekdays} />
+          <DiscountTargetFields
+            scope={scope}
+            products={products}
+            categories={categories}
+            defaultProductIds={discount.productIds}
+            defaultCategoryId={discount.categoryId ?? undefined}
+          />
+        </div>
+        <div className="row-actions">
+          <button className="button primary" type="submit">
+            <Save aria-hidden="true" size={18} />
+            Guardar regla
+          </button>
+          <button
+            className="button secondary"
+            type="button"
+            onClick={() => onDeactivate(discount)}
+            disabled={!discount.active}
+          >
+            <Trash2 aria-hidden="true" size={18} />
+            Desactivar
+          </button>
+        </div>
+      </form>
+    </article>
+  );
+}
+
+function WeekdayPicker({
+  defaultWeekdays = [],
+}: {
+  defaultWeekdays?: DiscountWeekday[];
+}) {
+  return (
+    <fieldset className="discount-weekday-panel full-field">
+      <legend>Dias validos</legend>
+      <div>
+        {weekdayOptions.map((weekday) => (
+          <label key={weekday.value}>
+            <input
+              type="checkbox"
+              name="weekdays"
+              value={weekday.value}
+              defaultChecked={defaultWeekdays.includes(weekday.value)}
+            />
+            <span>{weekday.label}</span>
+          </label>
+        ))}
+      </div>
+      <p>Sin marcar dias: valido todos los dias dentro del rango.</p>
+    </fieldset>
+  );
+}
+
+function DiscountTargetFields({
+  scope,
+  products,
+  categories,
+  defaultProductIds = [],
+  defaultCategoryId,
+}: {
+  scope: EditableDiscountScope;
+  products: AdminProduct[];
+  categories: Category[];
+  defaultProductIds?: string[];
+  defaultCategoryId?: string;
+}) {
+  if (scope === "CATEGORY") {
+    return (
+      <label className="full-field">
+        Categoria objetivo
+        <select
+          name="categoryId"
+          defaultValue={defaultCategoryId ?? categories[0]?.id ?? ""}
+          required
+          disabled={categories.length === 0}
+        >
+          {categories.length === 0 ? (
+            <option value="">Sin categorias disponibles</option>
+          ) : (
+            categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+                {!category.active ? " (oculta)" : ""}
+              </option>
+            ))
+          )}
+        </select>
+      </label>
+    );
+  }
+
+  return (
+    <fieldset className="discount-target-panel full-field">
+      <legend>Productos objetivo</legend>
+      {products.length === 0 ? (
+        <p className="muted">Sin productos para vincular.</p>
+      ) : (
+        <div className="discount-product-picker">
+          {products.map((product) => (
+            <label key={product.id}>
+              <input
+                type="checkbox"
+                name="productIds"
+                value={product.id}
+                defaultChecked={defaultProductIds.includes(product.id)}
+              />
+              <span>
+                {product.name}
+                {!product.active
+                  ? " (oculto)"
+                  : !product.available
+                    ? " (agotado)"
+                    : ""}
+              </span>
+              <small>{formatMoney(product.priceCents)}</small>
+            </label>
+          ))}
+        </div>
+      )}
+    </fieldset>
+  );
+}
+
+function discountPayloadFromForm(
+  form: FormData,
+  scope: EditableDiscountScope,
+  type: PromotionDiscountType,
+): AdminDiscountPayload {
+  const rawValue = Number(form.get("value") || 0);
+  const productIds = form
+    .getAll("productIds")
+    .map((value) => String(value))
+    .filter(Boolean);
+  const categoryId = String(form.get("categoryId") || "");
+
+  return {
+    name: String(form.get("name") || ""),
+    description: String(form.get("description") || ""),
+    active: form.get("active") === "on",
+    type,
+    value: Math.round(rawValue * 100),
+    scope,
+    startsOn: String(form.get("startsOn") || ""),
+    endsOn: String(form.get("endsOn") || ""),
+    weekdays: form
+      .getAll("weekdays")
+      .map((value) => String(value) as DiscountWeekday),
+    priority: Number(form.get("priority") || 0),
+    ...(scope === "PRODUCTS" ? { productIds } : { categoryId }),
+  };
+}
+
+function discountValueForForm(discount: AdminDiscount) {
+  return trimMoneyNumber(discount.value / 100);
+}
+
+function formatDiscountValue(discount: AdminDiscount) {
+  if (discount.type === "PERCENTAGE") {
+    return `${trimMoneyNumber(discount.value / 100)}%`;
+  }
+
+  return formatMoney(discount.value);
+}
+
+function trimMoneyNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+function discountScopeLabel(discount: AdminDiscount) {
+  if (discount.scope === "CATEGORY") {
+    return discount.category?.name ?? "Categoria";
+  }
+
+  if (discount.products.length === 0) {
+    return "Sin productos";
+  }
+
+  if (discount.products.length === 1) {
+    return discount.products[0]?.name ?? "Producto";
+  }
+
+  return `${discount.products.length} productos`;
+}
+
+function validityLabel(weekdays: DiscountWeekday[]) {
+  if (weekdays.length === 0) {
+    return "Todos los dias";
+  }
+
+  const labels = new Map(
+    weekdayOptions.map((weekday) => [weekday.value, weekday.label]),
+  );
+  return weekdays.map((weekday) => labels.get(weekday) ?? weekday).join(", ");
 }
 
 function normalizeSearch(value: string) {

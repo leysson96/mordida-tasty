@@ -3505,6 +3505,160 @@ code {
   margin-bottom: 18px;
 }
 
+.promotion-admin-section {
+  align-items: start;
+}
+
+.discount-rule-form {
+  display: grid;
+  gap: 14px;
+}
+
+.discount-admin-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.discount-admin-list {
+  display: grid;
+  gap: 12px;
+}
+
+.discount-rule-card {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: var(--color-surface-solid);
+  box-shadow: var(--shadow-tight);
+}
+
+.discount-rule-card.off {
+  background: rgba(255, 250, 243, 0.74);
+}
+
+.discount-rule-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.discount-rule-head > div {
+  display: grid;
+  gap: 7px;
+}
+
+.discount-rule-head h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.discount-rule-head p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+  font-weight: 850;
+}
+
+.discount-rule-head strong {
+  white-space: nowrap;
+  color: var(--color-brand);
+  font-size: 0.86rem;
+}
+
+.discount-weekday-panel,
+.discount-target-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: var(--color-paper);
+}
+
+.discount-weekday-panel legend,
+.discount-target-panel legend {
+  padding: 0 6px;
+  color: var(--color-ink);
+  font-weight: 950;
+}
+
+.discount-weekday-panel > div {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.discount-weekday-panel label {
+  display: grid;
+  min-height: 42px;
+  cursor: pointer;
+}
+
+.discount-weekday-panel input {
+  position: absolute;
+  opacity: 0;
+}
+
+.discount-weekday-panel span {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-small);
+  color: var(--color-muted);
+  background: var(--color-surface-solid);
+  font-weight: 950;
+}
+
+.discount-weekday-panel input:checked + span {
+  color: #fff;
+  border-color: var(--color-green);
+  background: var(--color-green);
+}
+
+.discount-weekday-panel p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  font-weight: 850;
+}
+
+.discount-product-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.discount-product-picker label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 9px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-small);
+  background: var(--color-surface-solid);
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.discount-product-picker span {
+  overflow-wrap: anywhere;
+}
+
+.discount-product-picker small {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
 .menu-admin-workspace {
   display: grid;
   gap: 16px;
@@ -4301,6 +4455,8 @@ code {
   .story-location-grid,
   .admin-section-grid,
   .category-manager-layout,
+  .discount-weekday-panel > div,
+  .discount-product-picker,
   .menu-admin-section-head,
   .menu-product-controls,
   .delivery-layout,
@@ -4335,6 +4491,14 @@ code {
 
   .menu-admin-tabs {
     position: static;
+  }
+
+  .discount-rule-head {
+    flex-direction: column;
+  }
+
+  .discount-rule-head strong {
+    white-space: normal;
   }
 
   .admin-product-summary-actions,

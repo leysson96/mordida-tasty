@@ -47,6 +47,11 @@ import {
   UpdateProductDto,
 } from "../products/dto/product.dto";
 import { ProductsService } from "../products/products.service";
+import {
+  CreateAdminDiscountDto,
+  UpdateAdminDiscountDto,
+} from "../promotions/dto/admin-discount.dto";
+import { PromotionsService } from "../promotions/promotions.service";
 import { DeliveryZonesService } from "../settings/delivery-zones.service";
 import { SettingsService } from "../settings/settings.service";
 import { UploadedImageFile, UploadsService } from "../uploads/uploads.service";
@@ -81,6 +86,7 @@ export class AdminController {
     private readonly ordersService: OrdersService,
     private readonly paymentsService: PaymentsService,
     private readonly productsService: ProductsService,
+    private readonly promotionsService: PromotionsService,
     private readonly settingsService: SettingsService,
     private readonly deliveryZonesService: DeliveryZonesService,
     private readonly uploadsService: UploadsService,
@@ -466,6 +472,89 @@ export class AdminController {
   @Get("categories")
   categories() {
     return this.productsService.listAdminCategories();
+  }
+
+  @Get("discounts")
+  discounts() {
+    return this.promotionsService.listAdminDiscounts();
+  }
+
+  @Post("discounts")
+  async createDiscount(
+    @Body() dto: CreateAdminDiscountDto,
+    @CurrentUser() user: { id: string },
+    @Req() request: Request,
+  ) {
+    const discount = await this.promotionsService.createAdminDiscount(dto);
+    await this.auditService.log({
+      actorId: user.id,
+      action: "discount.create",
+      entity: "discount",
+      entityId: discount.id,
+      metadata: {
+        name: discount.name,
+        active: discount.active,
+        type: discount.type,
+        value: discount.value,
+        scope: discount.scope,
+        startsOn: discount.startsOn,
+        endsOn: discount.endsOn,
+        weekdays: discount.weekdays,
+        priority: discount.priority,
+      },
+      ip: request.ip,
+      userAgent: request.headers["user-agent"],
+    });
+    return discount;
+  }
+
+  @Patch("discounts/:id")
+  async updateDiscount(
+    @Param("id") id: string,
+    @Body() dto: UpdateAdminDiscountDto,
+    @CurrentUser() user: { id: string },
+    @Req() request: Request,
+  ) {
+    const discount = await this.promotionsService.updateAdminDiscount(id, dto);
+    await this.auditService.log({
+      actorId: user.id,
+      action: "discount.update",
+      entity: "discount",
+      entityId: id,
+      metadata: {
+        name: discount.name,
+        active: discount.active,
+        type: discount.type,
+        value: discount.value,
+        scope: discount.scope,
+        startsOn: discount.startsOn,
+        endsOn: discount.endsOn,
+        weekdays: discount.weekdays,
+        priority: discount.priority,
+      },
+      ip: request.ip,
+      userAgent: request.headers["user-agent"],
+    });
+    return discount;
+  }
+
+  @Delete("discounts/:id")
+  async deleteDiscount(
+    @Param("id") id: string,
+    @CurrentUser() user: { id: string },
+    @Req() request: Request,
+  ) {
+    const discount = await this.promotionsService.deactivateAdminDiscount(id);
+    await this.auditService.log({
+      actorId: user.id,
+      action: "discount.deactivate",
+      entity: "discount",
+      entityId: id,
+      metadata: { name: discount.name },
+      ip: request.ip,
+      userAgent: request.headers["user-agent"],
+    });
+    return discount;
   }
 
   @Post("categories")

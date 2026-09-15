@@ -4,6 +4,7 @@ import { AuthModule } from "../auth/auth.module";
 import { OrdersModule } from "../orders/orders.module";
 import { PaymentsModule } from "../payments/payments.module";
 import { ProductsModule } from "../products/products.module";
+import { PromotionsModule } from "../promotions/promotions.module";
 import { SettingsModule } from "../settings/settings.module";
 import { UploadsModule } from "../uploads/uploads.module";
 import { AdminAuthController } from "./admin-auth.controller";
@@ -19,6 +20,7 @@ import { StaffService } from "./staff.service";
     OrdersModule,
     PaymentsModule,
     ProductsModule,
+    PromotionsModule,
     SettingsModule,
     UploadsModule,
   ],

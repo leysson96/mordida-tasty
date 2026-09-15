@@ -10,6 +10,7 @@ import { OrdersService } from "../orders/orders.service";
 import { PaymentsService } from "../payments/payments.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { ProductsService } from "../products/products.service";
+import { PromotionsService } from "../promotions/promotions.service";
 import { DeliveryZonesService } from "../settings/delivery-zones.service";
 import { SettingsService } from "../settings/settings.service";
 import { UploadsService } from "../uploads/uploads.service";
@@ -105,6 +106,13 @@ describe("Admin authorization E2E", () => {
     deactivateCategory: jest.fn(),
   };
 
+  const promotionsService = {
+    listAdminDiscounts: jest.fn(),
+    createAdminDiscount: jest.fn(),
+    updateAdminDiscount: jest.fn(),
+    deactivateAdminDiscount: jest.fn(),
+  };
+
   const settingsService = {
     getTaxRate: jest.fn(),
     getOpeningHours: jest.fn(),
@@ -186,6 +194,7 @@ describe("Admin authorization E2E", () => {
         { provide: OrdersService, useValue: ordersService },
         { provide: PaymentsService, useValue: paymentsService },
         { provide: ProductsService, useValue: productsService },
+        { provide: PromotionsService, useValue: promotionsService },
         { provide: SettingsService, useValue: settingsService },
         { provide: DeliveryZonesService, useValue: deliveryZonesService },
         { provide: UploadsService, useValue: uploadsService },
@@ -236,10 +245,17 @@ describe("Admin authorization E2E", () => {
       .send({ enabled: false })
       .expect(403);
 
+    await request(app.getHttpServer())
+      .post("/admin/discounts")
+      .set("Authorization", bearer("client-token"))
+      .send({ name: "No autorizado" })
+      .expect(403);
+
     expect(productsService.listAdminProducts).not.toHaveBeenCalled();
     expect(settingsService.setOrdersPause).not.toHaveBeenCalled();
     expect(settingsService.setLoyaltyProgram).not.toHaveBeenCalled();
     expect(settingsService.setPromotionCampaign).not.toHaveBeenCalled();
+    expect(promotionsService.createAdminDiscount).not.toHaveBeenCalled();
   });
 
   it("blocks kitchen tokens from admin-only management routes", async () => {
@@ -273,6 +289,17 @@ describe("Admin authorization E2E", () => {
       .expect(403);
 
     await request(app.getHttpServer())
+      .patch("/admin/discounts/discount-1")
+      .set("Authorization", bearer("kitchen-token"))
+      .send({ active: true })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .delete("/admin/discounts/discount-1")
+      .set("Authorization", bearer("kitchen-token"))
+      .expect(403);
+
+    await request(app.getHttpServer())
       .post("/admin/users")
       .set("Authorization", bearer("kitchen-token"))
       .send({
@@ -287,6 +314,8 @@ describe("Admin authorization E2E", () => {
     expect(settingsService.setDeliveryFeeCents).not.toHaveBeenCalled();
     expect(settingsService.setLoyaltyProgram).not.toHaveBeenCalled();
     expect(settingsService.setPromotionCampaign).not.toHaveBeenCalled();
+    expect(promotionsService.updateAdminDiscount).not.toHaveBeenCalled();
+    expect(promotionsService.deactivateAdminDiscount).not.toHaveBeenCalled();
     expect(staffService.createStaff).not.toHaveBeenCalled();
   });
 
@@ -329,6 +358,7 @@ describe("Admin authorization E2E", () => {
 
   it("allows fully authorized admin tokens on admin routes", async () => {
     productsService.listAdminProducts.mockResolvedValue([]);
+    promotionsService.listAdminDiscounts.mockResolvedValue([]);
 
     await request(app.getHttpServer())
       .get("/admin/products")
@@ -336,5 +366,12 @@ describe("Admin authorization E2E", () => {
       .expect(200, []);
 
     expect(productsService.listAdminProducts).toHaveBeenCalledTimes(1);
+
+    await request(app.getHttpServer())
+      .get("/admin/discounts")
+      .set("Authorization", bearer("admin-token"))
+      .expect(200, []);
+
+    expect(promotionsService.listAdminDiscounts).toHaveBeenCalledTimes(1);
   });
 });

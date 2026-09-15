@@ -1,5 +1,12 @@
 import { ForbiddenException } from "@nestjs/common";
-import { DeliveryMethod, OrderStatus, Role } from "@prisma/client";
+import {
+  DeliveryMethod,
+  DiscountScope,
+  DiscountType,
+  DiscountWeekday,
+  OrderStatus,
+  Role,
+} from "@prisma/client";
 import { AdminController } from "./admin.controller";
 
 describe("AdminController", () => {
@@ -31,6 +38,13 @@ describe("AdminController", () => {
     createCategory: jest.fn(),
     updateCategory: jest.fn(),
     deactivateCategory: jest.fn(),
+  };
+
+  const promotionsService = {
+    listAdminDiscounts: jest.fn(),
+    createAdminDiscount: jest.fn(),
+    updateAdminDiscount: jest.fn(),
+    deactivateAdminDiscount: jest.fn(),
   };
 
   const settingsService = {
@@ -81,6 +95,7 @@ describe("AdminController", () => {
       ordersService as never,
       paymentsService as never,
       productsService as never,
+      promotionsService as never,
       settingsService as never,
       deliveryZonesService as never,
       uploadsService as never,
@@ -229,6 +244,146 @@ describe("AdminController", () => {
       page: "2",
       pageSize: "25",
     });
+  });
+
+  it("creates discount rules and writes an audit entry", async () => {
+    const discount = {
+      id: "discount-1",
+      name: "Finde Smash",
+      active: false,
+      type: DiscountType.PERCENTAGE,
+      value: 1500,
+      scope: DiscountScope.PRODUCTS,
+      startsOn: "2026-09-19",
+      endsOn: "2026-09-20",
+      weekdays: [DiscountWeekday.SAT, DiscountWeekday.SUN],
+      priority: 5,
+    };
+    promotionsService.createAdminDiscount.mockResolvedValue(discount);
+
+    await expect(
+      controller().createDiscount(
+        {
+          name: "Finde Smash",
+          type: DiscountType.PERCENTAGE,
+          value: 1500,
+          scope: DiscountScope.PRODUCTS,
+          startsOn: "2026-09-19",
+          endsOn: "2026-09-20",
+          weekdays: [DiscountWeekday.SAT, DiscountWeekday.SUN],
+          priority: 5,
+          productIds: ["product-1"],
+        },
+        { id: "admin-1" },
+        request as never,
+      ),
+    ).resolves.toBe(discount);
+
+    expect(promotionsService.createAdminDiscount).toHaveBeenCalledWith({
+      name: "Finde Smash",
+      type: DiscountType.PERCENTAGE,
+      value: 1500,
+      scope: DiscountScope.PRODUCTS,
+      startsOn: "2026-09-19",
+      endsOn: "2026-09-20",
+      weekdays: [DiscountWeekday.SAT, DiscountWeekday.SUN],
+      priority: 5,
+      productIds: ["product-1"],
+    });
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: "admin-1",
+        action: "discount.create",
+        entity: "discount",
+        entityId: "discount-1",
+        metadata: expect.objectContaining({
+          name: "Finde Smash",
+          active: false,
+          scope: DiscountScope.PRODUCTS,
+        }),
+      }),
+    );
+  });
+
+  it("updates discount rules and writes an audit entry", async () => {
+    const discount = {
+      id: "discount-1",
+      name: "Finde Smash",
+      active: true,
+      type: DiscountType.FIXED_AMOUNT,
+      value: 200,
+      scope: DiscountScope.CATEGORY,
+      startsOn: "2026-09-19",
+      endsOn: "2026-09-20",
+      weekdays: [],
+      priority: 2,
+    };
+    promotionsService.updateAdminDiscount.mockResolvedValue(discount);
+
+    await expect(
+      controller().updateDiscount(
+        "discount-1",
+        {
+          active: true,
+          type: DiscountType.FIXED_AMOUNT,
+          value: 200,
+          scope: DiscountScope.CATEGORY,
+          categoryId: "category-1",
+        },
+        { id: "admin-1" },
+        request as never,
+      ),
+    ).resolves.toBe(discount);
+
+    expect(promotionsService.updateAdminDiscount).toHaveBeenCalledWith(
+      "discount-1",
+      {
+        active: true,
+        type: DiscountType.FIXED_AMOUNT,
+        value: 200,
+        scope: DiscountScope.CATEGORY,
+        categoryId: "category-1",
+      },
+    );
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: "admin-1",
+        action: "discount.update",
+        entity: "discount",
+        entityId: "discount-1",
+      }),
+    );
+  });
+
+  it("deactivates discount rules and writes an audit entry", async () => {
+    promotionsService.deactivateAdminDiscount.mockResolvedValue({
+      id: "discount-1",
+      name: "Finde Smash",
+    });
+
+    await expect(
+      controller().deleteDiscount(
+        "discount-1",
+        { id: "admin-1" },
+        request as never,
+      ),
+    ).resolves.toEqual({
+      id: "discount-1",
+      name: "Finde Smash",
+    });
+
+    expect(promotionsService.deactivateAdminDiscount).toHaveBeenCalledWith(
+      "discount-1",
+    );
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: "admin-1",
+        action: "discount.deactivate",
+        entity: "discount",
+        entityId: "discount-1",
+        metadata: { name: "Finde Smash" },
+      }),
+    );
   });
 
   it("creates product option groups and writes an audit entry", async () => {
