@@ -59,6 +59,22 @@ const adminDiscountInclude = {
   },
 } satisfies Prisma.DiscountInclude;
 
+const publicDiscountCampaignInclude = {
+  category: {
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      active: true,
+    },
+  },
+  products: {
+    select: {
+      productId: true,
+    },
+  },
+} satisfies Prisma.DiscountInclude;
+
 export type DiscountForResolution = Prisma.DiscountGetPayload<{
   include: typeof discountResolutionInclude;
 }>;
@@ -67,7 +83,15 @@ type AdminDiscountRecord = Prisma.DiscountGetPayload<{
   include: typeof adminDiscountInclude;
 }>;
 
+type PublicDiscountCampaignRecord = Prisma.DiscountGetPayload<{
+  include: typeof publicDiscountCampaignInclude;
+}>;
+
 export type AdminDiscount = ReturnType<typeof toAdminDiscount>;
+
+export type PublicDiscountCampaign = ReturnType<
+  typeof toPublicDiscountCampaign
+>;
 
 export interface DiscountLookupInput {
   productIds: string[];
@@ -204,6 +228,25 @@ export class PromotionsService {
     });
 
     return toAdminDiscount(discount, this.appTimezone());
+  }
+
+  async listPublicDiscountCampaigns(now = new Date()) {
+    const discounts = await this.prisma.discount.findMany({
+      where: {
+        active: true,
+        startsAt: { lte: now },
+        endsAt: { gte: now },
+        scope: {
+          in: [DiscountScope.PRODUCTS, DiscountScope.CATEGORY],
+        },
+      },
+      include: publicDiscountCampaignInclude,
+      orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
+    });
+
+    return discounts.map((discount) =>
+      toPublicDiscountCampaign(discount, this.appTimezone()),
+    );
   }
 
   listActiveDiscountsForCheckout(input: DiscountLookupInput) {
@@ -537,6 +580,28 @@ function toAdminDiscount(discount: AdminDiscountRecord, timezone: string) {
     endsOn: dateOnlyInTimezone(discount.endsAt, timezone),
     productIds: discount.products.map((link) => link.productId),
     products: discount.products.map((link) => link.product),
+  };
+}
+
+function toPublicDiscountCampaign(
+  discount: PublicDiscountCampaignRecord,
+  timezone: string,
+) {
+  return {
+    id: discount.id,
+    name: discount.name,
+    description: discount.description,
+    active: discount.active,
+    type: discount.type,
+    value: discount.value,
+    scope: discount.scope,
+    startsOn: dateOnlyInTimezone(discount.startsAt, timezone),
+    endsOn: dateOnlyInTimezone(discount.endsAt, timezone),
+    weekdays: discount.weekdays,
+    priority: discount.priority,
+    categoryId: discount.categoryId,
+    category: discount.category,
+    productIds: discount.products.map((link) => link.productId),
   };
 }
 

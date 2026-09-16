@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import Image from "next/image";
 import {
   ArrowRight,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Flame,
   Heart,
@@ -23,8 +26,10 @@ import { brandConfig } from "../lib/brand";
 import { productUnitPriceDisplay } from "../lib/product-pricing";
 import {
   Category,
+  DiscountWeekday,
   Product,
   PromotionCampaign,
+  PublicDiscountCampaign,
   PublicSettings,
   SiteContent,
 } from "../lib/types";
@@ -33,6 +38,7 @@ import { ProductImage } from "./product-image";
 
 // Promotion dates are business-calendar dates, not UTC timestamps.
 const PROMOTION_TIMEZONE = "Europe/Madrid";
+const PROMOTION_ROTATION_MS = 5600;
 
 export function MenuClient() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -40,6 +46,9 @@ export function MenuClient() {
   const [selectedSlug, setSelectedSlug] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [promotionIndex, setPromotionIndex] = useState(0);
+  const [promotionPaused, setPromotionPaused] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const { addItem } = useCart();
   const siteContent = { ...brandConfig, ...publicSettings?.siteContent };
   const serviceReason = publicSettings?.serviceStatus?.reason;
@@ -85,15 +94,62 @@ export function MenuClient() {
       categories[0],
     [categories, selectedSlug],
   );
-  const visiblePromotion = useMemo(
+  const visiblePromotions = useMemo(
     () =>
-      getVisiblePromotion(
+      getVisiblePromotionSlides(
         publicSettings?.promotionCampaign,
+        publicSettings?.discountCampaigns ?? [],
         categories,
         new Date(),
       ),
-    [categories, publicSettings?.promotionCampaign],
+    [
+      categories,
+      publicSettings?.discountCampaigns,
+      publicSettings?.promotionCampaign,
+    ],
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePreference = () => {
+      setPrefersReducedMotion(mediaQuery.matches);
+    };
+
+    updatePreference();
+    mediaQuery.addEventListener("change", updatePreference);
+
+    return () => {
+      mediaQuery.removeEventListener("change", updatePreference);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (promotionIndex >= visiblePromotions.length) {
+      setPromotionIndex(0);
+    }
+  }, [promotionIndex, visiblePromotions.length]);
+
+  useEffect(() => {
+    if (
+      visiblePromotions.length <= 1 ||
+      promotionPaused ||
+      prefersReducedMotion
+    ) {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setPromotionIndex((current) => (current + 1) % visiblePromotions.length);
+    }, PROMOTION_ROTATION_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [prefersReducedMotion, promotionPaused, visiblePromotions.length]);
 
   return (
     <main className="menu-page">
@@ -192,8 +248,13 @@ export function MenuClient() {
           <p>{siteContent.menuIntroText}</p>
         </div>
 
-        {visiblePromotion && (
-          <FeaturedPromotion promotion={visiblePromotion} />
+        {visiblePromotions.length > 0 && (
+          <FeaturedPromotionCarousel
+            activeIndex={promotionIndex}
+            promotions={visiblePromotions}
+            onPauseChange={setPromotionPaused}
+            onSelect={setPromotionIndex}
+          />
         )}
 
         {loading ? (
@@ -349,7 +410,107 @@ function productHasOptions(product: Product) {
   );
 }
 
-type VisiblePromotion = PromotionCampaign & { product: Product };
+type VisiblePromotion = {
+  id: string;
+  badge: string;
+  title: string;
+  description: string;
+  imageUrl: string;
+  ctaLabel: string;
+  validityLabel: string;
+  product: Product;
+  discountId?: string;
+};
+
+function FeaturedPromotionCarousel({
+  activeIndex,
+  promotions,
+  onPauseChange,
+  onSelect,
+}: {
+  activeIndex: number;
+  promotions: VisiblePromotion[];
+  onPauseChange: (paused: boolean) => void;
+  onSelect: (index: number) => void;
+}) {
+  const activePromotion =
+    promotions[Math.min(activeIndex, promotions.length - 1)] ?? promotions[0];
+  const showControls = promotions.length > 1;
+
+  function selectPrevious() {
+    onSelect((activeIndex - 1 + promotions.length) % promotions.length);
+  }
+
+  function selectNext() {
+    onSelect((activeIndex + 1) % promotions.length);
+  }
+
+  function pause() {
+    onPauseChange(true);
+  }
+
+  function resume() {
+    onPauseChange(false);
+  }
+
+  function handleMouseOut(event: MouseEvent<HTMLElement>) {
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+      return;
+    }
+
+    resume();
+  }
+
+  return (
+    <section
+      className="featured-promotion-carousel"
+      aria-label="Promociones activas"
+      onMouseEnter={pause}
+      onMouseLeave={resume}
+      onMouseOver={pause}
+      onMouseOut={handleMouseOut}
+      onTouchStart={pause}
+    >
+      <FeaturedPromotion key={activePromotion.id} promotion={activePromotion} />
+      {showControls && (
+        <div className="featured-promotion-controls">
+          <button
+            className="icon-button carousel-arrow"
+            type="button"
+            aria-label="Promocion anterior"
+            onClick={selectPrevious}
+            title="Promocion anterior"
+          >
+            <ChevronLeft aria-hidden="true" size={22} />
+          </button>
+          <div className="featured-promotion-dots" aria-label="Elegir promo">
+            {promotions.map((promotion, index) => (
+              <button
+                key={promotion.id}
+                type="button"
+                className={index === activeIndex ? "active" : ""}
+                aria-label={`Ver promocion ${index + 1}: ${promotion.title}`}
+                aria-current={index === activeIndex ? "true" : undefined}
+                onClick={() => onSelect(index)}
+                title={promotion.title}
+              />
+            ))}
+          </div>
+          <button
+            className="icon-button carousel-arrow"
+            type="button"
+            aria-label="Promocion siguiente"
+            onClick={selectNext}
+            title="Promocion siguiente"
+          >
+            <ChevronRight aria-hidden="true" size={22} />
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
 
 function FeaturedPromotion({ promotion }: { promotion: VisiblePromotion }) {
   const title = splitPromotionTitle(promotion.title);
@@ -359,7 +520,7 @@ function FeaturedPromotion({ promotion }: { promotion: VisiblePromotion }) {
   };
 
   return (
-    <section className="featured-promotion" aria-label="Promocion">
+    <article className="featured-promotion" aria-label={promotion.title}>
       <Link
         href={`/producto/${promotion.product.slug}`}
         className="featured-promotion-media"
@@ -382,6 +543,10 @@ function FeaturedPromotion({ promotion }: { promotion: VisiblePromotion }) {
           {title.lead && `${title.lead} `}
           <span>{title.accent}</span>
         </h2>
+        <span className="promo-validity">
+          <CalendarDays aria-hidden="true" size={17} />
+          {promotion.validityLabel}
+        </span>
         <p>{promotion.description}</p>
         <div className="featured-promotion-actions">
           <ProductUnitPrice product={promotion.product} featured />
@@ -394,7 +559,7 @@ function FeaturedPromotion({ promotion }: { promotion: VisiblePromotion }) {
           </Link>
         </div>
       </div>
-    </section>
+    </article>
   );
 }
 
@@ -439,11 +604,64 @@ function splitPromotionTitle(title: string) {
   };
 }
 
-function getVisiblePromotion(
-  promotion: PromotionCampaign | undefined,
+function getVisiblePromotionSlides(
+  visualPromotion: PromotionCampaign | undefined,
+  discountCampaigns: PublicDiscountCampaign[],
   categories: Category[],
   now: Date,
 ) {
+  const visualSlide = getVisualPromotionSlide(visualPromotion, categories, now);
+  const slides: VisiblePromotion[] = [];
+
+  for (const discount of discountCampaigns) {
+    if (!discount.active || !isDiscountInDateWindow(discount, now)) {
+      continue;
+    }
+
+    const linkedVisual =
+      visualSlide &&
+      visualPromotion?.discountId === discount.id &&
+      discountTargetsProduct(discount, visualSlide.product);
+    const product = linkedVisual
+      ? visualSlide.product
+      : productForDiscount(discount, categories);
+
+    if (!product) {
+      continue;
+    }
+
+    slides.push({
+      id: `discount:${discount.id}`,
+      discountId: discount.id,
+      badge: linkedVisual ? visualSlide.badge : formatPublicDiscount(discount),
+      title: linkedVisual ? visualSlide.title : discount.name,
+      description: linkedVisual
+        ? visualSlide.description
+        : discount.description?.trim() ||
+          `Promocion activa. ${discountWeekdayLabel(discount.weekdays)}.`,
+      imageUrl: linkedVisual ? visualSlide.imageUrl : product.imageUrl ?? "",
+      ctaLabel: linkedVisual ? visualSlide.ctaLabel : "Pedir ahora",
+      validityLabel: discountWeekdayLabel(discount.weekdays),
+      product,
+    });
+  }
+
+  if (
+    visualSlide &&
+    (!visualPromotion?.discountId ||
+      !slides.some((slide) => slide.discountId === visualPromotion.discountId))
+  ) {
+    slides.unshift(visualSlide);
+  }
+
+  return slides;
+}
+
+function getVisualPromotionSlide(
+  promotion: PromotionCampaign | undefined,
+  categories: Category[],
+  now: Date,
+): VisiblePromotion | undefined {
   if (!promotion?.enabled || !isPromotionInDateWindow(promotion, now)) {
     return undefined;
   }
@@ -452,7 +670,7 @@ function getVisiblePromotion(
     .flatMap((category) => category.products ?? [])
     .find((item) => item.slug === promotion.productSlug);
 
-  if (!product?.active || !product.available) {
+  if (!isPublicPromotionProduct(product)) {
     return undefined;
   }
 
@@ -467,7 +685,19 @@ function getVisiblePromotion(
     return undefined;
   }
 
-  return { ...promotion, product };
+  return {
+    id: promotion.discountId
+      ? `visual:${promotion.discountId}`
+      : `visual:${promotion.productSlug}`,
+    discountId: promotion.discountId || undefined,
+    badge: promotion.badge,
+    title: promotion.title,
+    description: promotion.description,
+    imageUrl: promotion.imageUrl,
+    ctaLabel: promotion.ctaLabel,
+    validityLabel: "Valido todos los dias",
+    product,
+  };
 }
 
 function isPromotionInDateWindow(promotion: PromotionCampaign, now: Date) {
@@ -477,6 +707,98 @@ function isPromotionInDateWindow(promotion: PromotionCampaign, now: Date) {
 
   const today = dateInTimezone(now, PROMOTION_TIMEZONE);
   return promotion.startsOn <= today && today <= promotion.endsOn;
+}
+
+function isDiscountInDateWindow(
+  discount: Pick<PublicDiscountCampaign, "startsOn" | "endsOn">,
+  now: Date,
+) {
+  if (!discount.startsOn || !discount.endsOn) {
+    return false;
+  }
+
+  const today = dateInTimezone(now, PROMOTION_TIMEZONE);
+  return discount.startsOn <= today && today <= discount.endsOn;
+}
+
+function productForDiscount(
+  discount: PublicDiscountCampaign,
+  categories: Category[],
+) {
+  const products = categories.flatMap((category) => category.products ?? []);
+
+  if (discount.scope === "PRODUCTS") {
+    return discount.productIds
+      .map((productId) => products.find((product) => product.id === productId))
+      .find(isPublicPromotionProduct);
+  }
+
+  if (discount.scope === "CATEGORY" && discount.categoryId) {
+    return categories
+      .find((category) => category.id === discount.categoryId)
+      ?.products?.find(isPublicPromotionProduct);
+  }
+
+  return undefined;
+}
+
+function discountTargetsProduct(
+  discount: PublicDiscountCampaign,
+  product: Product,
+) {
+  if (discount.scope === "PRODUCTS") {
+    return discount.productIds.includes(product.id);
+  }
+
+  if (discount.scope === "CATEGORY") {
+    return discount.categoryId === product.categoryId;
+  }
+
+  return false;
+}
+
+function isPublicPromotionProduct(product: Product | undefined): product is Product {
+  return Boolean(product?.active && product.available);
+}
+
+const discountWeekdayCopy: Record<DiscountWeekday, string> = {
+  MON: "lunes",
+  TUE: "martes",
+  WED: "miercoles",
+  THU: "jueves",
+  FRI: "viernes",
+  SAT: "sabado",
+  SUN: "domingo",
+};
+
+function discountWeekdayLabel(weekdays: DiscountWeekday[]) {
+  if (weekdays.length === 0) {
+    return "Valido todos los dias";
+  }
+
+  return `Valido ${humanList(weekdays.map((weekday) => discountWeekdayCopy[weekday]))}`;
+}
+
+function humanList(values: string[]) {
+  if (values.length <= 1) {
+    return values[0] ?? "";
+  }
+
+  return `${values.slice(0, -1).join(", ")} y ${
+    values[values.length - 1]
+  }`;
+}
+
+function formatPublicDiscount(discount: PublicDiscountCampaign) {
+  if (discount.type === "PERCENTAGE") {
+    return `-${trimDisplayNumber(discount.value / 100)}%`;
+  }
+
+  return `-${formatMoney(discount.value)}`;
+}
+
+function trimDisplayNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
 function dateInTimezone(date: Date, timezone: string) {

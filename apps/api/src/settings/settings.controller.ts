@@ -1,5 +1,6 @@
 import { BadRequestException, Controller, Get, Query } from "@nestjs/common";
 import { LEGAL_VERSION } from "../legal/legal-version";
+import { PromotionsService } from "../promotions/promotions.service";
 import { DeliveryZonesService } from "./delivery-zones.service";
 import { SettingsService } from "./settings.service";
 
@@ -8,6 +9,7 @@ export class SettingsController {
   constructor(
     private readonly settingsService: SettingsService,
     private readonly deliveryZonesService: DeliveryZonesService,
+    private readonly promotionsService: PromotionsService,
   ) {}
 
   @Get("public")
@@ -19,6 +21,7 @@ export class SettingsController {
       serviceStatus,
       siteContent,
       promotionCampaign,
+      discountCampaigns,
       loyaltyProgram,
       deliveryZones,
     ] = await Promise.all([
@@ -28,6 +31,7 @@ export class SettingsController {
       this.settingsService.getServiceStatus(),
       this.settingsService.getSiteContent(),
       this.settingsService.getPublicPromotionCampaign(),
+      this.promotionsService.listPublicDiscountCampaigns(),
       this.settingsService.getLoyaltyProgram(),
       this.deliveryZonesService.listPublicZones(),
     ]);
@@ -41,6 +45,7 @@ export class SettingsController {
       serviceStatus,
       siteContent,
       promotionCampaign,
+      discountCampaigns,
       loyaltyProgram,
       legalVersion: LEGAL_VERSION,
     };

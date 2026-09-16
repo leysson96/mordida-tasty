@@ -98,6 +98,58 @@ describe("PromotionsService", () => {
     });
   });
 
+  it("lists public discount campaigns inside the date window without filtering weekdays", async () => {
+    const now = new Date("2026-09-15T10:00:00.000Z");
+    prisma.discount.findMany.mockResolvedValue([
+      makePublicDiscountCampaign({
+        id: "weekend-promo",
+        name: "Promo finde",
+        endsAt: new Date("2026-09-30T21:59:59.999Z"),
+        weekdays: [DiscountWeekday.SAT, DiscountWeekday.SUN],
+        products: [{ productId: "product-1" }],
+      }),
+    ]);
+
+    await expect(service().listPublicDiscountCampaigns(now)).resolves.toEqual([
+      expect.objectContaining({
+        id: "weekend-promo",
+        name: "Promo finde",
+        active: true,
+        startsOn: "2026-09-01",
+        endsOn: "2026-09-30",
+        weekdays: [DiscountWeekday.SAT, DiscountWeekday.SUN],
+        productIds: ["product-1"],
+      }),
+    ]);
+
+    expect(prisma.discount.findMany).toHaveBeenCalledWith({
+      where: {
+        active: true,
+        startsAt: { lte: now },
+        endsAt: { gte: now },
+        scope: {
+          in: [DiscountScope.PRODUCTS, DiscountScope.CATEGORY],
+        },
+      },
+      include: {
+        category: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            active: true,
+          },
+        },
+        products: {
+          select: {
+            productId: true,
+          },
+        },
+      },
+      orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
+    });
+  });
+
   it("applies a percentage discount to a product line", () => {
     const discount = makeDiscount({
       type: DiscountType.PERCENTAGE,
@@ -503,6 +555,46 @@ function makeAdminDiscount(
       productId: string;
       product: ReturnType<typeof makeAdminProduct>;
     }>;
+  } = {},
+) {
+  return {
+    id: overrides.id ?? "discount-1",
+    name: overrides.name ?? "Promo",
+    description: overrides.description ?? null,
+    active: overrides.active ?? true,
+    type: overrides.type ?? DiscountType.PERCENTAGE,
+    value: overrides.value ?? 1000,
+    scope: overrides.scope ?? DiscountScope.PRODUCTS,
+    startsAt: overrides.startsAt ?? new Date("2026-09-01T00:00:00.000Z"),
+    endsAt: overrides.endsAt ?? new Date("2026-09-30T23:59:59.000Z"),
+    weekdays: overrides.weekdays ?? [],
+    stackable: overrides.stackable ?? false,
+    priority: overrides.priority ?? 0,
+    categoryId: overrides.categoryId ?? null,
+    createdAt: new Date("2026-09-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-09-01T00:00:00.000Z"),
+    category: overrides.category ?? null,
+    products: overrides.products ?? [],
+  };
+}
+
+function makePublicDiscountCampaign(
+  overrides: {
+    id?: string;
+    name?: string;
+    description?: string | null;
+    active?: boolean;
+    type?: DiscountType;
+    value?: number;
+    scope?: DiscountScope;
+    startsAt?: Date;
+    endsAt?: Date;
+    weekdays?: DiscountWeekday[];
+    stackable?: boolean;
+    priority?: number;
+    categoryId?: string | null;
+    category?: ReturnType<typeof makeAdminCategory> | null;
+    products?: Array<{ productId: string }>;
   } = {},
 ) {
   return {

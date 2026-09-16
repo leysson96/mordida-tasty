@@ -137,6 +137,23 @@ export interface AdminDiscount {
   updatedAt: string;
 }
 
+export interface PublicDiscountCampaign {
+  id: string;
+  name: string;
+  description?: string | null;
+  active: boolean;
+  type: PromotionDiscountType;
+  value: number;
+  scope: DiscountScope;
+  startsOn: string;
+  endsOn: string;
+  weekdays: DiscountWeekday[];
+  priority: number;
+  categoryId?: string | null;
+  category?: CategorySummary | null;
+  productIds: string[];
+}
+
 export interface CartItem {
   id: string;
   productId: string;
@@ -379,6 +396,7 @@ export interface PublicSettings {
   serviceStatus: ServiceStatus;
   siteContent: SiteContent;
   promotionCampaign: PromotionCampaign;
+  discountCampaigns: PublicDiscountCampaign[];
   loyaltyProgram: LoyaltyProgram;
   legalVersion: string;
 }

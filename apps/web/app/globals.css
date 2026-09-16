@@ -488,6 +488,15 @@ p {
   padding-top: 30px;
 }
 
+.featured-promotion-carousel {
+  position: relative;
+  margin: 10px 0 26px;
+}
+
+.featured-promotion-carousel .featured-promotion {
+  margin: 0;
+}
+
 .featured-promotion {
   position: relative;
   display: grid;
@@ -652,6 +661,21 @@ p {
   animation: promoBadgePulse 2.8s ease-in-out infinite;
 }
 
+.promo-validity {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 11px;
+  color: #ffe8cd;
+  border: 1px solid rgba(255, 232, 205, 0.28);
+  border-radius: var(--radius);
+  background: rgba(33, 21, 18, 0.42);
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
 .featured-promotion-actions {
   display: flex;
   flex-wrap: wrap;
@@ -667,6 +691,51 @@ p {
 
 .promo-button {
   min-width: 190px;
+}
+
+.featured-promotion-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 12px auto 0;
+  padding: 8px;
+  border: 1px solid rgba(224, 138, 40, 0.28);
+  border-radius: var(--radius);
+  background: rgba(255, 250, 244, 0.88);
+  box-shadow: 0 16px 36px rgba(53, 3, 5, 0.1);
+}
+
+.carousel-arrow {
+  color: var(--color-ink);
+  background: var(--color-surface);
+}
+
+.featured-promotion-dots {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 2px;
+}
+
+.featured-promotion-dots button {
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(117, 92, 78, 0.34);
+  cursor: pointer;
+  transition:
+    width 180ms ease,
+    background 180ms ease;
+}
+
+.featured-promotion-dots button.active {
+  width: 28px;
+  background: var(--color-brand);
 }
 
 .menu-intro {
@@ -1906,6 +1975,7 @@ textarea {
   .featured-promotion-image-frame,
   .featured-promotion-image-shadow,
   .promo-badge,
+  .featured-promotion-dots button,
   .product-photo img {
     animation: none;
     transition: none;
