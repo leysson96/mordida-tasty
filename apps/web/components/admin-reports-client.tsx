@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import {
   Banknote,
   BarChart3,
@@ -14,6 +15,7 @@ import {
   MapPin,
   PackageCheck,
   Phone,
+  Printer,
   ReceiptText,
   RefreshCw,
   Search,
@@ -24,6 +26,18 @@ import {
   UserRound,
   X,
 } from "lucide-react";
+import {
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import type { TooltipContentProps, TooltipValueType } from "recharts";
 import { api, formatMoney } from "../lib/api";
 import {
   readableErrorMessage,
@@ -52,6 +66,13 @@ interface SalesReportResponse {
   averageTicketCents: number;
   promotionDiscountCents: number;
   grossProductRevenueCents: number;
+  paymentBreakdown?: {
+    collected: ReportMoneyBucket;
+    collectedCash?: ReportMoneyBucket;
+    collectedCard?: ReportMoneyBucket;
+    pendingCash: ReportMoneyBucket;
+    cancelled: ReportMoneyBucket;
+  };
   salesByDay: Array<{
     date: string;
     revenueCents: number;
@@ -66,6 +87,26 @@ interface SalesReportResponse {
     promotionDiscountCents: number;
     grossRevenueCents: number;
   }>;
+}
+
+interface ReportMoneyBucket {
+  orderCount: number;
+  amountCents: number;
+}
+
+interface DailyChartPoint {
+  date: string;
+  label: string;
+  revenueCents: number;
+  grossProductRevenueCents: number;
+  promotionDiscountCents: number;
+  orderCount: number;
+}
+
+interface PrintableReportRow {
+  label: string;
+  value: string;
+  detail: string;
 }
 
 type RangePreset = "today" | "7d" | "30d" | "month";
@@ -245,22 +286,92 @@ export function AdminReportsClient() {
     setHistoryFilters((current) => ({ ...current, [key]: value }));
   }
 
+  function printReportSummary() {
+    if (!report) {
+      return;
+    }
+
+    const opened = openPrintableSalesReport({
+      rangeLabel: `${formatReportDate(report.from)} - ${formatReportDate(report.to)}`,
+      generatedAt: formatHistoryDate(new Date().toISOString()),
+      rows: [
+        {
+          label: "Cobrado",
+          value: formatMoney(report.totalRevenueCents),
+          detail: `${report.orderCount} pedidos pagados`,
+        },
+        {
+          label: "Tarjeta",
+          value: formatMoney(collectedCard.amountCents),
+          detail: `${collectedCard.orderCount} pedidos`,
+        },
+        {
+          label: "Efectivo cobrado",
+          value: formatMoney(collectedCash.amountCents),
+          detail: `${collectedCash.orderCount} pedidos`,
+        },
+        {
+          label: "Efectivo pendiente",
+          value: formatMoney(pendingCash.amountCents),
+          detail: `${pendingCash.orderCount} pedidos sin caja`,
+        },
+        {
+          label: "Descuentos promo",
+          value: `-${formatMoney(report.promotionDiscountCents)}`,
+          detail: `Bruto antes de promo: ${formatMoney(report.grossProductRevenueCents)}`,
+        },
+        {
+          label: "Cancelados",
+          value: String(cancelledOrders.orderCount),
+          detail: formatMoney(cancelledOrders.amountCents),
+        },
+      ],
+      footerRows: [
+        {
+          label: "Ticket medio",
+          value: formatMoney(report.averageTicketCents),
+          detail: "Promedio por pedido cobrado",
+        },
+        {
+          label: "Dias con venta",
+          value: String(activeSalesDays.length),
+          detail: "Dentro del rango seleccionado",
+        },
+      ],
+    });
+
+    if (!opened) {
+      setError(
+        "No se pudo abrir la ventana de impresion. Permite ventanas emergentes para exportar el reporte.",
+      );
+    }
+  }
+
   const activeSalesDays =
     report?.salesByDay.filter(
       (day) => day.revenueCents > 0 || day.orderCount > 0,
     ) ?? [];
-  const chartDays =
-    activeSalesDays.length > 0
-      ? activeSalesDays
-      : (report?.salesByDay.slice(-7) ?? []);
-  const maxRevenue = Math.max(
-    ...(chartDays.map((day) => day.revenueCents) ?? [0]),
-    0,
-  );
+  const dailyActivity = report?.salesByDay.map(toDailyChartPoint) ?? [];
   const maxProductRevenue = Math.max(
     ...(report?.topProducts.map((product) => product.revenueCents) ?? [0]),
     0,
   );
+  const collectedCash = report?.paymentBreakdown?.collectedCash ?? {
+    orderCount: 0,
+    amountCents: 0,
+  };
+  const collectedCard = report?.paymentBreakdown?.collectedCard ?? {
+    orderCount: 0,
+    amountCents: 0,
+  };
+  const pendingCash = report?.paymentBreakdown?.pendingCash ?? {
+    orderCount: 0,
+    amountCents: 0,
+  };
+  const cancelledOrders = report?.paymentBreakdown?.cancelled ?? {
+    orderCount: 0,
+    amountCents: 0,
+  };
   const bestDay = activeSalesDays.reduce<
     SalesReportResponse["salesByDay"][number] | undefined
   >(
@@ -338,40 +449,74 @@ export function AdminReportsClient() {
 
       {error && <div className="empty-state error">{error}</div>}
 
-      <section className="admin-metrics">
-        <article>
-          <span>Ingresos</span>
-          <strong>{formatMoney(report?.totalRevenueCents ?? 0)}</strong>
-          <small>Ventas cobradas</small>
-        </article>
-        <article>
-          <span>Pedidos</span>
-          <strong>{report?.orderCount ?? 0}</strong>
-          <small>{activeSalesDays.length} dias con venta</small>
-        </article>
-        <article>
-          <span>Ticket medio</span>
-          <strong>{formatMoney(report?.averageTicketCents ?? 0)}</strong>
-          <small>Promedio por pedido</small>
-        </article>
-        <article>
-          <span>Descuentos promo</span>
-          <strong>-{formatMoney(report?.promotionDiscountCents ?? 0)}</strong>
-          <small>Impacto aplicado</small>
-        </article>
+      <section className="report-close-panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Cierre del rango</p>
+            <h2>
+              {report
+                ? `${formatReportDate(report.from)} - ${formatReportDate(report.to)}`
+                : "Cargando ventas"}
+            </h2>
+          </div>
+          <div className="report-close-actions no-print">
+            <span className="admin-soft-pill">
+              {activeSalesDays.length} dias con venta
+            </span>
+            <button
+              type="button"
+              className="button secondary"
+              onClick={printReportSummary}
+              disabled={!report || loading}
+            >
+              <Printer aria-hidden="true" size={18} />
+              Imprimir / PDF
+            </button>
+          </div>
+        </div>
+
+        <div className="report-kpi-grid">
+          <ReportKpiCard
+            label="Cobrado"
+            value={formatMoney(report?.totalRevenueCents ?? 0)}
+            helper={`${report?.orderCount ?? 0} pedidos pagados`}
+            variant="primary"
+          />
+          <ReportKpiCard
+            label="Tarjeta"
+            value={formatMoney(collectedCard.amountCents)}
+            helper={`${collectedCard.orderCount} pedidos`}
+            icon={<CreditCard aria-hidden="true" size={18} />}
+          />
+          <ReportKpiCard
+            label="Efectivo cobrado"
+            value={formatMoney(collectedCash.amountCents)}
+            helper={`${collectedCash.orderCount} pedidos`}
+            icon={<Banknote aria-hidden="true" size={18} />}
+          />
+          <ReportKpiCard
+            label="Efectivo pendiente"
+            value={formatMoney(pendingCash.amountCents)}
+            helper={`${pendingCash.orderCount} pedidos sin caja`}
+            tone="warning"
+          />
+          <ReportKpiCard
+            label="Descuentos promo"
+            value={`-${formatMoney(report?.promotionDiscountCents ?? 0)}`}
+            helper={`Bruto: ${formatMoney(report?.grossProductRevenueCents ?? 0)}`}
+            tone="success"
+          />
+          <ReportKpiCard
+            label="Cancelados"
+            value={String(cancelledOrders.orderCount)}
+            helper={formatMoney(cancelledOrders.amountCents)}
+            tone="danger"
+          />
+        </div>
       </section>
 
       {report && (
         <section className="report-insights">
-          <article>
-            <CalendarDays aria-hidden="true" size={20} />
-            <div>
-              <span>Rango</span>
-              <strong>
-                {formatReportDate(report.from)} - {formatReportDate(report.to)}
-              </strong>
-            </div>
-          </article>
           <article>
             <Trophy aria-hidden="true" size={20} />
             <div>
@@ -390,6 +535,14 @@ export function AdminReportsClient() {
               {topProduct && <small>{topProduct.quantity} uds.</small>}
             </div>
           </article>
+          <article>
+            <ReceiptText aria-hidden="true" size={20} />
+            <div>
+              <span>Ticket medio</span>
+              <strong>{formatMoney(report.averageTicketCents)}</strong>
+              <small>Promedio por pedido cobrado</small>
+            </div>
+          </article>
         </section>
       )}
 
@@ -404,30 +557,74 @@ export function AdminReportsClient() {
               <RefreshCw className="spin" aria-hidden="true" />
               Cargando reportes
             </div>
+          ) : dailyActivity.length === 0 ? (
+            <div className="empty-state">Sin dias en este rango.</div>
           ) : (
-            <div className="trend-chart">
-              {chartDays.map((day) => {
-                const height =
-                  maxRevenue > 0
-                    ? Math.max(8, (day.revenueCents / maxRevenue) * 100)
-                    : 8;
-                return (
-                  <article className="trend-day" key={day.date}>
-                    <div className="trend-day-label">
-                      <strong>{formatReportDate(day.date)}</strong>
-                      <span>{day.orderCount} ped.</span>
-                    </div>
-                    <div className="trend-bar-track">
-                      <span
-                        className="trend-bar"
-                        style={{ height: `${height}%` }}
-                        title={formatMoney(day.revenueCents)}
-                      />
-                    </div>
-                    <strong>{formatMoney(day.revenueCents)}</strong>
-                  </article>
-                );
-              })}
+            <div className="report-chart-card">
+              <ResponsiveContainer width="100%" height={330}>
+                <ComposedChart
+                  data={dailyActivity}
+                  margin={{ top: 16, right: 8, bottom: 4, left: 0 }}
+                >
+                  <CartesianGrid stroke="rgba(90, 7, 11, 0.1)" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tickLine={false}
+                    axisLine={false}
+                    minTickGap={18}
+                    tick={{ fill: "#7e6b5c", fontSize: 12, fontWeight: 800 }}
+                  />
+                  <YAxis
+                    yAxisId="money"
+                    tickFormatter={formatCompactMoney}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: "#7e6b5c", fontSize: 12, fontWeight: 800 }}
+                    width={58}
+                  />
+                  <YAxis
+                    yAxisId="orders"
+                    orientation="right"
+                    allowDecimals={false}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: "#7e6b5c", fontSize: 12, fontWeight: 800 }}
+                    width={34}
+                  />
+                  <Tooltip
+                    content={(props) => <DailyActivityTooltip {...props} />}
+                  />
+                  <Legend
+                    verticalAlign="top"
+                    align="right"
+                    iconType="circle"
+                    wrapperStyle={{
+                      color: "#2a1712",
+                      fontSize: 12,
+                      fontWeight: 900,
+                      paddingBottom: 8,
+                    }}
+                  />
+                  <Bar
+                    yAxisId="money"
+                    dataKey="revenueCents"
+                    name="Cobrado"
+                    fill="#5a070b"
+                    radius={[7, 7, 0, 0]}
+                    maxBarSize={38}
+                  />
+                  <Line
+                    yAxisId="orders"
+                    type="monotone"
+                    dataKey="orderCount"
+                    name="Pedidos"
+                    stroke="#23715a"
+                    strokeWidth={3}
+                    dot={{ r: 3, fill: "#23715a" }}
+                    activeDot={{ r: 5 }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
             </div>
           )}
         </section>
@@ -701,6 +898,315 @@ export function AdminReportsClient() {
   );
 }
 
+function ReportKpiCard({
+  label,
+  value,
+  helper,
+  icon,
+  variant,
+  tone,
+}: {
+  label: string;
+  value: string;
+  helper: string;
+  icon?: ReactNode;
+  variant?: "primary";
+  tone?: "success" | "warning" | "danger";
+}) {
+  const className = [
+    "report-kpi-card",
+    variant === "primary" ? "primary" : undefined,
+    tone ? `tone-${tone}` : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <article className={className}>
+      <div>
+        <span>{label}</span>
+        {icon && <span className="report-kpi-icon">{icon}</span>}
+      </div>
+      <strong>{value}</strong>
+      <small>{helper}</small>
+    </article>
+  );
+}
+
+function DailyActivityTooltip({
+  active,
+  payload,
+}: TooltipContentProps<TooltipValueType, string | number>) {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  const point = payload[0]?.payload;
+  if (!isDailyChartPoint(point)) {
+    return null;
+  }
+
+  return (
+    <div className="report-chart-tooltip">
+      <strong>{formatReportDate(point.date)}</strong>
+      <span>Cobrado: {formatMoney(point.revenueCents)}</span>
+      <span>Pedidos: {point.orderCount}</span>
+      {point.promotionDiscountCents > 0 && (
+        <span>Promos: -{formatMoney(point.promotionDiscountCents)}</span>
+      )}
+      {point.grossProductRevenueCents > point.revenueCents && (
+        <span>Bruto: {formatMoney(point.grossProductRevenueCents)}</span>
+      )}
+    </div>
+  );
+}
+
+function openPrintableSalesReport({
+  rangeLabel,
+  generatedAt,
+  rows,
+  footerRows,
+}: {
+  rangeLabel: string;
+  generatedAt: string;
+  rows: PrintableReportRow[];
+  footerRows: PrintableReportRow[];
+}) {
+  const printWindow = window.open(
+    "",
+    "mordida-report-print",
+    "width=900,height=720",
+  );
+
+  if (!printWindow) {
+    return false;
+  }
+
+  const printDocument = printWindow.document;
+  printDocument.documentElement.lang = "es";
+  printDocument.title = `Mordida Tasty - Cierre ${rangeLabel}`;
+  printDocument.head.replaceChildren();
+  printDocument.body.replaceChildren();
+
+  const style = printDocument.createElement("style");
+  style.textContent = `
+    @page {
+      size: A4 portrait;
+      margin: 16mm;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: #26140f;
+      background: #fffaf4;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 13px;
+    }
+
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 28px;
+      border: 1px solid #ead8c3;
+      border-radius: 12px;
+      background: #fff;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      padding-bottom: 18px;
+      border-bottom: 2px solid #5a070b;
+    }
+
+    h1,
+    h2,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 26px;
+      line-height: 1.05;
+    }
+
+    h2 {
+      margin: 26px 0 10px;
+      font-size: 15px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .brand {
+      color: #5a070b;
+      font-weight: 900;
+    }
+
+    .meta {
+      color: #7e6b5c;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: right;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border: 1px solid #ead8c3;
+      border-radius: 10px;
+    }
+
+    th,
+    td {
+      padding: 12px 14px;
+      border-bottom: 1px solid #ead8c3;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: #fff;
+      background: #2a1712;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    td.value {
+      width: 150px;
+      font-size: 18px;
+      font-weight: 900;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    td.detail {
+      color: #7e6b5c;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    footer {
+      margin-top: 24px;
+      color: #7e6b5c;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      main {
+        padding: 0;
+        border: 0;
+      }
+    }
+  `;
+  printDocument.head.appendChild(style);
+
+  const main = printDocument.createElement("main");
+  const header = printDocument.createElement("header");
+  const titleBlock = printDocument.createElement("div");
+  const metaBlock = printDocument.createElement("div");
+  metaBlock.className = "meta";
+
+  appendPrintableText(titleBlock, "p", "Mordida Tasty", "brand");
+  appendPrintableText(titleBlock, "h1", "Cierre de reporte");
+  appendPrintableText(titleBlock, "p", `Rango: ${rangeLabel}`);
+  appendPrintableText(metaBlock, "p", `Generado: ${generatedAt}`);
+  appendPrintableText(metaBlock, "p", "Guardar como PDF desde Imprimir");
+
+  header.append(titleBlock, metaBlock);
+  main.appendChild(header);
+
+  appendPrintableText(main, "h2", "Resumen de caja");
+  main.appendChild(printableReportTable(printDocument, rows));
+
+  appendPrintableText(main, "h2", "Lectura de negocio");
+  main.appendChild(printableReportTable(printDocument, footerRows));
+
+  const footer = printDocument.createElement("footer");
+  footer.textContent =
+    "Reporte informativo para gestion interna. Los reembolsos manuales de Stripe se controlan aparte hasta su automatizacion.";
+  main.appendChild(footer);
+  printDocument.body.appendChild(main);
+
+  window.setTimeout(() => {
+    printWindow.focus();
+    printWindow.print();
+  }, 150);
+
+  return true;
+}
+
+function appendPrintableText<K extends keyof HTMLElementTagNameMap>(
+  parent: Node,
+  tagName: K,
+  textContent: string,
+  className?: string,
+) {
+  const element = parent.ownerDocument?.createElement(tagName);
+  if (!element) {
+    return;
+  }
+
+  element.textContent = textContent;
+  if (className) {
+    element.className = className;
+  }
+  parent.appendChild(element);
+}
+
+function printableReportTable(
+  printDocument: Document,
+  rows: PrintableReportRow[],
+) {
+  const table = printDocument.createElement("table");
+  const thead = printDocument.createElement("thead");
+  const headRow = printDocument.createElement("tr");
+
+  for (const label of ["Concepto", "Importe", "Detalle"]) {
+    const cell = printDocument.createElement("th");
+    cell.textContent = label;
+    headRow.appendChild(cell);
+  }
+
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = printDocument.createElement("tbody");
+  for (const row of rows) {
+    const tableRow = printDocument.createElement("tr");
+    const labelCell = printDocument.createElement("td");
+    const valueCell = printDocument.createElement("td");
+    const detailCell = printDocument.createElement("td");
+
+    valueCell.className = "value";
+    detailCell.className = "detail";
+    labelCell.textContent = row.label;
+    valueCell.textContent = row.value;
+    detailCell.textContent = row.detail;
+
+    tableRow.append(labelCell, valueCell, detailCell);
+    tbody.appendChild(tableRow);
+  }
+
+  table.appendChild(tbody);
+  return table;
+}
+
 function OrderHistoryDetail({
   order,
   onClose,
@@ -720,6 +1226,7 @@ function OrderHistoryDetail({
 
   const isDelivery = order.deliveryMethod === "DELIVERY";
   const phone = customerPhone(order);
+  const promotionDiscountCents = orderPromotionDiscountCents(order);
 
   return (
     <aside className="order-history-detail">
@@ -854,13 +1361,19 @@ function OrderHistoryDetail({
           </div>
           {order.subtotalCents !== undefined && (
             <div>
-              <dt>Subtotal</dt>
+              <dt>Productos</dt>
               <dd>{formatMoney(order.subtotalCents)}</dd>
+            </div>
+          )}
+          {promotionDiscountCents > 0 && (
+            <div className="history-total-note">
+              <dt>Ahorro promo incluido</dt>
+              <dd>-{formatMoney(promotionDiscountCents)}</dd>
             </div>
           )}
           {(order.discountCents ?? 0) > 0 && (
             <div>
-              <dt>Descuento</dt>
+              <dt>Descuento fidelidad</dt>
               <dd>-{formatMoney(order.discountCents ?? 0)}</dd>
             </div>
           )}
@@ -871,13 +1384,13 @@ function OrderHistoryDetail({
             </div>
           )}
           {(order.taxCents ?? 0) > 0 && (
-            <div>
-              <dt>Impuestos</dt>
+            <div className="history-total-note">
+              <dt>IVA incluido</dt>
               <dd>{formatMoney(order.taxCents ?? 0)}</dd>
             </div>
           )}
           <div className="history-total-strong">
-            <dt>Total</dt>
+            <dt>Total cobrado</dt>
             <dd>{formatMoney(order.totalCents)}</dd>
           </div>
         </dl>
@@ -892,11 +1405,13 @@ function OrderHistoryDetail({
           <ol className="history-status-list">
             {order.statusHistory.map((item, index) => (
               <li key={`${item.toStatus}-${item.createdAt}-${index}`}>
-                <span>{orderStatusLabels[item.toStatus]}</span>
+                <span>{businessStatusLabel(item.toStatus)}</span>
                 <time dateTime={item.createdAt}>
                   {formatHistoryDate(item.createdAt)}
                 </time>
-                {item.note && <small>{item.note}</small>}
+                {businessHistoryNote(item.note) && (
+                  <small>{businessHistoryNote(item.note)}</small>
+                )}
               </li>
             ))}
           </ol>
@@ -907,6 +1422,93 @@ function OrderHistoryDetail({
     </aside>
   );
 }
+
+function toDailyChartPoint(
+  day: SalesReportResponse["salesByDay"][number],
+): DailyChartPoint {
+  return {
+    date: day.date,
+    label: formatReportDate(day.date),
+    revenueCents: day.revenueCents,
+    grossProductRevenueCents: day.grossProductRevenueCents,
+    promotionDiscountCents: day.promotionDiscountCents,
+    orderCount: day.orderCount,
+  };
+}
+
+function isDailyChartPoint(value: unknown): value is DailyChartPoint {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const point = value as Record<string, unknown>;
+  return (
+    typeof point.date === "string" &&
+    typeof point.label === "string" &&
+    typeof point.revenueCents === "number" &&
+    typeof point.grossProductRevenueCents === "number" &&
+    typeof point.promotionDiscountCents === "number" &&
+    typeof point.orderCount === "number"
+  );
+}
+
+function formatCompactMoney(value: number | string) {
+  const cents = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(cents)) {
+    return "";
+  }
+
+  const euros = cents / 100;
+  return `${euros.toLocaleString("es-ES", {
+    maximumFractionDigits: euros < 100 ? 1 : 0,
+  })} €`;
+}
+
+function orderPromotionDiscountCents(order: OrderSummary) {
+  return order.items.reduce(
+    (sum, item) => sum + Math.max(0, item.promotionDiscountCents ?? 0),
+    0,
+  );
+}
+
+function businessStatusLabel(status: OrderStatus) {
+  const labels: Record<OrderStatus, string> = {
+    CREATED: "Pedido creado",
+    PENDING_PAYMENT: "Pendiente de pago",
+    PAID: "Pago confirmado",
+    CONFIRMED: "Pedido aceptado",
+    PREPARING: "Preparando",
+    READY: "Listo para entregar",
+    DELIVERED: "Entregado",
+    CANCELLED: "Cancelado",
+    PAYMENT_FAILED: "Pago fallido",
+    EXPIRED: "Pedido expirado",
+  };
+
+  return labels[status];
+}
+
+function businessHistoryNote(note?: string | null) {
+  const cleanNote = note?.trim();
+  if (!cleanNote) {
+    return undefined;
+  }
+
+  if (cleanNote === "Checkout session requested") {
+    return "Pago con tarjeta iniciado.";
+  }
+
+  if (/^Pago recibido despues de/i.test(cleanNote)) {
+    return "Pago recibido; revisar si requiere devolucion manual.";
+  }
+
+  if (/(stripe|checkout|session|payment_intent|cs_|pi_|re_)/i.test(cleanNote)) {
+    return undefined;
+  }
+
+  return cleanNote.replace(/\bcentimos\b/gi, "centimos");
+}
+
 function formatReportDate(value: string) {
   return new Date(`${value}T00:00:00`).toLocaleDateString("es-ES", {
     day: "2-digit",

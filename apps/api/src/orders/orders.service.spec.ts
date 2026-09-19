@@ -1435,6 +1435,8 @@ describe("OrdersService", () => {
     expect(dashboard.paidRevenueCents).toBe(1200);
     expect(dashboard.paymentBreakdown).toEqual({
       collected: { orderCount: 1, amountCents: 1200 },
+      collectedCash: { orderCount: 0, amountCents: 0 },
+      collectedCard: { orderCount: 1, amountCents: 1200 },
       pendingCash: { orderCount: 1, amountCents: 2000 },
       cancelled: { orderCount: 1, amountCents: 900 },
     });
@@ -1590,6 +1592,8 @@ describe("OrdersService", () => {
     expect(report.grossProductRevenueCents).toBe(2700);
     expect(report.paymentBreakdown).toEqual({
       collected: { orderCount: 2, amountCents: 2700 },
+      collectedCash: { orderCount: 1, amountCents: 1500 },
+      collectedCard: { orderCount: 1, amountCents: 1200 },
       pendingCash: { orderCount: 1, amountCents: 2000 },
       cancelled: { orderCount: 1, amountCents: 900 },
     });

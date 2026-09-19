@@ -182,6 +182,8 @@ export interface ReportMoneyBucket {
 
 export interface ReportPaymentBreakdown {
   collected: ReportMoneyBucket;
+  collectedCash: ReportMoneyBucket;
+  collectedCard: ReportMoneyBucket;
   pendingCash: ReportMoneyBucket;
   cancelled: ReportMoneyBucket;
 }
@@ -1188,6 +1190,8 @@ export class OrdersService {
   ): ReportPaymentBreakdown {
     const breakdown: ReportPaymentBreakdown = {
       collected: { orderCount: 0, amountCents: 0 },
+      collectedCash: { orderCount: 0, amountCents: 0 },
+      collectedCard: { orderCount: 0, amountCents: 0 },
       pendingCash: { orderCount: 0, amountCents: 0 },
       cancelled: { orderCount: 0, amountCents: 0 },
     };
@@ -1195,6 +1199,12 @@ export class OrdersService {
     for (const order of orders) {
       if (this.isCollectedReportOrder(order)) {
         this.addToMoneyBucket(breakdown.collected, order.totalCents);
+        this.addToMoneyBucket(
+          order.paymentMethod === OrderPaymentMethod.CASH
+            ? breakdown.collectedCash
+            : breakdown.collectedCard,
+          order.totalCents,
+        );
       } else if (this.isPendingCashReportOrder(order)) {
         this.addToMoneyBucket(breakdown.pendingCash, order.totalCents);
       } else if (cancelledReportStatuses.includes(order.status)) {
