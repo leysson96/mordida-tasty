@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { ConfigService } from "@nestjs/config";
+import { normalizeRequiredImageUrl } from "../common/image-url";
 import { AppEnv } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -96,9 +97,6 @@ const weekdays = [
   "saturday",
   "sunday",
 ] as const;
-const allowedLocalImagePrefixes = ["/images/", "/uploads/"] as const;
-const cloudinaryImageHost = "res.cloudinary.com";
-const cloudinaryImagePathPattern = /^\/[^/]+\/image\/upload\/.+/;
 const promotionTimezone = "Europe/Madrid";
 const weekdaySet = new Set<string>(weekdays);
 const publicClosureSelect = {
@@ -858,37 +856,10 @@ export class SettingsService {
   }
 
   private normalizeImagePath(value: unknown, fallback: string) {
-    const imageUrl = cleanText(value, fallback);
-
-    if (this.isAllowedLocalImagePath(imageUrl)) {
-      return imageUrl;
-    }
-
-    try {
-      const parsed = new URL(imageUrl);
-      if (this.isAllowedCloudinaryImageUrl(parsed)) {
-        return parsed.toString();
-      }
-    } catch {
-      throw new BadRequestException(
-        "Image must be an internal asset, API upload or Cloudinary image URL.",
-      );
-    }
-
-    throw new BadRequestException(
-      "Image must be an internal asset, API upload or Cloudinary image URL.",
-    );
-  }
-
-  private isAllowedLocalImagePath(value: string) {
-    return allowedLocalImagePrefixes.some((prefix) => value.startsWith(prefix));
-  }
-
-  private isAllowedCloudinaryImageUrl(value: URL) {
-    return (
-      value.protocol === "https:" &&
-      value.hostname.toLowerCase() === cloudinaryImageHost &&
-      cloudinaryImagePathPattern.test(value.pathname)
+    return normalizeRequiredImageUrl(
+      value,
+      fallback,
+      this.configService.get("API_PUBLIC_URL", { infer: true }),
     );
   }
 

@@ -14,6 +14,7 @@ describe("PaymentsService", () => {
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      delete: jest.fn(),
     },
     order: {
       findUnique: jest.fn(),
@@ -103,6 +104,7 @@ describe("PaymentsService", () => {
     prisma.stripeEvent.findUnique.mockResolvedValue(null);
     prisma.stripeEvent.create.mockResolvedValue({});
     prisma.stripeEvent.update.mockResolvedValue({});
+    prisma.stripeEvent.delete.mockResolvedValue({});
     prisma.order.update.mockResolvedValue({});
     prisma.payment.upsert.mockResolvedValue({});
     prisma.payment.updateMany.mockResolvedValue({ count: 1 });
@@ -165,6 +167,29 @@ describe("PaymentsService", () => {
     expect(prisma.stripeEvent.update).not.toHaveBeenCalled();
   });
 
+  it("ignores duplicate Stripe webhook events that are already being processed", async () => {
+    prisma.stripeEvent.findUnique.mockResolvedValue({
+      id: "evt_in_progress",
+      processedAt: null,
+    });
+    stripe.webhooks.constructEvent.mockReturnValue({
+      id: "evt_in_progress",
+      type: "checkout.session.completed",
+      data: { object: { id: "cs_in_progress" } },
+    });
+
+    await expect(
+      service().handleWebhook(signedStripeRequest() as never),
+    ).resolves.toEqual({
+      received: true,
+      duplicate: true,
+    });
+
+    expect(ordersService.transitionOrder).not.toHaveBeenCalled();
+    expect(prisma.stripeEvent.create).not.toHaveBeenCalled();
+    expect(prisma.stripeEvent.update).not.toHaveBeenCalled();
+  });
+
   it("treats a concurrent duplicate Stripe webhook insert as already received", async () => {
     prisma.stripeEvent.create.mockRejectedValueOnce(
       new Prisma.PrismaClientKnownRequestError(
@@ -189,6 +214,36 @@ describe("PaymentsService", () => {
     });
 
     expect(ordersService.transitionOrder).not.toHaveBeenCalled();
+    expect(prisma.stripeEvent.update).not.toHaveBeenCalled();
+  });
+
+  it("releases recorded Stripe webhook events when processing fails", async () => {
+    stripe.webhooks.constructEvent.mockReturnValue({
+      id: "evt_retryable",
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_retryable",
+          client_reference_id: "order-1",
+          payment_intent: "pi_retryable",
+        },
+      },
+    });
+    prisma.order.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service().handleWebhook(signedStripeRequest() as never),
+    ).rejects.toThrow("Order not found");
+
+    expect(prisma.stripeEvent.create).toHaveBeenCalledWith({
+      data: {
+        id: "evt_retryable",
+        type: "checkout.session.completed",
+      },
+    });
+    expect(prisma.stripeEvent.delete).toHaveBeenCalledWith({
+      where: { id: "evt_retryable" },
+    });
     expect(prisma.stripeEvent.update).not.toHaveBeenCalled();
   });
 

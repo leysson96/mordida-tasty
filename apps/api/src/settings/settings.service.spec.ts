@@ -18,9 +18,15 @@ describe("SettingsService", () => {
   };
 
   const config = {
-    get: jest.fn((key: string) =>
-      key === "APP_TIMEZONE" ? "Europe/Madrid" : undefined,
-    ),
+    get: jest.fn((key: string) => {
+      if (key === "APP_TIMEZONE") {
+        return "Europe/Madrid";
+      }
+      if (key === "API_PUBLIC_URL") {
+        return "https://mordida-tasty-api.onrender.com";
+      }
+      return undefined;
+    }),
   };
 
   beforeEach(() => {
@@ -257,6 +263,36 @@ describe("SettingsService", () => {
     });
   });
 
+  it("stores visual promotion images from the configured API upload origin", async () => {
+    const imageUrl =
+      "https://mordida-tasty-api.onrender.com/uploads/images/promo.webp";
+
+    await expect(
+      service().setPromotionCampaign({
+        enabled: true,
+        badge: "Promo finde",
+        title: "Mordida Smash especial",
+        description: "Solo este finde en carta online.",
+        productSlug: "mordida-smash",
+        discountId: "discount-1",
+        imageUrl,
+        startsOn: "2026-09-18",
+        endsOn: "2026-09-20",
+        ctaLabel: "Pedir ahora",
+      }),
+    ).resolves.toMatchObject({ imageUrl });
+
+    expect(prisma.setting.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: {
+          value: expect.objectContaining({
+            imageUrl,
+          }),
+        },
+      }),
+    );
+  });
+
   it("only exposes active public promotions in the Madrid business calendar", async () => {
     const campaign = {
       enabled: true,
@@ -333,6 +369,24 @@ describe("SettingsService", () => {
         enabled: false,
         startsOn: "2026-09-21",
         endsOn: "2026-09-20",
+      }),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(prisma.setting.upsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects external visual promotion images before saving", async () => {
+    await expect(
+      service().setPromotionCampaign({
+        enabled: true,
+        badge: "Promo finde",
+        title: "Mordida Smash especial",
+        description: "Solo este finde en carta online.",
+        productSlug: "mordida-smash",
+        imageUrl: "https://example.com/promo.webp",
+        startsOn: "2026-09-18",
+        endsOn: "2026-09-20",
+        ctaLabel: "Pedir ahora",
       }),
     ).rejects.toThrow(BadRequestException);
 

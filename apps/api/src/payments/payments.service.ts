@@ -790,22 +790,34 @@ export class PaymentsService {
     const storedEvent = await this.prisma.stripeEvent.findUnique({
       where: { id: event.id },
     });
-    if (storedEvent?.processedAt) {
+    if (storedEvent) {
       return { received: true, duplicate: true };
     }
 
-    if (!storedEvent) {
-      const recorded = await this.recordStripeEvent(event);
-      if (!recorded) {
-        return { received: true, duplicate: true };
-      }
+    const recorded = await this.recordStripeEvent(event);
+    if (!recorded) {
+      return { received: true, duplicate: true };
     }
 
-    await this.processEvent(event);
-    await this.prisma.stripeEvent.update({
-      where: { id: event.id },
-      data: { processedAt: new Date() },
-    });
+    try {
+      await this.processEvent(event);
+      await this.prisma.stripeEvent.update({
+        where: { id: event.id },
+        data: { processedAt: new Date() },
+      });
+    } catch (error) {
+      await this.prisma.stripeEvent
+        .delete({ where: { id: event.id } })
+        .catch((cleanupError: unknown) => {
+          this.logger.error(
+            `Failed to release Stripe event ${event.id} after webhook error.`,
+            cleanupError instanceof Error
+              ? cleanupError.stack
+              : String(cleanupError),
+          );
+        });
+      throw error;
+    }
 
     return { received: true };
   }

@@ -50,6 +50,13 @@ describe("ProductsService", () => {
     listActiveDiscountsForCheckout: jest.fn(),
     resolveLineDiscount: jest.fn(),
   };
+  const config = {
+    get: jest.fn((key: string) =>
+      key === "API_PUBLIC_URL"
+        ? "https://mordida-tasty-api.onrender.com"
+        : undefined,
+    ),
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -58,7 +65,11 @@ describe("ProductsService", () => {
   });
 
   function service() {
-    return new ProductsService(prisma as never, promotions as never);
+    return new ProductsService(
+      prisma as never,
+      promotions as never,
+      config as never,
+    );
   }
 
   it("adds backend-calculated promotion pricing to public menu products", async () => {
@@ -230,6 +241,33 @@ describe("ProductsService", () => {
     );
   });
 
+  it("accepts API upload URLs from the configured API origin", async () => {
+    const apiUploadUrl =
+      "https://mordida-tasty-api.onrender.com/uploads/images/burger.webp";
+    prisma.category.findUnique.mockResolvedValue({ id: "category-1" });
+    prisma.product.findUnique.mockResolvedValue(null);
+    prisma.product.create.mockResolvedValue({
+      id: "product-1",
+      imageUrl: apiUploadUrl,
+    });
+
+    await service().createProduct({
+      categoryId: "category-1",
+      description: "Burger",
+      imageUrl: apiUploadUrl,
+      name: "Mordida",
+      priceCents: 750,
+    });
+
+    expect(prisma.product.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          imageUrl: apiUploadUrl,
+        }),
+      }),
+    );
+  });
+
   it("rejects external image URLs when creating products", async () => {
     prisma.category.findUnique.mockResolvedValue({ id: "category-1" });
     prisma.product.findUnique.mockResolvedValue(null);
@@ -239,6 +277,24 @@ describe("ProductsService", () => {
         categoryId: "category-1",
         description: "Burger",
         imageUrl: "https://example.com/burger.jpg",
+        name: "Mordida",
+        priceCents: 750,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.product.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects API upload lookalike hosts when creating products", async () => {
+    prisma.category.findUnique.mockResolvedValue({ id: "category-1" });
+    prisma.product.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service().createProduct({
+        categoryId: "category-1",
+        description: "Burger",
+        imageUrl:
+          "https://mordida-tasty-api.onrender.com.evil.test/uploads/images/burger.webp",
         name: "Mordida",
         priceCents: 750,
       }),

@@ -4,7 +4,10 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Prisma } from "@prisma/client";
+import { normalizeOptionalImageUrl } from "../common/image-url";
+import { AppEnv } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   DiscountForResolution,
@@ -70,15 +73,12 @@ interface ProductForPromotionPricing {
   priceCents: number;
 }
 
-const allowedLocalImagePrefixes = ["/images/", "/uploads/"] as const;
-const cloudinaryImageHost = "res.cloudinary.com";
-const cloudinaryImagePathPattern = /^\/[^/]+\/image\/upload\/.+/;
-
 @Injectable()
 export class ProductsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly promotionsService: PromotionsService,
+    private readonly configService: ConfigService<AppEnv, true>,
   ) {}
 
   async listMenu() {
@@ -179,7 +179,7 @@ export class ProductsService {
         slug,
         description: dto.description.trim(),
         priceCents: dto.priceCents,
-        imageUrl: normalizeImageUrl(dto.imageUrl),
+        imageUrl: this.normalizeImageUrl(dto.imageUrl),
         sortOrder: dto.sortOrder ?? 0,
       },
       include: {
@@ -200,7 +200,7 @@ export class ProductsService {
       name: dto.name?.trim(),
       description: dto.description?.trim(),
       priceCents: dto.priceCents,
-      imageUrl: normalizeImageUrl(dto.imageUrl),
+      imageUrl: this.normalizeImageUrl(dto.imageUrl),
       active: dto.active,
       available: dto.available,
       sortOrder: dto.sortOrder,
@@ -452,6 +452,13 @@ export class ProductsService {
     });
   }
 
+  private normalizeImageUrl(value?: string) {
+    return normalizeOptionalImageUrl(
+      value,
+      this.configService.get("API_PUBLIC_URL", { infer: true }),
+    );
+  }
+
   private withPromotionPricing<T extends ProductForPromotionPricing>(
     product: T,
     discounts: DiscountForResolution[],
@@ -531,43 +538,4 @@ function cleanText(value: string, field: string) {
   }
 
   return clean;
-}
-
-function normalizeImageUrl(value?: string) {
-  const imageUrl = value?.trim();
-
-  if (!imageUrl) {
-    return undefined;
-  }
-
-  if (isAllowedLocalImagePath(imageUrl)) {
-    return imageUrl;
-  }
-
-  try {
-    const parsed = new URL(imageUrl);
-    if (isAllowedCloudinaryImageUrl(parsed)) {
-      return parsed.toString();
-    }
-  } catch {
-    throw new BadRequestException(
-      "Image must be an internal asset, API upload or Cloudinary image URL.",
-    );
-  }
-
-  throw new BadRequestException(
-    "Image must be an internal asset, API upload or Cloudinary image URL.",
-  );
-}
-
-function isAllowedLocalImagePath(value: string) {
-  return allowedLocalImagePrefixes.some((prefix) => value.startsWith(prefix));
-}
-
-function isAllowedCloudinaryImageUrl(value: URL) {
-  return (
-    value.protocol === "https:" &&
-    value.hostname.toLowerCase() === cloudinaryImageHost &&
-    cloudinaryImagePathPattern.test(value.pathname)
-  );
 }
