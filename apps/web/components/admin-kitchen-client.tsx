@@ -60,7 +60,7 @@ export function AdminKitchenClient() {
     }
 
     load();
-    const id = window.setInterval(load, 5000);
+    const id = window.setInterval(load, 2000);
     return () => {
       active = false;
       window.clearInterval(id);
