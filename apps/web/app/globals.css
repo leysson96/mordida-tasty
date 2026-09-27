@@ -2336,8 +2336,69 @@ textarea {
   --page-width: 1320px;
 }
 
+.site-header.admin-mode {
+  grid-template-columns: minmax(190px, 360px) minmax(0, 1fr) auto;
+  gap: 12px;
+  min-height: 64px;
+  padding: 8px clamp(16px, 3vw, 36px);
+}
+
+.site-header.admin-mode .brand {
+  overflow: hidden;
+}
+
+.site-header.admin-mode .brand-mark {
+  width: 42px;
+  height: 42px;
+  font-size: 0.82rem;
+  box-shadow: 3px 3px 0 var(--color-accent);
+}
+
+.site-header.admin-mode .brand-name {
+  max-width: 280px;
+  font-size: 1rem;
+}
+
+.site-header.admin-mode .main-nav {
+  gap: 4px;
+}
+
+.site-header.admin-mode .main-nav a {
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 10px;
+  font-size: 0.9rem;
+}
+
+.site-header.admin-mode .main-nav a svg {
+  width: 16px;
+  height: 16px;
+}
+
+.site-header.admin-mode .admin-header-link {
+  min-width: 86px;
+  min-height: 42px;
+  padding: 0 12px;
+  font-size: 0.92rem;
+  box-shadow: 3px 3px 0 var(--color-accent);
+}
+
+.admin-page {
+  padding-top: 28px;
+}
+
 .admin-toolbar {
   min-height: 70px;
+}
+
+.admin-page .admin-toolbar {
+  min-height: 56px;
+  margin-bottom: 16px;
+}
+
+.admin-page .admin-toolbar h1 {
+  font-size: clamp(2rem, 3.2vw, 3rem);
+  line-height: 1;
 }
 
 .toolbar-actions {
@@ -2353,6 +2414,11 @@ textarea {
   margin-bottom: 14px;
 }
 
+.admin-page .admin-metrics {
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
 .admin-metrics article {
   min-height: 118px;
   padding: 18px;
@@ -2362,6 +2428,11 @@ textarea {
     linear-gradient(135deg, rgba(189, 90, 8, 0.22), transparent 62%),
     var(--color-ink);
   box-shadow: var(--shadow-tight);
+}
+
+.admin-page .admin-metrics article {
+  min-height: 96px;
+  padding: 16px;
 }
 
 .admin-metrics span {
@@ -2384,6 +2455,10 @@ textarea {
   line-height: 1;
 }
 
+.admin-page .admin-metrics strong {
+  font-size: 1.55rem;
+}
+
 .order-filter-bar {
   display: grid;
   grid-template-columns:
@@ -2397,6 +2472,22 @@ textarea {
   border-radius: var(--radius);
   background: rgba(255, 250, 243, 0.96);
   box-shadow: var(--shadow-tight);
+}
+
+.admin-page .order-filter-bar {
+  gap: 8px;
+  padding: 12px;
+}
+
+.admin-page input,
+.admin-page select,
+.admin-page textarea {
+  min-height: 40px;
+}
+
+.admin-page .button,
+.admin-page .icon-button {
+  min-height: 40px;
 }
 
 .search-field div {
