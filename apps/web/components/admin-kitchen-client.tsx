@@ -18,6 +18,7 @@ import {
 import { brandConfig } from "../lib/brand";
 import { kitchenColumns } from "../lib/order-state";
 import { formatOrderItemOptions } from "../lib/order-format";
+import { openPrintableOrderTicket } from "../lib/order-ticket-print";
 import {
   OrderStatus,
   OrderSummary,
@@ -26,12 +27,10 @@ import {
 } from "../lib/types";
 import { paymentSummaryText } from "../lib/payment-format";
 import { KitchenAlarm } from "./kitchen-alarm";
-import { PrintableOrderTicket } from "./printable-order-ticket";
 
 export function AdminKitchenClient() {
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [error, setError] = useState<string>();
-  const [printingOrderId, setPrintingOrderId] = useState<string>();
   const [acknowledged, setAcknowledged] = useState<Set<string>>(new Set());
   const [siteContent, setSiteContent] = useState<SiteContent>(brandConfig);
 
@@ -81,8 +80,6 @@ export function AdminKitchenClient() {
     [orders],
   );
 
-  const printingOrder = orders.find((order) => order.id === printingOrderId);
-
   async function changeStatus(orderId: string, status: OrderStatus) {
     try {
       const updated = await api<OrderSummary>(
@@ -106,9 +103,15 @@ export function AdminKitchenClient() {
     }
   }
 
-  function printOrder(orderId: string) {
-    setPrintingOrderId(orderId);
-    window.setTimeout(() => window.print(), 80);
+  function printOrder(order: OrderSummary) {
+    const opened = openPrintableOrderTicket({
+      order,
+      siteName: siteContent.name,
+    });
+
+    if (!opened) {
+      setError("No se pudo abrir la ventana de impresion del ticket.");
+    }
   }
 
   function handleAdminError(requestError: unknown, fallback: string) {
@@ -164,7 +167,7 @@ export function AdminKitchenClient() {
                     <button
                       type="button"
                       className="icon-button"
-                      onClick={() => printOrder(order.id)}
+                      onClick={() => printOrder(order)}
                       title="Imprimir comanda"
                     >
                       <Printer aria-hidden="true" size={19} />
@@ -241,15 +244,6 @@ export function AdminKitchenClient() {
             )}
           </div>
         ))}
-      </section>
-
-      <section className="print-ticket">
-        {printingOrder && (
-          <PrintableOrderTicket
-            order={printingOrder}
-            siteName={siteContent.name}
-          />
-        )}
       </section>
     </main>
   );

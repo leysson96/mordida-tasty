@@ -66,8 +66,8 @@ import {
   SpecialClosure,
 } from "../lib/types";
 import { isCardPayment, paymentSummaryText } from "../lib/payment-format";
+import { openPrintableOrderTicket } from "../lib/order-ticket-print";
 import { KitchenAlarm } from "./kitchen-alarm";
-import { PrintableOrderTicket } from "./printable-order-ticket";
 
 interface DashboardResponse {
   date: string;
@@ -171,7 +171,6 @@ export function AdminOrdersClient() {
   );
   const [error, setError] = useState<string>();
   const [settingsMessage, setSettingsMessage] = useState<string>();
-  const [printingOrderId, setPrintingOrderId] = useState<string>();
   const [removalTarget, setRemovalTarget] = useState<{
     order: OrderSummary;
     item: OrderItem;
@@ -366,9 +365,15 @@ export function AdminOrdersClient() {
     }
   }
 
-  function printOrder(orderId: string) {
-    setPrintingOrderId(orderId);
-    window.setTimeout(() => window.print(), 80);
+  function printOrder(order: OrderSummary) {
+    const opened = openPrintableOrderTicket({
+      order,
+      siteName: siteContent.name,
+    });
+
+    if (!opened) {
+      setError("No se pudo abrir la ventana de impresion del ticket.");
+    }
   }
 
   async function saveBusinessSettings(event: FormEvent<HTMLFormElement>) {
@@ -693,8 +698,6 @@ export function AdminOrdersClient() {
     }
   }
 
-  const printingOrder = orders.find((order) => order.id === printingOrderId);
-
   function handleAdminError(requestError: unknown, fallback: string) {
     if (redirectOnAdminAuthError(requestError)) {
       return;
@@ -864,7 +867,7 @@ export function AdminOrdersClient() {
                   <button
                     type="button"
                     className="icon-button"
-                    onClick={() => printOrder(order.id)}
+                    onClick={() => printOrder(order)}
                     title="Imprimir comanda"
                   >
                     <Printer aria-hidden="true" size={19} />
@@ -1541,16 +1544,6 @@ export function AdminOrdersClient() {
           )}
         </aside>
       </section>
-
-      <section className="print-ticket">
-        {printingOrder && (
-          <PrintableOrderTicket
-            order={printingOrder}
-            siteName={siteContent.name}
-          />
-        )}
-      </section>
-
       {removalTarget && (
         <div className="modal-backdrop no-print">
           <form className="modal-panel" onSubmit={removeOrderItem}>
