@@ -200,6 +200,51 @@ describe("SettingsService", () => {
     });
   });
 
+  it("stores the ticket print config as a normalized setting", async () => {
+    await expect(
+      service().setTicketPrintConfig({
+        paperWidth: "58mm",
+        fontSize: "large",
+        copies: 2,
+        showCustomer: false,
+        showDelivery: true,
+        showItemOptions: false,
+        showTaxLine: false,
+        footerText: "  Gracias por tu pedido  ",
+      }),
+    ).resolves.toEqual({
+      paperWidth: "58mm",
+      fontSize: "large",
+      copies: 2,
+      showCustomer: false,
+      showDelivery: true,
+      showItemOptions: false,
+      showTaxLine: false,
+      footerText: "Gracias por tu pedido",
+    });
+
+    expect(prisma.setting.upsert).toHaveBeenCalledWith({
+      where: { key: "ticket_print_config" },
+      update: {
+        value: expect.objectContaining({
+          paperWidth: "58mm",
+          fontSize: "large",
+          copies: 2,
+          footerText: "Gracias por tu pedido",
+        }),
+      },
+      create: {
+        key: "ticket_print_config",
+        value: expect.objectContaining({
+          paperWidth: "58mm",
+          fontSize: "large",
+          copies: 2,
+          footerText: "Gracias por tu pedido",
+        }),
+      },
+    });
+  });
+
   it("keeps the promotion campaign disabled and empty by default", async () => {
     await expect(service().getPromotionCampaign()).resolves.toEqual({
       enabled: false,

@@ -68,6 +68,20 @@ export interface LoyaltyProgram {
   description: string;
 }
 
+export type TicketPaperWidth = "58mm" | "80mm";
+export type TicketFontSize = "small" | "normal" | "large";
+
+export interface TicketPrintConfig {
+  paperWidth: TicketPaperWidth;
+  fontSize: TicketFontSize;
+  copies: number;
+  showCustomer: boolean;
+  showDelivery: boolean;
+  showItemOptions: boolean;
+  showTaxLine: boolean;
+  footerText: string;
+}
+
 export interface PublicSpecialClosure {
   startsAt: Date;
   endsAt: Date;
@@ -191,6 +205,14 @@ export class SettingsService {
     return this.normalizePromotionCampaign(setting?.value);
   }
 
+  async getTicketPrintConfig() {
+    const setting = await this.prisma.setting.findUnique({
+      where: { key: "ticket_print_config" },
+    });
+
+    return this.normalizeTicketPrintConfig(setting?.value);
+  }
+
   async getPublicPromotionCampaign(date = new Date()) {
     const promotion = await this.getPromotionCampaign();
     if (!this.isPromotionActiveOnBusinessDate(promotion, date)) {
@@ -226,6 +248,22 @@ export class SettingsService {
         update: { value: next as unknown as Prisma.InputJsonValue },
         create: {
           key: "promotion_campaign",
+          value: next as unknown as Prisma.InputJsonValue,
+        },
+      })
+      .then(() => next);
+  }
+
+  async setTicketPrintConfig(value: Partial<TicketPrintConfig>) {
+    const current = await this.getTicketPrintConfig();
+    const next = this.normalizeTicketPrintConfig({ ...current, ...value });
+
+    return this.prisma.setting
+      .upsert({
+        where: { key: "ticket_print_config" },
+        update: { value: next as unknown as Prisma.InputJsonValue },
+        create: {
+          key: "ticket_print_config",
           value: next as unknown as Prisma.InputJsonValue,
         },
       })
@@ -581,6 +619,20 @@ export class SettingsService {
     };
   }
 
+  private defaultTicketPrintConfig(): TicketPrintConfig {
+    return {
+      paperWidth: "80mm",
+      fontSize: "normal",
+      copies: 1,
+      showCustomer: true,
+      showDelivery: true,
+      showItemOptions: true,
+      showTaxLine: true,
+      footerText:
+        "Conserva este ticket para cualquier consulta sobre tu pedido.",
+    };
+  }
+
   private normalizeLoyaltyProgram(value: unknown): LoyaltyProgram {
     const defaults = this.defaultLoyaltyProgram();
     const source = isRecord(value) ? value : {};
@@ -677,6 +729,52 @@ export class SettingsService {
     }
 
     return promotion;
+  }
+
+  private normalizeTicketPrintConfig(value: unknown): TicketPrintConfig {
+    const defaults = this.defaultTicketPrintConfig();
+    const source = isRecord(value) ? value : {};
+    const paperWidth = cleanText(source.paperWidth, defaults.paperWidth);
+    const fontSize = cleanText(source.fontSize, defaults.fontSize);
+    const copies = Number(source.copies ?? defaults.copies);
+
+    if (paperWidth !== "58mm" && paperWidth !== "80mm") {
+      throw new BadRequestException("Ancho de ticket no valido.");
+    }
+
+    if (fontSize !== "small" && fontSize !== "normal" && fontSize !== "large") {
+      throw new BadRequestException("Tamano de letra no valido.");
+    }
+
+    if (!Number.isInteger(copies) || copies < 1 || copies > 3) {
+      throw new BadRequestException("Las copias deben estar entre 1 y 3.");
+    }
+
+    return {
+      paperWidth,
+      fontSize,
+      copies,
+      showCustomer:
+        typeof source.showCustomer === "boolean"
+          ? source.showCustomer
+          : defaults.showCustomer,
+      showDelivery:
+        typeof source.showDelivery === "boolean"
+          ? source.showDelivery
+          : defaults.showDelivery,
+      showItemOptions:
+        typeof source.showItemOptions === "boolean"
+          ? source.showItemOptions
+          : defaults.showItemOptions,
+      showTaxLine:
+        typeof source.showTaxLine === "boolean"
+          ? source.showTaxLine
+          : defaults.showTaxLine,
+      footerText: cleanText(source.footerText, defaults.footerText).slice(
+        0,
+        180,
+      ),
+    };
   }
 
   private isPromotionActiveOnBusinessDate(

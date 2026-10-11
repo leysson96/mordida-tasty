@@ -18,34 +18,67 @@ import {
 import { brandConfig } from "../lib/brand";
 import { kitchenColumns } from "../lib/order-state";
 import { formatOrderItemOptions } from "../lib/order-format";
-import { openPrintableOrderTicket } from "../lib/order-ticket-print";
+import {
+  defaultTicketPrintConfig,
+  openPrintableOrderTicket,
+} from "../lib/order-ticket-print";
 import {
   OrderStatus,
   OrderSummary,
-  PublicSettings,
   SiteContent,
+  TicketPrintConfig,
 } from "../lib/types";
 import { paymentSummaryText } from "../lib/payment-format";
 import { KitchenAlarm } from "./kitchen-alarm";
+
+interface KitchenSettingsResponse {
+  siteContent: SiteContent;
+  ticketPrintConfig?: Partial<TicketPrintConfig> | null;
+}
 
 export function AdminKitchenClient() {
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [error, setError] = useState<string>();
   const [acknowledged, setAcknowledged] = useState<Set<string>>(new Set());
   const [siteContent, setSiteContent] = useState<SiteContent>(brandConfig);
+  const [ticketPrintConfig, setTicketPrintConfig] = useState<TicketPrintConfig>(
+    () => defaultTicketPrintConfig(),
+  );
 
   useEffect(() => {
     let active = true;
 
-    async function load() {
+    async function loadSettings() {
       try {
-        const [data, settings] = await Promise.all([
-          api<OrderSummary[]>("/admin/orders/kitchen"),
-          api<PublicSettings>("/settings/public"),
-        ]);
+        const settings = await api<KitchenSettingsResponse>("/admin/settings");
+        if (active) {
+          setSiteContent({ ...brandConfig, ...settings.siteContent });
+          setTicketPrintConfig({
+            ...defaultTicketPrintConfig(),
+            ...settings.ticketPrintConfig,
+          });
+        }
+      } catch (requestError) {
+        if (active) {
+          handleAdminError(requestError, "No se pudo cargar la impresora.");
+        }
+      }
+    }
+
+    loadSettings();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadOrders() {
+      try {
+        const data = await api<OrderSummary[]>("/admin/orders/kitchen");
         if (active) {
           setOrders(data);
-          setSiteContent({ ...brandConfig, ...settings.siteContent });
           setError(undefined);
         }
       } catch (requestError) {
@@ -58,8 +91,8 @@ export function AdminKitchenClient() {
       }
     }
 
-    load();
-    const id = window.setInterval(load, 2000);
+    loadOrders();
+    const id = window.setInterval(loadOrders, 2000);
     return () => {
       active = false;
       window.clearInterval(id);
@@ -107,6 +140,7 @@ export function AdminKitchenClient() {
     const opened = openPrintableOrderTicket({
       order,
       siteName: siteContent.name,
+      config: ticketPrintConfig,
     });
 
     if (!opened) {

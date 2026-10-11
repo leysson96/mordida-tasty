@@ -67,6 +67,7 @@ import {
   UpdateSiteContentDto,
   UpdateSpecialClosureDto,
   UpdateTaxRateDto,
+  UpdateTicketPrintConfigDto,
 } from "./dto/settings.dto";
 import { CancelOrderDto } from "./dto/cancel-order.dto";
 import { RemoveOrderItemDto } from "./dto/remove-order-item.dto";
@@ -625,6 +626,7 @@ export class AdminController {
       siteContent,
       promotionCampaign,
       loyaltyProgram,
+      ticketPrintConfig,
       ordersPause,
       specialClosures,
       deliveryZones,
@@ -636,6 +638,7 @@ export class AdminController {
       this.settingsService.getSiteContent(),
       this.settingsService.getPromotionCampaign(),
       this.settingsService.getLoyaltyProgram(),
+      this.settingsService.getTicketPrintConfig(),
       this.settingsService.getOrdersPause(),
       this.settingsService.listSpecialClosures(),
       this.deliveryZonesService.listAdminZones(),
@@ -651,6 +654,7 @@ export class AdminController {
       siteContent,
       promotionCampaign,
       loyaltyProgram,
+      ticketPrintConfig,
       ordersPause,
       specialClosures,
     };
@@ -803,6 +807,26 @@ export class AdminController {
       userAgent: request.headers["user-agent"],
     });
     return promotionCampaign;
+  }
+
+  @Patch("settings/ticket-print")
+  async updateTicketPrintConfig(
+    @Body() dto: UpdateTicketPrintConfigDto,
+    @CurrentUser() user: { id: string },
+    @Req() request: Request,
+  ) {
+    const ticketPrintConfig =
+      await this.settingsService.setTicketPrintConfig(dto);
+    await this.auditService.log({
+      actorId: user.id,
+      action: "settings.ticket_print.update",
+      entity: "setting",
+      entityId: "ticket_print_config",
+      metadata: ticketPrintConfig as unknown as Prisma.InputJsonObject,
+      ip: request.ip,
+      userAgent: request.headers["user-agent"],
+    });
+    return ticketPrintConfig;
   }
 
   @Get("special-closures")

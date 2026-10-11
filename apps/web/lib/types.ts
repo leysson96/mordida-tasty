@@ -320,6 +320,20 @@ export interface PromotionCampaign {
   ctaLabel: string;
 }
 
+export type TicketPaperWidth = "58mm" | "80mm";
+export type TicketFontSize = "small" | "normal" | "large";
+
+export interface TicketPrintConfig {
+  paperWidth: TicketPaperWidth;
+  fontSize: TicketFontSize;
+  copies: number;
+  showCustomer: boolean;
+  showDelivery: boolean;
+  showItemOptions: boolean;
+  showTaxLine: boolean;
+  footerText: string;
+}
+
 export interface CustomerLoyaltyProgress {
   program: LoyaltyProgram;
   completedOrders: number;

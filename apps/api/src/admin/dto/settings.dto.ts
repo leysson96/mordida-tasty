@@ -137,6 +137,43 @@ export class UpdatePromotionCampaignDto {
   ctaLabel?: string;
 }
 
+export class UpdateTicketPrintConfigDto {
+  @IsOptional()
+  @IsIn(["58mm", "80mm"])
+  paperWidth?: "58mm" | "80mm";
+
+  @IsOptional()
+  @IsIn(["small", "normal", "large"])
+  fontSize?: "small" | "normal" | "large";
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(3)
+  copies?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  showCustomer?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  showDelivery?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  showItemOptions?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  showTaxLine?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  footerText?: string;
+}
+
 export class CreateSpecialClosureDto {
   @IsISO8601()
   startsAt!: string;

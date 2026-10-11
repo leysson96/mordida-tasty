@@ -64,9 +64,14 @@ import {
   ServiceStatus,
   SiteContent,
   SpecialClosure,
+  TicketPrintConfig,
 } from "../lib/types";
 import { isCardPayment, paymentSummaryText } from "../lib/payment-format";
-import { openPrintableOrderTicket } from "../lib/order-ticket-print";
+import {
+  defaultTicketPrintConfig,
+  openPrintableOrderTicket,
+  openPrintableTestOrderTicket,
+} from "../lib/order-ticket-print";
 import { KitchenAlarm } from "./kitchen-alarm";
 
 interface DashboardResponse {
@@ -86,6 +91,7 @@ interface SettingsResponse {
   deliveryZones: DeliveryZone[];
   siteContent: SiteContent;
   loyaltyProgram: LoyaltyProgram;
+  ticketPrintConfig: TicketPrintConfig;
 }
 
 interface TwoFactorSetupResponse {
@@ -95,7 +101,8 @@ interface TwoFactorSetupResponse {
 
 type StatusFilter = OrderStatus | "ACTIVE" | "ALL";
 type DeliveryMethodFilter = DeliveryMethod | "ALL";
-type SettingsSection = "service" | "business" | "loyalty" | "hours" | "security";
+type SettingsSection =
+  "service" | "business" | "loyalty" | "hours" | "printer" | "security";
 
 interface OrderFilters {
   q: string;
@@ -169,6 +176,9 @@ export function AdminOrdersClient() {
   const [loyaltyProgram, setLoyaltyProgram] = useState<LoyaltyProgram>(
     defaultLoyaltyProgram,
   );
+  const [ticketPrintConfig, setTicketPrintConfig] = useState<TicketPrintConfig>(
+    () => defaultTicketPrintConfig(),
+  );
   const [error, setError] = useState<string>();
   const [settingsMessage, setSettingsMessage] = useState<string>();
   const [removalTarget, setRemovalTarget] = useState<{
@@ -184,6 +194,7 @@ export function AdminOrdersClient() {
   const [twoFactorMessage, setTwoFactorMessage] = useState<string>();
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>("service");
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -212,6 +223,10 @@ export function AdminOrdersClient() {
           setLoyaltyProgram({
             ...defaultLoyaltyProgram,
             ...settingsData.loyaltyProgram,
+          });
+          setTicketPrintConfig({
+            ...defaultTicketPrintConfig(),
+            ...settingsData.ticketPrintConfig,
           });
           setError(undefined);
         }
@@ -300,6 +315,13 @@ export function AdminOrdersClient() {
     return "Caja: pendiente de cobro";
   }
 
+  function customerSummary(order: OrderSummary) {
+    const name =
+      order.customerName ?? order.deliveryName ?? "Cliente sin nombre";
+    const phone = order.customerPhone ?? order.deliveryPhone;
+    return { name, phone };
+  }
+
   function applyOrderFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setOrderPage(1);
@@ -369,10 +391,61 @@ export function AdminOrdersClient() {
     const opened = openPrintableOrderTicket({
       order,
       siteName: siteContent.name,
+      config: ticketPrintConfig,
     });
 
     if (!opened) {
       setError("No se pudo abrir la ventana de impresion del ticket.");
+    }
+  }
+
+  function printTestTicket() {
+    const opened = openPrintableTestOrderTicket(
+      siteContent.name,
+      ticketPrintConfig,
+    );
+
+    if (!opened) {
+      setError("No se pudo abrir la ventana de impresion del ticket.");
+    }
+  }
+
+  async function saveTicketPrintConfig(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const payload: TicketPrintConfig = {
+      paperWidth: String(form.get("paperWidth")) === "58mm" ? "58mm" : "80mm",
+      fontSize:
+        form.get("fontSize") === "small" || form.get("fontSize") === "large"
+          ? (form.get("fontSize") as "small" | "large")
+          : "normal",
+      copies: Number(form.get("copies")),
+      showCustomer: form.has("showCustomer"),
+      showDelivery: form.has("showDelivery"),
+      showItemOptions: form.has("showItemOptions"),
+      showTaxLine: form.has("showTaxLine"),
+      footerText: String(form.get("footerText") ?? ""),
+    };
+
+    try {
+      const saved = await api<TicketPrintConfig>(
+        "/admin/settings/ticket-print",
+        {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        },
+      );
+      setTicketPrintConfig({
+        ...defaultTicketPrintConfig(),
+        ...saved,
+      });
+      setSettingsMessage("Formato de ticket guardado.");
+      setError(undefined);
+    } catch (requestError) {
+      handleAdminError(
+        requestError,
+        "No se pudo guardar el formato de ticket.",
+      );
     }
   }
 
@@ -713,6 +786,18 @@ export function AdminOrdersClient() {
           <p className="eyebrow">Panel</p>
           <h1>Pedidos de hoy</h1>
         </div>
+        <div className="toolbar-actions">
+          <button
+            type="button"
+            className="button secondary"
+            onClick={() => setSettingsOpen(true)}
+            aria-controls="admin-settings-panel"
+            aria-expanded={settingsOpen}
+          >
+            <Settings aria-hidden="true" size={18} />
+            Ajustes
+          </button>
+        </div>
       </section>
 
       {error && <div className="empty-state error no-print">{error}</div>}
@@ -847,154 +932,188 @@ export function AdminOrdersClient() {
               Sin pedidos para mostrar
             </div>
           ) : (
-            displayedOrders.map((order) => (
-              <article
-                key={order.id}
-                className={`order-card status-${order.status.toLowerCase()}`}
-              >
-                <div className="order-card-head">
-                  <div>
-                    <strong className="order-number">
-                      {order.orderNumber}
-                    </strong>
-                    <span>
-                      {new Date(order.createdAt).toLocaleTimeString("es-ES", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    className="icon-button"
-                    onClick={() => printOrder(order)}
-                    title="Imprimir comanda"
-                  >
-                    <Printer aria-hidden="true" size={19} />
-                  </button>
-                </div>
-                <div
-                  className={`payment-chip ${
-                    order.paymentMethod === "CASH" ? "cash" : ""
-                  }`}
+            displayedOrders.map((order) => {
+              const customer = customerSummary(order);
+
+              return (
+                <article
+                  key={order.id}
+                  className={`order-card status-${order.status.toLowerCase()}`}
                 >
-                  {order.paymentMethod === "CASH" ? (
-                    <Banknote aria-hidden="true" size={16} />
-                  ) : (
-                    <CreditCard aria-hidden="true" size={16} />
-                  )}
-                  <span>{paymentSummaryText(order)}</span>
-                </div>
-                {cashCollectionText(order) && (
-                  <div className="payment-chip">
-                    <Banknote aria-hidden="true" size={16} />
-                    <span>{cashCollectionText(order)}</span>
+                  <div className="order-card-head">
+                    <div>
+                      <strong className="order-number">
+                        {order.orderNumber}
+                      </strong>
+                      <span>
+                        {new Date(order.createdAt).toLocaleTimeString("es-ES", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      onClick={() => printOrder(order)}
+                      title="Imprimir comanda"
+                    >
+                      <Printer aria-hidden="true" size={19} />
+                    </button>
                   </div>
-                )}
-                <ul>
-                  {order.items.map((item, itemIndex) => (
-                    <li
-                      key={
-                        item.id ??
-                        `${order.id}-${item.productName}-${itemIndex}`
-                      }
-                      className={`order-line ${item.removedAt ? "removed" : ""}`}
+                  <div className="order-payment-stack">
+                    <div
+                      className={`payment-chip ${
+                        order.paymentMethod === "CASH" ? "cash" : ""
+                      }`}
                     >
-                      <span>{item.quantity}x</span>
-                      <div className="order-line-copy">
-                        <strong>{item.productName}</strong>
-                        {item.options && item.options.length > 0 && (
-                          <small>{formatOrderItemOptions(item)}</small>
-                        )}
-                        {hasPromotionDiscount(item) && (
-                          <small className="promotion-discount-note">
-                            {formatOrderItemPromotion(item)}
-                          </small>
-                        )}
-                        {item.removedAt && (
-                          <small>
-                            {item.removedReason ?? "Producto quitado"}
-                          </small>
-                        )}
+                      {order.paymentMethod === "CASH" ? (
+                        <Banknote aria-hidden="true" size={16} />
+                      ) : (
+                        <CreditCard aria-hidden="true" size={16} />
+                      )}
+                      <span>{paymentSummaryText(order)}</span>
+                    </div>
+                    {cashCollectionText(order) && (
+                      <div className="payment-chip">
+                        <Banknote aria-hidden="true" size={16} />
+                        <span>{cashCollectionText(order)}</span>
                       </div>
-                      <div className="order-line-actions">
-                        {item.removedAt ? (
-                          <span className="refund-chip">
-                            -
-                            {formatMoney(
-                              item.refundedCents ?? item.lineTotalCents,
-                            )}
-                          </span>
-                        ) : (
-                          <strong>{formatMoney(item.lineTotalCents)}</strong>
-                        )}
-                        {canRemoveOrderItem(order, item) && (
-                          <button
-                            type="button"
-                            className="icon-button danger small"
-                            onClick={() => setRemovalTarget({ order, item })}
-                            title="Quitar y reembolsar"
-                          >
-                            <Trash2 aria-hidden="true" size={16} />
-                          </button>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-                <div className="order-card-foot">
-                  <span>{orderStatusLabels[order.status]}</span>
-                  <strong>{formatMoney(order.totalCents)}</strong>
-                </div>
-                <div className="status-actions">
-                  {adminNextStatuses[order.status].map((status) => (
-                    <button
-                      type="button"
-                      className="button secondary"
-                      key={status}
-                      onClick={() => changeStatus(order.id, status)}
-                    >
-                      {orderStatusLabels[status]}
-                    </button>
-                  ))}
-                  {canMarkCashPaymentCollected(order) && (
-                    <button
-                      type="button"
-                      className="button secondary"
-                      onClick={() => markCashPaymentCollected(order)}
-                      disabled={cashCollectingOrderId === order.id}
-                    >
-                      <Banknote aria-hidden="true" size={17} />
-                      {cashCollectingOrderId === order.id
-                        ? "Marcando..."
-                        : "Efectivo cobrado"}
-                    </button>
-                  )}
-                  {canCancelOrderWithRefund(order) && (
-                    <button
-                      type="button"
-                      className="button danger"
-                      onClick={() => setCancelTarget(order)}
-                    >
-                      <X aria-hidden="true" size={17} />
-                      Cancelar y reembolsar
-                    </button>
-                  )}
-                </div>
-              </article>
-            ))
+                    )}
+                  </div>
+                  <div className="order-customer-summary">
+                    <strong>{customer.name}</strong>
+                    {customer.phone && <span>{customer.phone}</span>}
+                  </div>
+                  <ul>
+                    {order.items.map((item, itemIndex) => (
+                      <li
+                        key={
+                          item.id ??
+                          `${order.id}-${item.productName}-${itemIndex}`
+                        }
+                        className={`order-line ${item.removedAt ? "removed" : ""}`}
+                      >
+                        <span>{item.quantity}x</span>
+                        <div className="order-line-copy">
+                          <strong>{item.productName}</strong>
+                          {item.options && item.options.length > 0 && (
+                            <small>{formatOrderItemOptions(item)}</small>
+                          )}
+                          {hasPromotionDiscount(item) && (
+                            <small className="promotion-discount-note">
+                              {formatOrderItemPromotion(item)}
+                            </small>
+                          )}
+                          {item.removedAt && (
+                            <small>
+                              {item.removedReason ?? "Producto quitado"}
+                            </small>
+                          )}
+                        </div>
+                        <div className="order-line-actions">
+                          {item.removedAt ? (
+                            <span className="refund-chip">
+                              -
+                              {formatMoney(
+                                item.refundedCents ?? item.lineTotalCents,
+                              )}
+                            </span>
+                          ) : (
+                            <strong>{formatMoney(item.lineTotalCents)}</strong>
+                          )}
+                          {canRemoveOrderItem(order, item) && (
+                            <button
+                              type="button"
+                              className="icon-button danger small"
+                              onClick={() => setRemovalTarget({ order, item })}
+                              title="Quitar y reembolsar"
+                            >
+                              <Trash2 aria-hidden="true" size={16} />
+                            </button>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="order-card-foot">
+                    <span>{orderStatusLabels[order.status]}</span>
+                    <strong>{formatMoney(order.totalCents)}</strong>
+                  </div>
+                  <div className="status-actions">
+                    {adminNextStatuses[order.status].map((status) => (
+                      <button
+                        type="button"
+                        className="button secondary"
+                        key={status}
+                        onClick={() => changeStatus(order.id, status)}
+                      >
+                        {orderStatusLabels[status]}
+                      </button>
+                    ))}
+                    {canMarkCashPaymentCollected(order) && (
+                      <button
+                        type="button"
+                        className="button secondary"
+                        onClick={() => markCashPaymentCollected(order)}
+                        disabled={cashCollectingOrderId === order.id}
+                      >
+                        <Banknote aria-hidden="true" size={17} />
+                        {cashCollectingOrderId === order.id
+                          ? "Marcando..."
+                          : "Efectivo cobrado"}
+                      </button>
+                    )}
+                    {canCancelOrderWithRefund(order) && (
+                      <button
+                        type="button"
+                        className="button danger"
+                        onClick={() => setCancelTarget(order)}
+                      >
+                        <X aria-hidden="true" size={17} />
+                        Cancelar y reembolsar
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })
           )}
         </div>
 
-        <aside className="settings-panel admin-settings-panel">
+        {settingsOpen && (
+          <button
+            type="button"
+            className="settings-drawer-backdrop"
+            onClick={() => setSettingsOpen(false)}
+            aria-label="Cerrar ajustes"
+          />
+        )}
+
+        <aside
+          id="admin-settings-panel"
+          className={`settings-panel admin-settings-panel ${
+            settingsOpen ? "open" : ""
+          }`}
+        >
           <div className="settings-panel-head">
             <h2>
               <Settings aria-hidden="true" size={20} />
               Ajustes
             </h2>
-            <span className={`status-pill ${openNow ? "" : "danger"}`}>
-              {openNow ? "Abierto" : "Cerrado"}
-            </span>
+            <div className="settings-panel-status">
+              <span className={`status-pill ${openNow ? "" : "danger"}`}>
+                {openNow ? "Abierto" : "Cerrado"}
+              </span>
+              <button
+                type="button"
+                className="icon-button settings-drawer-close"
+                onClick={() => setSettingsOpen(false)}
+                title="Cerrar ajustes"
+              >
+                <X aria-hidden="true" size={18} />
+              </button>
+            </div>
           </div>
 
           {settingsMessage && <p className="form-success">{settingsMessage}</p>}
@@ -1031,6 +1150,14 @@ export function AdminOrdersClient() {
             >
               <Clock aria-hidden="true" size={18} />
               Horarios
+            </button>
+            <button
+              type="button"
+              className={settingsSection === "printer" ? "active" : ""}
+              onClick={() => setSettingsSection("printer")}
+            >
+              <Printer aria-hidden="true" size={18} />
+              Impresora
             </button>
             <button
               type="button"
@@ -1498,6 +1625,183 @@ export function AdminOrdersClient() {
                   Guardar horarios
                 </button>
               </form>
+            </section>
+          )}
+
+          {settingsSection === "printer" && (
+            <section className="settings-section">
+              <div className="settings-section-head">
+                <h3>
+                  <Printer aria-hidden="true" size={18} />
+                  Ticket e impresora
+                </h3>
+                <span>Android Print</span>
+              </div>
+              <form
+                className="printer-settings-card"
+                onSubmit={saveTicketPrintConfig}
+              >
+                <strong>Modo actual: navegador / Android Print</strong>
+                <p>
+                  El ticket se abre en una ventana limpia y Chrome muestra el
+                  selector de impresora de Android. Si la impresora no aparece,
+                  hay que emparejarla en la tablet o instalar su servicio de
+                  impresion.
+                </p>
+                <div className="printer-settings-grid">
+                  <label>
+                    Papel
+                    <select
+                      name="paperWidth"
+                      value={ticketPrintConfig.paperWidth}
+                      onChange={(event) =>
+                        setTicketPrintConfig((current) => ({
+                          ...current,
+                          paperWidth: event.target.value as "58mm" | "80mm",
+                        }))
+                      }
+                    >
+                      <option value="80mm">80mm</option>
+                      <option value="58mm">58mm</option>
+                    </select>
+                  </label>
+                  <label>
+                    Letra
+                    <select
+                      name="fontSize"
+                      value={ticketPrintConfig.fontSize}
+                      onChange={(event) =>
+                        setTicketPrintConfig((current) => ({
+                          ...current,
+                          fontSize: event.target.value as
+                            "small" | "normal" | "large",
+                        }))
+                      }
+                    >
+                      <option value="small">Pequena</option>
+                      <option value="normal">Normal</option>
+                      <option value="large">Grande</option>
+                    </select>
+                  </label>
+                  <label>
+                    Copias
+                    <HydrationSafeInput
+                      type="number"
+                      name="copies"
+                      min="1"
+                      max="3"
+                      step="1"
+                      value={ticketPrintConfig.copies}
+                      onChange={(event) =>
+                        setTicketPrintConfig((current) => ({
+                          ...current,
+                          copies: Number(event.target.value),
+                        }))
+                      }
+                    />
+                  </label>
+                </div>
+                <div className="printer-check-grid">
+                  <label className="checkbox-label">
+                    <HydrationSafeInput
+                      type="checkbox"
+                      name="showCustomer"
+                      checked={ticketPrintConfig.showCustomer}
+                      onChange={(event) =>
+                        setTicketPrintConfig((current) => ({
+                          ...current,
+                          showCustomer: event.target.checked,
+                        }))
+                      }
+                    />
+                    Cliente
+                  </label>
+                  <label className="checkbox-label">
+                    <HydrationSafeInput
+                      type="checkbox"
+                      name="showDelivery"
+                      checked={ticketPrintConfig.showDelivery}
+                      onChange={(event) =>
+                        setTicketPrintConfig((current) => ({
+                          ...current,
+                          showDelivery: event.target.checked,
+                        }))
+                      }
+                    />
+                    Entrega
+                  </label>
+                  <label className="checkbox-label">
+                    <HydrationSafeInput
+                      type="checkbox"
+                      name="showItemOptions"
+                      checked={ticketPrintConfig.showItemOptions}
+                      onChange={(event) =>
+                        setTicketPrintConfig((current) => ({
+                          ...current,
+                          showItemOptions: event.target.checked,
+                        }))
+                      }
+                    />
+                    Extras
+                  </label>
+                  <label className="checkbox-label">
+                    <HydrationSafeInput
+                      type="checkbox"
+                      name="showTaxLine"
+                      checked={ticketPrintConfig.showTaxLine}
+                      onChange={(event) =>
+                        setTicketPrintConfig((current) => ({
+                          ...current,
+                          showTaxLine: event.target.checked,
+                        }))
+                      }
+                    />
+                    IVA
+                  </label>
+                </div>
+                <label>
+                  Texto final
+                  <HydrationSafeTextarea
+                    name="footerText"
+                    rows={2}
+                    maxLength={180}
+                    value={ticketPrintConfig.footerText}
+                    onChange={(event) =>
+                      setTicketPrintConfig((current) => ({
+                        ...current,
+                        footerText: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <div className="printer-actions">
+                  <button type="submit" className="button primary">
+                    <Save aria-hidden="true" size={18} />
+                    Guardar formato
+                  </button>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={printTestTicket}
+                  >
+                    <Printer aria-hidden="true" size={18} />
+                    Ticket de prueba
+                  </button>
+                </div>
+              </form>
+              <div className="printer-diagnostic-card">
+                <strong>Diagnostico rapido en tablet</strong>
+                <ol>
+                  <li>Impresora encendida y emparejada por Bluetooth.</li>
+                  <li>Servicio de impresion del fabricante instalado.</li>
+                  <li>Android muestra la impresora en su selector.</li>
+                  <li>Prueba de impresion hecha desde otra app Android.</li>
+                </ol>
+                <p>
+                  Si Android no lista la impresora, la siguiente fase es una app
+                  puente ESC/POS o impresora WiFi/LAN.
+                </p>
+              </div>
             </section>
           )}
 

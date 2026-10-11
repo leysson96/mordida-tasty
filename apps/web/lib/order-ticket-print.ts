@@ -5,18 +5,20 @@ import {
   hasPromotionDiscount,
 } from "./order-format";
 import { paymentSummaryText } from "./payment-format";
-import type { OrderSummary } from "./types";
+import type { OrderSummary, TicketPrintConfig } from "./types";
 
 const cashCollectedHistoryNote = "Pago en efectivo cobrado.";
 
 interface OpenPrintableOrderTicketOptions {
   order: OrderSummary;
   siteName: string;
+  config?: TicketPrintConfig;
 }
 
 export function openPrintableOrderTicket({
   order,
   siteName,
+  config,
 }: OpenPrintableOrderTicketOptions) {
   const printWindow = window.open(
     "",
@@ -28,6 +30,7 @@ export function openPrintableOrderTicket({
     return false;
   }
 
+  const ticketConfig = normalizeTicketPrintConfig(config);
   const printDocument = printWindow.document;
   printDocument.documentElement.lang = "es";
   printDocument.title = `Ticket ${order.orderNumber}`;
@@ -35,10 +38,14 @@ export function openPrintableOrderTicket({
   printDocument.body.replaceChildren();
 
   const style = printDocument.createElement("style");
-  style.textContent = ticketPrintCss();
+  style.textContent = ticketPrintCss(ticketConfig);
   printDocument.head.appendChild(style);
 
-  printDocument.body.appendChild(ticketNode(printDocument, order, siteName));
+  for (let copy = 0; copy < ticketConfig.copies; copy += 1) {
+    printDocument.body.appendChild(
+      ticketNode(printDocument, order, siteName, ticketConfig, copy + 1),
+    );
+  }
   printDocument.close();
 
   window.setTimeout(() => {
@@ -49,16 +56,81 @@ export function openPrintableOrderTicket({
   return true;
 }
 
+export function openPrintableTestOrderTicket(
+  siteName: string,
+  config?: TicketPrintConfig,
+) {
+  const now = new Date().toISOString();
+
+  return openPrintableOrderTicket({
+    siteName,
+    config,
+    order: {
+      id: "ticket-test",
+      orderNumber: "TICKET-PRUEBA",
+      status: "PAID",
+      deliveryMethod: "PICKUP",
+      paymentMethod: "CASH",
+      customerName: "Cliente de prueba",
+      customerPhone: "000000000",
+      customerEmail: "",
+      subtotalCents: 1000,
+      discountCents: 0,
+      deliveryFeeCents: 0,
+      taxCents: 91,
+      cashTenderedCents: 1000,
+      cashChangeCents: 0,
+      totalCents: 1000,
+      paidAt: now,
+      createdAt: now,
+      updatedAt: now,
+      items: [
+        {
+          productName: "Producto de prueba",
+          quantity: 1,
+          unitPriceCents: 1000,
+          lineTotalCents: 1000,
+          options: [
+            {
+              groupName: "Prueba",
+              choiceName: "Sin datos reales",
+              priceCents: 0,
+            },
+          ],
+        },
+      ],
+      statusHistory: [
+        {
+          toStatus: "PAID",
+          note: cashCollectedHistoryNote,
+          createdAt: now,
+        },
+      ],
+    },
+  });
+}
+
 function ticketNode(
   printDocument: Document,
   order: OrderSummary,
   siteName: string,
+  config: TicketPrintConfig,
+  copyNumber: number,
 ) {
   const ticket = printDocument.createElement("main");
   ticket.className = "ticket";
 
   appendText(printDocument, ticket, "h1", siteName);
   appendText(printDocument, ticket, "p", order.orderNumber, "order-number");
+  if (config.copies > 1) {
+    appendText(
+      printDocument,
+      ticket,
+      "p",
+      `Copia ${copyNumber}`,
+      "muted center",
+    );
+  }
   appendText(
     printDocument,
     ticket,
@@ -84,27 +156,25 @@ function ticketNode(
   }
 
   appendDivider(printDocument, ticket);
-  appendCustomerSection(printDocument, ticket, order);
+  if (config.showCustomer) {
+    appendCustomerSection(printDocument, ticket, order);
+  }
 
-  if (isDelivery) {
+  if (isDelivery && config.showDelivery) {
     appendDivider(printDocument, ticket);
     appendDeliverySection(printDocument, ticket, order);
   }
 
   appendDivider(printDocument, ticket);
-  appendItemsSection(printDocument, ticket, order);
+  appendItemsSection(printDocument, ticket, order, config);
 
   appendDivider(printDocument, ticket);
-  appendTotalsSection(printDocument, ticket, order);
+  appendTotalsSection(printDocument, ticket, order, config);
 
-  appendDivider(printDocument, ticket);
-  appendText(
-    printDocument,
-    ticket,
-    "p",
-    "Conserva este ticket para cualquier consulta sobre tu pedido.",
-    "footer",
-  );
+  if (config.footerText) {
+    appendDivider(printDocument, ticket);
+    appendText(printDocument, ticket, "p", config.footerText, "footer");
+  }
 
   return ticket;
 }
@@ -144,6 +214,7 @@ function appendItemsSection(
   printDocument: Document,
   ticket: HTMLElement,
   order: OrderSummary,
+  config: TicketPrintConfig,
 ) {
   const activeItems = order.items.filter((item) => !item.removedAt);
 
@@ -167,7 +238,7 @@ function appendItemsSection(
       `${item.quantity} x ${item.productName}`,
     );
 
-    if (item.options && item.options.length > 0) {
+    if (config.showItemOptions && item.options && item.options.length > 0) {
       appendText(printDocument, copy, "small", formatOrderItemOptions(item));
     }
 
@@ -194,6 +265,7 @@ function appendTotalsSection(
   printDocument: Document,
   ticket: HTMLElement,
   order: OrderSummary,
+  config: TicketPrintConfig,
 ) {
   if ((order.subtotalCents ?? 0) > 0) {
     appendRow(printDocument, ticket, "Subtotal", formatMoney(order.subtotalCents ?? 0));
@@ -213,7 +285,7 @@ function appendTotalsSection(
     appendRow(printDocument, ticket, "Envio", formatMoney(order.deliveryFeeCents ?? 0));
   }
 
-  if (order.taxCents !== undefined) {
+  if (config.showTaxLine && order.taxCents !== undefined) {
     appendRow(printDocument, ticket, "IVA incluido", formatMoney(order.taxCents));
   }
 
@@ -304,10 +376,18 @@ function isCashPaymentCollected(order: OrderSummary) {
   );
 }
 
-function ticketPrintCss() {
+function ticketPrintCss(config: TicketPrintConfig) {
+  const paperWidth = config.paperWidth === "58mm" ? 58 : 80;
+  const contentWidth = paperWidth - 6;
+  const baseFontSize =
+    config.fontSize === "small" ? 10 : config.fontSize === "large" ? 14 : 12;
+  const smallFontSize = Math.max(8, baseFontSize - 2);
+  const headingFontSize = baseFontSize + 6;
+  const orderNumberFontSize = baseFontSize + 4;
+
   return `
     @page {
-      size: 80mm auto;
+      size: ${paperWidth}mm auto;
       margin: 3mm;
     }
 
@@ -322,18 +402,23 @@ function ticketPrintCss() {
       background: #fff;
       color: #000;
       font-family: Arial, "Helvetica Neue", sans-serif;
-      font-size: 12px;
+      font-size: ${baseFontSize}px;
       line-height: 1.3;
     }
 
     body {
-      width: 74mm;
+      width: ${contentWidth}mm;
     }
 
     .ticket {
-      width: 74mm;
+      width: ${contentWidth}mm;
       padding: 0;
       color: #000;
+    }
+
+    .ticket + .ticket {
+      page-break-before: always;
+      margin-top: 10mm;
     }
 
     h1,
@@ -344,7 +429,7 @@ function ticketPrintCss() {
 
     h1 {
       text-align: center;
-      font-size: 18px;
+      font-size: ${headingFontSize}px;
       font-weight: 900;
       line-height: 1.05;
       text-transform: uppercase;
@@ -352,7 +437,7 @@ function ticketPrintCss() {
 
     h2 {
       margin-bottom: 3px;
-      font-size: 11px;
+      font-size: ${smallFontSize + 1}px;
       font-weight: 900;
       letter-spacing: 0;
       text-transform: uppercase;
@@ -367,7 +452,7 @@ function ticketPrintCss() {
     .order-number {
       margin-top: 4px;
       text-align: center;
-      font-size: 16px;
+      font-size: ${orderNumberFontSize}px;
       font-weight: 900;
     }
 
@@ -377,7 +462,7 @@ function ticketPrintCss() {
 
     .muted,
     small {
-      font-size: 10px;
+      font-size: ${smallFontSize}px;
       font-weight: 700;
     }
 
@@ -387,7 +472,7 @@ function ticketPrintCss() {
       border-top: 1px solid #000;
       border-bottom: 1px solid #000;
       text-align: center;
-      font-size: 13px;
+      font-size: ${baseFontSize + 1}px;
       font-weight: 900;
     }
 
@@ -397,7 +482,7 @@ function ticketPrintCss() {
     }
 
     .important {
-      font-size: 13px;
+      font-size: ${baseFontSize + 1}px;
       font-weight: 900;
     }
 
@@ -421,7 +506,7 @@ function ticketPrintCss() {
 
     .item-copy strong,
     .amount {
-      font-size: 12px;
+      font-size: ${baseFontSize}px;
       font-weight: 900;
     }
 
@@ -439,13 +524,13 @@ function ticketPrintCss() {
       margin-top: 6px;
       padding-top: 5px;
       border-top: 1px solid #000;
-      font-size: 15px;
+      font-size: ${baseFontSize + 3}px;
       font-weight: 900;
     }
 
     .footer {
       text-align: center;
-      font-size: 10px;
+      font-size: ${smallFontSize}px;
       font-weight: 700;
     }
 
@@ -461,4 +546,62 @@ function ticketPrintCss() {
       }
     }
   `;
+}
+
+export function defaultTicketPrintConfig(): TicketPrintConfig {
+  return {
+    paperWidth: "80mm",
+    fontSize: "normal",
+    copies: 1,
+    showCustomer: true,
+    showDelivery: true,
+    showItemOptions: true,
+    showTaxLine: true,
+    footerText: "Conserva este ticket para cualquier consulta sobre tu pedido.",
+  };
+}
+
+export function normalizeTicketPrintConfig(
+  config?: Partial<TicketPrintConfig> | null,
+): TicketPrintConfig {
+  const defaults = defaultTicketPrintConfig();
+  const paperWidth =
+    config?.paperWidth === "58mm" || config?.paperWidth === "80mm"
+      ? config.paperWidth
+      : defaults.paperWidth;
+  const fontSize =
+    config?.fontSize === "small" ||
+    config?.fontSize === "normal" ||
+    config?.fontSize === "large"
+      ? config.fontSize
+      : defaults.fontSize;
+  const copies = Number.isInteger(config?.copies)
+    ? Math.min(3, Math.max(1, Number(config?.copies)))
+    : defaults.copies;
+
+  return {
+    paperWidth,
+    fontSize,
+    copies,
+    showCustomer:
+      typeof config?.showCustomer === "boolean"
+        ? config.showCustomer
+        : defaults.showCustomer,
+    showDelivery:
+      typeof config?.showDelivery === "boolean"
+        ? config.showDelivery
+        : defaults.showDelivery,
+    showItemOptions:
+      typeof config?.showItemOptions === "boolean"
+        ? config.showItemOptions
+        : defaults.showItemOptions,
+    showTaxLine:
+      typeof config?.showTaxLine === "boolean"
+        ? config.showTaxLine
+        : defaults.showTaxLine,
+    footerText:
+      typeof config?.footerText === "string"
+        ? config.footerText.trim().slice(0, 180)
+        : defaults.footerText,
+  };
 }
