@@ -188,9 +188,11 @@ p {
 .brand-mark {
   display: grid;
   place-items: center;
+  position: relative;
   width: 46px;
   height: 46px;
   flex: 0 0 auto;
+  overflow: hidden;
   color: var(--color-surface);
   background:
     linear-gradient(
@@ -205,6 +207,24 @@ p {
   box-shadow: 4px 4px 0 var(--color-accent);
   font-size: 0.92rem;
   font-weight: 950;
+}
+
+.brand-mark-image-mode {
+  color: var(--color-ink);
+  background: var(--color-surface);
+}
+
+.brand-mark-logo-mode {
+  width: clamp(112px, 12vw, 172px);
+}
+
+.brand-mark-image {
+  object-fit: contain;
+  padding: 5px;
+}
+
+.brand-mark-logo-mode .brand-mark-image {
+  padding: 6px 9px;
 }
 
 .brand-name {
@@ -1527,6 +1547,32 @@ p {
   grid-template-columns: minmax(0, 1fr) 120px;
 }
 
+.brand-logo-settings {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-small);
+  background: rgba(255, 250, 244, 0.66);
+}
+
+.brand-logo-settings .form-subsection {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.brand-logo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.brand-logo-current {
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
 .address-grid {
   margin-top: 16px;
   padding-top: 16px;
@@ -2352,6 +2398,10 @@ textarea {
   height: 42px;
   font-size: 0.82rem;
   box-shadow: 3px 3px 0 var(--color-accent);
+}
+
+.site-header.admin-mode .brand-mark-logo-mode {
+  width: clamp(96px, 10vw, 150px);
 }
 
 .site-header.admin-mode .brand-name {
@@ -5496,6 +5546,7 @@ code {
   }
 
   .form-grid,
+  .brand-logo-grid,
   .form-grid.compact,
   .form-grid.compact-two,
   .time-range-row {
@@ -5530,6 +5581,10 @@ code {
   .brand-mark {
     width: 42px;
     height: 42px;
+  }
+
+  .brand-mark-logo-mode {
+    width: 118px;
   }
 
   .brand-name {

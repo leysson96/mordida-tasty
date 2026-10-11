@@ -273,6 +273,20 @@ export class UpdateSiteContentDto {
   initials?: string;
 
   @IsOptional()
+  @IsIn(["INITIALS", "ICON", "LOGO"])
+  logoMode?: "INITIALS" | "ICON" | "LOGO";
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(700)
+  logoImageUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  logoAlt?: string;
+
+  @IsOptional()
   @IsString()
   @MaxLength(150)
   tagline?: string;

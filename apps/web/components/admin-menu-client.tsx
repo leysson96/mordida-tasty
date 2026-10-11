@@ -10,6 +10,7 @@ import { brandConfig } from "../lib/brand";
 import {
   AdminDiscount,
   AdminProduct,
+  BrandLogoMode,
   Category,
   ProductOptionChoice,
   ProductOptionGroup,
@@ -116,14 +117,25 @@ export function AdminMenuClient() {
     const featuredProduct = products.find(
       (product) => product.slug === featuredProductSlug,
     );
+    const logoMode = String(
+      form.get("logoMode") || siteContent.logoMode,
+    ) as BrandLogoMode;
 
     try {
       const uploadedHero = await uploadFormImage(form, "heroImageFile");
+      const uploadedLogo = await uploadFormImage(form, "logoImageFile", [
+        "image/png",
+      ]);
       const updated = await api<SiteContent>("/admin/settings/site-content", {
         method: "PATCH",
         body: JSON.stringify({
           name: String(form.get("name")),
           initials: String(form.get("initials")),
+          logoMode,
+          logoImageUrl:
+            uploadedLogo ??
+            String(form.get("currentLogoImage") || siteContent.logoImageUrl),
+          logoAlt: String(form.get("logoAlt") || form.get("name")),
           tagline: String(form.get("tagline")),
           heroTitle: String(form.get("heroTitle")),
           heroText: String(form.get("heroText")),
@@ -581,10 +593,22 @@ export function AdminMenuClient() {
     }
   }
 
-  async function uploadFormImage(form: FormData, fieldName: string) {
+  async function uploadFormImage(
+    form: FormData,
+    fieldName: string,
+    acceptedMimeTypes?: string[],
+  ) {
     const value = form.get(fieldName);
     if (!(value instanceof File) || value.size === 0) {
       return undefined;
+    }
+
+    if (
+      acceptedMimeTypes &&
+      acceptedMimeTypes.length > 0 &&
+      !acceptedMimeTypes.includes(value.type)
+    ) {
+      throw new Error("El logo debe ser un archivo PNG.");
     }
 
     const uploadForm = new FormData();
@@ -658,7 +682,7 @@ export function AdminMenuClient() {
 
         {activeSection === "brand" && (
           <BrandSection
-            key={`${siteContent.name}-${siteContent.heroTitle}-${siteContent.heroImage}-${siteContent.instagramUrl}-${siteContent.whatsappPhone}-${siteContent.locationTitle}-${siteContent.businessAddress}-${siteContent.businessCity}-${siteContent.businessPostalCode}-${siteContent.googleMapsUrl}-${siteContent.aboutTitle}-${siteContent.aboutText}`}
+            key={`${siteContent.name}-${siteContent.initials}-${siteContent.logoMode}-${siteContent.logoImageUrl}-${siteContent.logoAlt}-${siteContent.heroTitle}-${siteContent.heroImage}-${siteContent.instagramUrl}-${siteContent.whatsappPhone}-${siteContent.locationTitle}-${siteContent.businessAddress}-${siteContent.businessCity}-${siteContent.businessPostalCode}-${siteContent.googleMapsUrl}-${siteContent.aboutTitle}-${siteContent.aboutText}`}
             products={products}
             siteContent={siteContent}
             onSubmit={saveSiteContent}

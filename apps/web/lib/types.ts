@@ -418,6 +418,9 @@ export interface PublicSettings {
 export interface SiteContent {
   name: string;
   initials: string;
+  logoMode: BrandLogoMode;
+  logoImageUrl: string;
+  logoAlt: string;
   tagline: string;
   heroTitle: string;
   heroText: string;
@@ -437,6 +440,8 @@ export interface SiteContent {
   aboutTitle: string;
   aboutText: string;
 }
+
+export type BrandLogoMode = "INITIALS" | "ICON" | "LOGO";
 
 export interface UploadedImage {
   url: string;

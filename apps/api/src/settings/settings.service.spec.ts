@@ -159,6 +159,58 @@ describe("SettingsService", () => {
     );
   });
 
+  it("keeps old site content compatible with initials logo defaults", async () => {
+    prisma.setting.findUnique.mockResolvedValueOnce({
+      key: "site_content",
+      value: {
+        name: "Marca Antigua",
+        initials: "MA",
+      },
+    });
+
+    await expect(service().getSiteContent()).resolves.toEqual(
+      expect.objectContaining({
+        name: "Marca Antigua",
+        initials: "MA",
+        logoMode: "INITIALS",
+        logoImageUrl: "",
+        logoAlt: "Marca Antigua",
+      }),
+    );
+  });
+
+  it("stores a valid image logo configuration", async () => {
+    const logoImageUrl =
+      "https://res.cloudinary.com/demo/image/upload/v1/mordida-logo.png";
+
+    await expect(
+      service().setSiteContent({
+        logoMode: "ICON",
+        logoImageUrl,
+        logoAlt: "  Icono Mordida  ",
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        logoMode: "ICON",
+        logoImageUrl,
+        logoAlt: "Icono Mordida",
+      }),
+    );
+
+    expect(prisma.setting.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { key: "site_content" },
+        update: {
+          value: expect.objectContaining({
+            logoMode: "ICON",
+            logoImageUrl,
+            logoAlt: "Icono Mordida",
+          }),
+        },
+      }),
+    );
+  });
+
   it("stores the loyalty program as a normalized setting", async () => {
     await expect(
       service().setLoyaltyProgram({

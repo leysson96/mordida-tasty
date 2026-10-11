@@ -6,6 +6,9 @@ import type { SiteContent } from "./types";
 export const brandConfig = {
   name: "Mordida Tasty",
   initials: "MT",
+  logoMode: "INITIALS",
+  logoImageUrl: "",
+  logoAlt: "Mordida Tasty",
   tagline: "Smash burgers, entrantes y limonadas listas para hoy.",
   heroTitle: "Smash burgers hechas para pedir otra mordida.",
   heroText:

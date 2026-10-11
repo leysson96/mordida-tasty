@@ -1,9 +1,9 @@
 "use client";
 
-import type { FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import Image from "next/image";
 import { ImagePlus, Save } from "lucide-react";
-import type { AdminProduct, SiteContent } from "../../lib/types";
+import type { AdminProduct, BrandLogoMode, SiteContent } from "../../lib/types";
 
 interface BrandSectionProps {
   products: AdminProduct[];
@@ -16,6 +16,11 @@ export function BrandSection({
   siteContent,
   onSubmit,
 }: BrandSectionProps) {
+  const [logoMode, setLogoMode] = useState<BrandLogoMode>(
+    siteContent.logoMode,
+  );
+  const logoModeUsesImage = logoMode === "ICON" || logoMode === "LOGO";
+
   return (
     <form className="form-panel site-content-form" onSubmit={onSubmit}>
       <div className="section-heading">
@@ -42,15 +47,73 @@ export function BrandSection({
             Nombre de la pagina
             <input name="name" defaultValue={siteContent.name} required />
           </label>
-          <label>
-            Iniciales del logo
+          <div className="brand-logo-settings full-field">
+            <div className="form-subsection">
+              <span>Logo de marca</span>
+            </div>
+            <div className="brand-logo-grid">
+              <label>
+                Tipo de logo
+                <select
+                  name="logoMode"
+                  value={logoMode}
+                  onChange={(event) =>
+                    setLogoMode(event.target.value as BrandLogoMode)
+                  }
+                >
+                  <option value="INITIALS">Iniciales</option>
+                  <option value="ICON">Icono PNG</option>
+                  <option value="LOGO">Logo PNG</option>
+                </select>
+              </label>
+              {logoMode === "INITIALS" ? (
+                <label>
+                  Iniciales
+                  <input
+                    name="initials"
+                    defaultValue={siteContent.initials}
+                    maxLength={8}
+                    required
+                  />
+                </label>
+              ) : (
+                <input
+                  type="hidden"
+                  name="initials"
+                  value={siteContent.initials}
+                  readOnly
+                />
+              )}
+              {logoModeUsesImage && (
+                <>
+                  <label>
+                    Archivo PNG
+                    <input name="logoImageFile" type="file" accept="image/png" />
+                  </label>
+                  <label>
+                    Texto alternativo
+                    <input
+                      name="logoAlt"
+                      defaultValue={siteContent.logoAlt}
+                      maxLength={80}
+                      placeholder={siteContent.name}
+                    />
+                  </label>
+                </>
+              )}
+            </div>
+            {logoModeUsesImage && siteContent.logoImageUrl && (
+              <p className="brand-logo-current">
+                Imagen actual guardada para la marca.
+              </p>
+            )}
             <input
-              name="initials"
-              defaultValue={siteContent.initials}
-              maxLength={8}
-              required
+              type="hidden"
+              name="currentLogoImage"
+              value={siteContent.logoImageUrl}
+              readOnly
             />
-          </label>
+          </div>
           <label className="full-field">
             Frase superior
             <input name="tagline" defaultValue={siteContent.tagline} required />

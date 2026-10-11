@@ -18,6 +18,9 @@ export interface OpeningHours {
 export interface SiteContent {
   name: string;
   initials: string;
+  logoMode: BrandLogoMode;
+  logoImageUrl: string;
+  logoAlt: string;
   tagline: string;
   heroTitle: string;
   heroText: string;
@@ -37,6 +40,8 @@ export interface SiteContent {
   aboutTitle: string;
   aboutText: string;
 }
+
+export type BrandLogoMode = "INITIALS" | "ICON" | "LOGO";
 
 export interface PromotionCampaign {
   enabled: boolean;
@@ -566,6 +571,9 @@ export class SettingsService {
     return {
       name: "Mordida Tasty",
       initials: "MT",
+      logoMode: "INITIALS",
+      logoImageUrl: "",
+      logoAlt: "Mordida Tasty",
       tagline: "Smash burgers, entrantes y limonadas listas para hoy.",
       heroTitle: "Smash burgers hechas para pedir otra mordida.",
       heroText:
@@ -792,9 +800,18 @@ export class SettingsService {
   private normalizeSiteContent(value: unknown): SiteContent {
     const defaults = this.defaultSiteContent();
     const source = isRecord(value) ? value : {};
+    const name = cleanText(source.name, defaults.name);
     const content = {
-      name: cleanText(source.name, defaults.name),
+      name,
       initials: cleanText(source.initials, defaults.initials).slice(0, 8),
+      logoMode: cleanText(
+        source.logoMode,
+        defaults.logoMode,
+      ) as BrandLogoMode,
+      logoImageUrl: cleanText(source.logoImageUrl, "")
+        ? this.normalizeImagePath(source.logoImageUrl, "")
+        : "",
+      logoAlt: cleanText(source.logoAlt, name).slice(0, 80),
       tagline: cleanText(source.tagline, defaults.tagline),
       heroTitle: cleanText(source.heroTitle, defaults.heroTitle),
       heroText: cleanText(source.heroText, defaults.heroText),
@@ -838,6 +855,14 @@ export class SettingsService {
       ),
       aboutText: cleanText(source.aboutText, defaults.aboutText).slice(0, 700),
     };
+
+    if (
+      content.logoMode !== "INITIALS" &&
+      content.logoMode !== "ICON" &&
+      content.logoMode !== "LOGO"
+    ) {
+      throw new BadRequestException("Tipo de logo no valido.");
+    }
 
     if (!/^[\w\s"',.-]+$/.test(content.fontFamily)) {
       throw new BadRequestException(
