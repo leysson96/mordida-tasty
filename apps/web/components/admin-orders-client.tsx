@@ -55,6 +55,7 @@ import {
 import {
   DeliveryZone,
   DeliveryMethod,
+  CashTrustIncidentReason,
   LoyaltyProgram,
   LoyaltyRewardType,
   OrderItem,
@@ -188,6 +189,8 @@ export function AdminOrdersClient() {
   const [removalBusy, setRemovalBusy] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<OrderSummary>();
   const [cancelBusy, setCancelBusy] = useState(false);
+  const [cashIncidentTarget, setCashIncidentTarget] = useState<OrderSummary>();
+  const [cashIncidentBusy, setCashIncidentBusy] = useState(false);
   const [cashCollectingOrderId, setCashCollectingOrderId] = useState<string>();
   const [acknowledged, setAcknowledged] = useState<Set<string>>(new Set());
   const [twoFactor, setTwoFactor] = useState<TwoFactorSetupResponse>();
@@ -296,6 +299,15 @@ export function AdminOrdersClient() {
       order.paymentMethod === "CASH" &&
       !isCashPaymentCollected(order) &&
       !cashNonCollectableStatuses.has(order.status)
+    );
+  }
+
+  function canCancelCashOrderForIncident(order: OrderSummary) {
+    return (
+      order.paymentMethod === "CASH" &&
+      !isCashPaymentCollected(order) &&
+      !cashNonCollectableStatuses.has(order.status) &&
+      order.status !== "DELIVERED"
     );
   }
 
@@ -696,6 +708,44 @@ export function AdminOrdersClient() {
     }
   }
 
+  async function cancelCashOrderForIncident(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!cashIncidentTarget) {
+      return;
+    }
+
+    const form = new FormData(event.currentTarget);
+    const note = String(form.get("note") ?? "").trim();
+    setCashIncidentBusy(true);
+
+    try {
+      const updated = await api<OrderSummary>(
+        `/admin/orders/${cashIncidentTarget.id}/cash-incident-cancel`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            reason: String(form.get("reason")) as CashTrustIncidentReason,
+            note: note || undefined,
+          }),
+        },
+      );
+      setOrders((current) =>
+        current.map((order) => (order.id === updated.id ? updated : order)),
+      );
+      setAcknowledged((current) => new Set(current).add(updated.id));
+      setCashIncidentTarget(undefined);
+      setError(undefined);
+    } catch (requestError) {
+      handleAdminError(
+        requestError,
+        "No se pudo cancelar el pedido por incidencia.",
+      );
+    } finally {
+      setCashIncidentBusy(false);
+    }
+  }
+
   function updateTimezone(timezone: string) {
     setOpeningHours((current) => ({ ...current, timezone }));
   }
@@ -1062,6 +1112,16 @@ export function AdminOrdersClient() {
                         {cashCollectingOrderId === order.id
                           ? "Marcando..."
                           : "Efectivo cobrado"}
+                      </button>
+                    )}
+                    {canCancelCashOrderForIncident(order) && (
+                      <button
+                        type="button"
+                        className="button danger"
+                        onClick={() => setCashIncidentTarget(order)}
+                      >
+                        <AlertTriangle aria-hidden="true" size={17} />
+                        Cancelar / no recogido
                       </button>
                     )}
                     {canCancelOrderWithRefund(order) && (
@@ -1944,6 +2004,72 @@ export function AdminOrdersClient() {
               >
                 <X aria-hidden="true" size={17} />
                 Reembolsar
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {cashIncidentTarget && (
+        <div className="modal-backdrop no-print">
+          <form className="modal-panel" onSubmit={cancelCashOrderForIncident}>
+            <div className="modal-head">
+              <h2>Cancelar por incidencia</h2>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => setCashIncidentTarget(undefined)}
+                title="Cerrar"
+              >
+                <X aria-hidden="true" size={18} />
+              </button>
+            </div>
+            <p>
+              {cashIncidentTarget.orderNumber} quedara cancelado y el cliente
+              perdera la opcion de efectivo hasta recuperar confianza.
+            </p>
+            <label>
+              Motivo
+              <select
+                name="reason"
+                defaultValue={
+                  cashIncidentTarget.deliveryMethod === "DELIVERY"
+                    ? "NO_SHOW_DELIVERY"
+                    : "NO_PICKUP"
+                }
+                required
+              >
+                <option value="NO_PICKUP">No recogio en local</option>
+                <option value="NO_SHOW_DELIVERY">
+                  No aparecio en entrega
+                </option>
+              </select>
+            </label>
+            <label>
+              Nota interna
+              <HydrationSafeTextarea
+                name="note"
+                rows={3}
+                maxLength={240}
+                placeholder="Opcional"
+              />
+            </label>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => setCashIncidentTarget(undefined)}
+                disabled={cashIncidentBusy}
+              >
+                Volver
+              </button>
+              <button
+                className="button danger"
+                type="submit"
+                disabled={cashIncidentBusy}
+              >
+                <AlertTriangle aria-hidden="true" size={17} />
+                {cashIncidentBusy ? "Cancelando..." : "Confirmar incidencia"}
               </button>
             </div>
           </form>
