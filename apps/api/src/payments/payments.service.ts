@@ -383,12 +383,6 @@ export class PaymentsService {
           );
         }
 
-        if (!order.userId) {
-          throw new BadRequestException(
-            "No se puede bloquear efectivo porque el pedido no tiene cliente registrado.",
-          );
-        }
-
         if (
           order.status === OrderStatus.CANCELLED ||
           order.status === OrderStatus.EXPIRED ||
@@ -468,48 +462,50 @@ export class PaymentsService {
           },
         });
 
-        const existingTrust = await tx.customerCashTrust.findUnique({
-          where: { userId: order.userId },
-        });
-        const trust =
-          existingTrust ??
-          (await tx.customerCashTrust.create({
+        if (order.userId) {
+          const existingTrust = await tx.customerCashTrust.findUnique({
+            where: { userId: order.userId },
+          });
+          const trust =
+            existingTrust ??
+            (await tx.customerCashTrust.create({
+              data: {
+                userId: order.userId,
+                status: CashTrustStatus.PENDING_ACTIVATION,
+                cashEnabled: false,
+                successfulOrdersCount: 0,
+                requiredSuccessfulOrders: CASH_TRUST_INITIAL_REQUIRED_ORDERS,
+              },
+            }));
+
+          const blockedTrust = await tx.customerCashTrust.update({
+            where: { id: trust.id },
             data: {
-              userId: order.userId,
-              status: CashTrustStatus.PENDING_ACTIVATION,
+              status: CashTrustStatus.BLOCKED_INCIDENT,
               cashEnabled: false,
               successfulOrdersCount: 0,
-              requiredSuccessfulOrders: CASH_TRUST_INITIAL_REQUIRED_ORDERS,
+              requiredSuccessfulOrders: CASH_TRUST_RECOVERY_REQUIRED_ORDERS,
+              lastIncidentReason: input.reason,
+              lastIncidentAt: new Date(),
+              unlockedAt: null,
             },
-          }));
+          });
 
-        const blockedTrust = await tx.customerCashTrust.update({
-          where: { id: trust.id },
-          data: {
-            status: CashTrustStatus.BLOCKED_INCIDENT,
-            cashEnabled: false,
-            successfulOrdersCount: 0,
-            requiredSuccessfulOrders: CASH_TRUST_RECOVERY_REQUIRED_ORDERS,
-            lastIncidentReason: input.reason,
-            lastIncidentAt: new Date(),
-            unlockedAt: null,
-          },
-        });
-
-        await tx.cashTrustEvent.create({
-          data: {
-            trustId: blockedTrust.id,
-            userId: blockedTrust.userId,
-            orderId: order.id,
-            type: CashTrustEventType.CASH_BLOCKED,
-            incidentReason: input.reason,
-            successfulOrdersBefore: trust.successfulOrdersCount,
-            successfulOrdersAfter: 0,
-            requiredSuccessfulOrders: CASH_TRUST_RECOVERY_REQUIRED_ORDERS,
-            cashEnabledAfter: false,
-            note,
-          },
-        });
+          await tx.cashTrustEvent.create({
+            data: {
+              trustId: blockedTrust.id,
+              userId: blockedTrust.userId,
+              orderId: order.id,
+              type: CashTrustEventType.CASH_BLOCKED,
+              incidentReason: input.reason,
+              successfulOrdersBefore: trust.successfulOrdersCount,
+              successfulOrdersAfter: 0,
+              requiredSuccessfulOrders: CASH_TRUST_RECOVERY_REQUIRED_ORDERS,
+              cashEnabledAfter: false,
+              note,
+            },
+          });
+        }
 
         return {
           order: await tx.order.findUniqueOrThrow({

@@ -1380,6 +1380,65 @@ describe("PaymentsService", () => {
     });
   });
 
+  it("cancels a pending guest cash order for incident without cash trust", async () => {
+    const summary = {
+      id: "order-guest-cash",
+      status: OrderStatus.CANCELLED,
+      items: [],
+      statusHistory: [],
+    };
+    prisma.order.findUnique.mockResolvedValue({
+      id: "order-guest-cash",
+      userId: null,
+      status: OrderStatus.READY,
+      paymentMethod: OrderPaymentMethod.CASH,
+      totalCents: 2190,
+      currency: "eur",
+      paidAt: null,
+      payments: [
+        {
+          id: "payment-cash",
+          provider: PaymentProvider.CASH,
+          status: PaymentStatus.PENDING,
+          amountCents: 2190,
+        },
+      ],
+    });
+    prisma.order.findUniqueOrThrow.mockResolvedValue(summary);
+
+    await expect(
+      service().cancelPendingCashOrderForIncident({
+        orderId: "order-guest-cash",
+        reason: CashTrustIncidentReason.NO_PICKUP,
+        actorId: "admin-1",
+      }),
+    ).resolves.toEqual({
+      order: summary,
+      paymentId: "payment-cash",
+    });
+
+    expect(prisma.payment.update).toHaveBeenCalledWith({
+      where: { id: "payment-cash" },
+      data: { status: PaymentStatus.FAILED },
+    });
+    expect(prisma.order.update).toHaveBeenCalledWith({
+      where: { id: "order-guest-cash" },
+      data: { status: OrderStatus.CANCELLED },
+    });
+    expect(prisma.orderStatusHistory.create).toHaveBeenCalledWith({
+      data: {
+        orderId: "order-guest-cash",
+        fromStatus: OrderStatus.READY,
+        toStatus: OrderStatus.CANCELLED,
+        changedById: "admin-1",
+        note: "Incidencia de efectivo: no recogio el pedido",
+      },
+    });
+    expect(prisma.customerCashTrust.findUnique).not.toHaveBeenCalled();
+    expect(prisma.customerCashTrust.update).not.toHaveBeenCalled();
+    expect(prisma.cashTrustEvent.create).not.toHaveBeenCalled();
+  });
+
   it("rejects cash incident cancellation when the cash payment is already collected", async () => {
     prisma.order.findUnique.mockResolvedValue({
       id: "order-cash",
