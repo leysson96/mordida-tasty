@@ -22,6 +22,9 @@ describe("CustomersService", () => {
   const settings = {
     getLoyaltyProgram: jest.fn(),
   };
+  const cashTrustService = {
+    getState: jest.fn(),
+  };
 
   const dto = {
     label: " Casa ",
@@ -56,10 +59,24 @@ describe("CustomersService", () => {
       title: "Mordida Club",
       description: "Completa pedidos y desbloquea una recompensa.",
     });
+    cashTrustService.getState.mockResolvedValue({
+      userId: "user-1",
+      status: "PENDING_ACTIVATION",
+      cashEnabled: false,
+      successfulOrdersCount: 0,
+      requiredSuccessfulOrders: 2,
+      ordersRemaining: 2,
+      lastIncidentReason: null,
+      lastIncidentAt: null,
+    });
   });
 
   function service() {
-    return new CustomersService(prisma as never, settings as never);
+    return new CustomersService(
+      prisma as never,
+      settings as never,
+      cashTrustService as never,
+    );
   }
 
   it("lists only addresses owned by the authenticated customer", async () => {
@@ -179,5 +196,17 @@ describe("CustomersService", () => {
         rewardReady: false,
       }),
     );
+  });
+
+  it("returns the customer's cash trust state", async () => {
+    await expect(service().getCashTrustState("user-1")).resolves.toEqual(
+      expect.objectContaining({
+        userId: "user-1",
+        cashEnabled: false,
+        ordersRemaining: 2,
+      }),
+    );
+
+    expect(cashTrustService.getState).toHaveBeenCalledWith("user-1");
   });
 });

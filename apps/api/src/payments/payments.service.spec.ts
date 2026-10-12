@@ -1,5 +1,9 @@
 import { BadRequestException } from "@nestjs/common";
 import {
+  CashTrustEventType,
+  CashTrustIncidentReason,
+  CashTrustStatus,
+  LoyaltyRedemptionStatus,
   OrderPaymentMethod,
   OrderStatus,
   PaymentProvider,
@@ -40,6 +44,14 @@ describe("PaymentsService", () => {
     },
     loyaltyRedemption: {
       updateMany: jest.fn(),
+    },
+    customerCashTrust: {
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    },
+    cashTrustEvent: {
+      create: jest.fn(),
     },
     $transaction: jest.fn(),
   };
@@ -117,6 +129,30 @@ describe("PaymentsService", () => {
       _sum: { amountCents: 0 },
     });
     prisma.loyaltyRedemption.updateMany.mockResolvedValue({ count: 0 });
+    prisma.customerCashTrust.findUnique.mockResolvedValue(null);
+    prisma.customerCashTrust.create.mockResolvedValue({
+      id: "cash-trust-1",
+      userId: "user-1",
+      status: CashTrustStatus.PENDING_ACTIVATION,
+      cashEnabled: false,
+      successfulOrdersCount: 0,
+      requiredSuccessfulOrders: 2,
+      lastIncidentReason: null,
+      lastIncidentAt: null,
+      unlockedAt: null,
+    });
+    prisma.customerCashTrust.update.mockResolvedValue({
+      id: "cash-trust-1",
+      userId: "user-1",
+      status: CashTrustStatus.BLOCKED_INCIDENT,
+      cashEnabled: false,
+      successfulOrdersCount: 0,
+      requiredSuccessfulOrders: 5,
+      lastIncidentReason: CashTrustIncidentReason.NO_PICKUP,
+      lastIncidentAt: new Date("2026-10-11T12:00:00.000Z"),
+      unlockedAt: null,
+    });
+    prisma.cashTrustEvent.create.mockResolvedValue({});
     settingsService.getServiceStatus.mockResolvedValue({
       openNow: true,
       pause: { paused: false, reason: "" },
@@ -1234,6 +1270,146 @@ describe("PaymentsService", () => {
 
     expect(prisma.payment.update).not.toHaveBeenCalled();
     expect(prisma.orderStatusHistory.create).not.toHaveBeenCalled();
+  });
+
+  it("cancels a pending cash order for incident and blocks cash trust", async () => {
+    const summary = {
+      id: "order-cash",
+      status: OrderStatus.CANCELLED,
+      items: [],
+      statusHistory: [],
+    };
+    prisma.order.findUnique.mockResolvedValue({
+      id: "order-cash",
+      userId: "user-1",
+      status: OrderStatus.READY,
+      paymentMethod: OrderPaymentMethod.CASH,
+      totalCents: 2190,
+      currency: "eur",
+      paidAt: null,
+      payments: [
+        {
+          id: "payment-cash",
+          provider: PaymentProvider.CASH,
+          status: PaymentStatus.PENDING,
+          amountCents: 2190,
+        },
+      ],
+    });
+    prisma.order.findUniqueOrThrow.mockResolvedValue(summary);
+    prisma.customerCashTrust.findUnique.mockResolvedValue({
+      id: "cash-trust-1",
+      userId: "user-1",
+      status: CashTrustStatus.ENABLED,
+      cashEnabled: true,
+      successfulOrdersCount: 3,
+      requiredSuccessfulOrders: 2,
+      lastIncidentReason: null,
+      lastIncidentAt: null,
+      unlockedAt: new Date("2026-10-10T12:00:00.000Z"),
+    });
+
+    await expect(
+      service().cancelPendingCashOrderForIncident({
+        orderId: "order-cash",
+        reason: CashTrustIncidentReason.NO_PICKUP,
+        note: "No recogio el pedido.",
+        actorId: "admin-1",
+      }),
+    ).resolves.toEqual({
+      order: summary,
+      paymentId: "payment-cash",
+    });
+
+    expect(prisma.payment.update).toHaveBeenCalledWith({
+      where: { id: "payment-cash" },
+      data: { status: PaymentStatus.FAILED },
+    });
+    expect(prisma.order.update).toHaveBeenCalledWith({
+      where: { id: "order-cash" },
+      data: { status: OrderStatus.CANCELLED },
+    });
+    expect(prisma.loyaltyRedemption.updateMany).toHaveBeenCalledWith({
+      where: {
+        orderId: "order-cash",
+        status: {
+          in: [
+            LoyaltyRedemptionStatus.RESERVED,
+            LoyaltyRedemptionStatus.APPLIED,
+          ],
+        },
+      },
+      data: {
+        status: LoyaltyRedemptionStatus.RELEASED,
+        releasedAt: expect.any(Date),
+      },
+    });
+    expect(prisma.orderStatusHistory.create).toHaveBeenCalledWith({
+      data: {
+        orderId: "order-cash",
+        fromStatus: OrderStatus.READY,
+        toStatus: OrderStatus.CANCELLED,
+        changedById: "admin-1",
+        note: "No recogio el pedido.",
+      },
+    });
+    expect(prisma.customerCashTrust.update).toHaveBeenCalledWith({
+      where: { id: "cash-trust-1" },
+      data: expect.objectContaining({
+        status: CashTrustStatus.BLOCKED_INCIDENT,
+        cashEnabled: false,
+        successfulOrdersCount: 0,
+        requiredSuccessfulOrders: 5,
+        lastIncidentReason: CashTrustIncidentReason.NO_PICKUP,
+        unlockedAt: null,
+      }),
+    });
+    expect(prisma.cashTrustEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        trustId: "cash-trust-1",
+        userId: "user-1",
+        orderId: "order-cash",
+        type: CashTrustEventType.CASH_BLOCKED,
+        incidentReason: CashTrustIncidentReason.NO_PICKUP,
+        successfulOrdersBefore: 3,
+        successfulOrdersAfter: 0,
+        requiredSuccessfulOrders: 5,
+        cashEnabledAfter: false,
+        note: "No recogio el pedido.",
+      }),
+    });
+  });
+
+  it("rejects cash incident cancellation when the cash payment is already collected", async () => {
+    prisma.order.findUnique.mockResolvedValue({
+      id: "order-cash",
+      userId: "user-1",
+      status: OrderStatus.READY,
+      paymentMethod: OrderPaymentMethod.CASH,
+      paidAt: new Date("2026-10-11T12:00:00.000Z"),
+      payments: [
+        {
+          id: "payment-cash",
+          provider: PaymentProvider.CASH,
+          status: PaymentStatus.SUCCEEDED,
+          amountCents: 2190,
+        },
+      ],
+    });
+
+    await expect(
+      service().cancelPendingCashOrderForIncident({
+        orderId: "order-cash",
+        reason: CashTrustIncidentReason.NO_SHOW_DELIVERY,
+        actorId: "admin-1",
+      }),
+    ).rejects.toThrow(
+      "No se puede cancelar por incidencia un pedido en efectivo ya cobrado.",
+    );
+
+    expect(prisma.payment.update).not.toHaveBeenCalled();
+    expect(prisma.order.update).not.toHaveBeenCalled();
+    expect(prisma.customerCashTrust.update).not.toHaveBeenCalled();
   });
 
   it("removes an item from a paid order and creates one partial Stripe refund", async () => {

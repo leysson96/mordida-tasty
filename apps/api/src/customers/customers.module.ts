@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { CashTrustModule } from '../cash-trust/cash-trust.module';
 import { SettingsModule } from '../settings/settings.module';
 import { CustomersController } from './customers.controller';
 import { CustomersService } from './customers.service';
 
 @Module({
-  imports: [AuthModule, SettingsModule],
+  imports: [AuthModule, CashTrustModule, SettingsModule],
   controllers: [CustomersController],
   providers: [CustomersService],
   exports: [CustomersService]

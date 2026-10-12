@@ -22,6 +22,7 @@ import type { LinePriceDisplay } from "../../lib/product-pricing";
 import {
   Address,
   CartItem,
+  CustomerCashTrustState,
   CustomerLoyaltyProgress,
   DeliveryMethod,
   DeliveryQuote,
@@ -45,6 +46,8 @@ export default function CheckoutPage() {
   const [paymentMethod, setPaymentMethod] =
     useState<OrderPaymentMethod>("CARD");
   const [publicSettings, setPublicSettings] = useState<PublicSettings>();
+  const [currentUser, setCurrentUser] = useState<User>();
+  const [cashTrust, setCashTrust] = useState<CustomerCashTrustState>();
   const [loyalty, setLoyalty] = useState<CustomerLoyaltyProgress>();
   const [useLoyaltyReward, setUseLoyaltyReward] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
@@ -92,18 +95,23 @@ export default function CheckoutPage() {
     Promise.all([
       api<User>("/auth/me"),
       api<Address[]>("/customers/addresses"),
+      api<CustomerCashTrustState>("/customers/cash-trust").catch(
+        () => undefined,
+      ),
       api<CustomerLoyaltyProgress>("/customers/loyalty").catch(() => undefined),
     ])
-      .then(([user, addresses, loyaltyProgress]) => {
+      .then(([user, addresses, cashTrustState, loyaltyProgress]) => {
         if (!active) {
           return;
         }
 
+        setCurrentUser(user);
         setCustomerName((current) => current || user.name || "");
         setCustomerEmail((current) => current || user.email || "");
         setCustomerPhone((current) => current || user.phone || "");
         setAddressName((current) => current || user.name || "");
         setAddressPhone((current) => current || user.phone || "");
+        setCashTrust(cashTrustState);
         setLoyalty(loyaltyProgress);
         setUseLoyaltyReward(Boolean(loyaltyProgress?.rewardReady));
         setCustomerDetailsOpen(!(user.name && user.email && user.phone));
@@ -276,6 +284,12 @@ export default function CheckoutPage() {
     () => parseMoneyInputCents(cashTenderedEuros),
     [cashTenderedEuros],
   );
+  const cashPaymentAllowed = Boolean(cashTrust?.cashEnabled);
+  const cashTrustMessage = cashTrust
+    ? cashTrustMessageForState(cashTrust)
+    : currentUser
+      ? "No se pudo confirmar si tienes efectivo disponible. Usa tarjeta para continuar."
+      : "Inicia sesion para pagar en efectivo. Los clientes nuevos deben completar 2 pedidos con tarjeta sin incidencias.";
   const cashChangeCents =
     paymentMethod === "CASH" && cashTenderedCents !== undefined
       ? cashTenderedCents - totalCents
@@ -285,6 +299,7 @@ export default function CheckoutPage() {
   const cashBlocked =
     cashNeedsTender &&
     (cashTenderedCents === undefined || cashTenderedCents < totalCents);
+  const cashTrustBlocked = paymentMethod === "CASH" && !cashPaymentAllowed;
   const selectedAddress = savedAddresses.find(
     (address) => address.id === selectedAddressId,
   );
@@ -343,6 +358,12 @@ export default function CheckoutPage() {
       setError(
         `Anade ${loyalty?.program.freeProductName ?? "el producto de fidelidad"} al carrito para canjear este premio.`,
       );
+      return;
+    }
+
+    if (paymentMethod === "CASH" && !cashPaymentAllowed) {
+      setError(cashTrustMessage);
+      setPaymentMethod("CARD");
       return;
     }
 
@@ -766,12 +787,30 @@ export default function CheckoutPage() {
               <button
                 type="button"
                 className={paymentMethod === "CASH" ? "active" : ""}
-                onClick={() => setPaymentMethod("CASH")}
+                disabled={!cashPaymentAllowed}
+                aria-describedby={
+                  cashPaymentAllowed ? undefined : "cash-trust-message"
+                }
+                onClick={() => {
+                  if (cashPaymentAllowed) {
+                    setPaymentMethod("CASH");
+                    return;
+                  }
+
+                  setPaymentMethod("CARD");
+                  setError(cashTrustMessage);
+                }}
               >
                 <Banknote aria-hidden="true" size={18} />
                 Efectivo
               </button>
             </div>
+
+            {!cashPaymentAllowed && (
+              <p id="cash-trust-message" className="cash-change-preview">
+                {cashTrustMessage}
+              </p>
+            )}
 
             {paymentMethod === "CASH" && (
               <div className="cash-payment-panel">
@@ -916,7 +955,8 @@ export default function CheckoutPage() {
               quoteLoading ||
               deliveryNeedsQuote ||
               loyaltyRewardBlocked ||
-              cashBlocked
+              cashBlocked ||
+              cashTrustBlocked
             }
           >
             {paymentMethod === "CASH" ? (
@@ -1021,6 +1061,19 @@ function SummaryLinePrice({ price }: { price: LinePriceDisplay }) {
       </strong>
     </span>
   );
+}
+
+function cashTrustMessageForState(cashTrust: CustomerCashTrustState) {
+  if (cashTrust.cashEnabled) {
+    return "Pago en efectivo disponible.";
+  }
+
+  const remaining = Math.max(cashTrust.ordersRemaining, 0);
+  if (cashTrust.status === "BLOCKED_INCIDENT") {
+    return `Completa ${remaining} pedidos con tarjeta sin incidencias para recuperar efectivo.`;
+  }
+
+  return `Completa ${remaining} pedidos con tarjeta sin incidencias para activar efectivo.`;
 }
 
 function normalizeComparableText(value: string) {

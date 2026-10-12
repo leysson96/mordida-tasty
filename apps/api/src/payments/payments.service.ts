@@ -7,6 +7,9 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
+  CashTrustEventType,
+  CashTrustIncidentReason,
+  CashTrustStatus,
   LoyaltyRedemptionStatus,
   OrderPaymentMethod,
   OrderStatus,
@@ -16,6 +19,10 @@ import {
 } from "@prisma/client";
 import { Request } from "express";
 import Stripe from "stripe";
+import {
+  CASH_TRUST_INITIAL_REQUIRED_ORDERS,
+  CASH_TRUST_RECOVERY_REQUIRED_ORDERS,
+} from "../cash-trust/cash-trust.service";
 import { AppEnv } from "../config/env";
 import {
   paidOrBeyondStatuses,
@@ -79,6 +86,11 @@ const nonCollectableCashOrderStatuses: OrderStatus[] = [
   OrderStatus.EXPIRED,
   OrderStatus.PAYMENT_FAILED,
 ];
+
+const cashTrustIncidentLabels: Record<CashTrustIncidentReason, string> = {
+  [CashTrustIncidentReason.NO_PICKUP]: "no recogio el pedido",
+  [CashTrustIncidentReason.NO_SHOW_DELIVERY]: "no aparecio en la entrega",
+};
 
 @Injectable()
 export class PaymentsService {
@@ -339,6 +351,172 @@ export class PaymentsService {
           }),
           paymentId,
           amountCents,
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+
+    return result;
+  }
+
+  async cancelPendingCashOrderForIncident(input: {
+    orderId: string;
+    reason: CashTrustIncidentReason;
+    note?: string;
+    actorId: string;
+  }) {
+    const note = input.note?.trim();
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        const order = await tx.order.findUnique({
+          where: { id: input.orderId },
+          include: orderWithPaymentsInclude,
+        });
+
+        if (!order) {
+          throw new NotFoundException("Order not found.");
+        }
+
+        if (order.paymentMethod !== OrderPaymentMethod.CASH) {
+          throw new BadRequestException(
+            "Solo se pueden cancelar por incidencia pedidos en efectivo.",
+          );
+        }
+
+        if (!order.userId) {
+          throw new BadRequestException(
+            "No se puede bloquear efectivo porque el pedido no tiene cliente registrado.",
+          );
+        }
+
+        if (
+          order.status === OrderStatus.CANCELLED ||
+          order.status === OrderStatus.EXPIRED ||
+          order.status === OrderStatus.PAYMENT_FAILED ||
+          order.status === OrderStatus.DELIVERED
+        ) {
+          throw new BadRequestException(
+            "Solo se pueden cancelar por incidencia pedidos activos pendientes.",
+          );
+        }
+
+        const cashPayments = order.payments.filter(
+          (payment) => payment.provider === PaymentProvider.CASH,
+        );
+        const succeededPayment = cashPayments.find(
+          (payment) => payment.status === PaymentStatus.SUCCEEDED,
+        );
+
+        if (succeededPayment || order.paidAt) {
+          throw new BadRequestException(
+            "No se puede cancelar por incidencia un pedido en efectivo ya cobrado.",
+          );
+        }
+
+        const pendingPayment = cashPayments.find(
+          (payment) => payment.status === PaymentStatus.PENDING,
+        );
+        let paymentId: string | null = pendingPayment?.id ?? null;
+
+        if (pendingPayment) {
+          await tx.payment.update({
+            where: { id: pendingPayment.id },
+            data: { status: PaymentStatus.FAILED },
+          });
+        } else if (cashPayments.length === 0) {
+          const failedPayment = await tx.payment.create({
+            data: {
+              orderId: order.id,
+              provider: PaymentProvider.CASH,
+              status: PaymentStatus.FAILED,
+              amountCents: order.totalCents,
+              currency: order.currency,
+            },
+          });
+          paymentId = failedPayment.id;
+        } else {
+          throw new BadRequestException(
+            "El pago en efectivo no esta pendiente de cobro.",
+          );
+        }
+
+        await tx.order.update({
+          where: { id: order.id },
+          data: { status: OrderStatus.CANCELLED },
+        });
+
+        await tx.loyaltyRedemption.updateMany({
+          where: {
+            orderId: order.id,
+            status: { in: consumedLoyaltyStatuses },
+          },
+          data: {
+            status: LoyaltyRedemptionStatus.RELEASED,
+            releasedAt: new Date(),
+          },
+        });
+
+        await tx.orderStatusHistory.create({
+          data: {
+            orderId: order.id,
+            fromStatus: order.status,
+            toStatus: OrderStatus.CANCELLED,
+            changedById: input.actorId,
+            note:
+              note ??
+              `Incidencia de efectivo: ${cashTrustIncidentLabels[input.reason]}`,
+          },
+        });
+
+        const existingTrust = await tx.customerCashTrust.findUnique({
+          where: { userId: order.userId },
+        });
+        const trust =
+          existingTrust ??
+          (await tx.customerCashTrust.create({
+            data: {
+              userId: order.userId,
+              status: CashTrustStatus.PENDING_ACTIVATION,
+              cashEnabled: false,
+              successfulOrdersCount: 0,
+              requiredSuccessfulOrders: CASH_TRUST_INITIAL_REQUIRED_ORDERS,
+            },
+          }));
+
+        const blockedTrust = await tx.customerCashTrust.update({
+          where: { id: trust.id },
+          data: {
+            status: CashTrustStatus.BLOCKED_INCIDENT,
+            cashEnabled: false,
+            successfulOrdersCount: 0,
+            requiredSuccessfulOrders: CASH_TRUST_RECOVERY_REQUIRED_ORDERS,
+            lastIncidentReason: input.reason,
+            lastIncidentAt: new Date(),
+            unlockedAt: null,
+          },
+        });
+
+        await tx.cashTrustEvent.create({
+          data: {
+            trustId: blockedTrust.id,
+            userId: blockedTrust.userId,
+            orderId: order.id,
+            type: CashTrustEventType.CASH_BLOCKED,
+            incidentReason: input.reason,
+            successfulOrdersBefore: trust.successfulOrdersCount,
+            successfulOrdersAfter: 0,
+            requiredSuccessfulOrders: CASH_TRUST_RECOVERY_REQUIRED_ORDERS,
+            cashEnabledAfter: false,
+            note,
+          },
+        });
+
+        return {
+          order: await tx.order.findUniqueOrThrow({
+            where: { id: order.id },
+            include: orderSummaryInclude,
+          }),
+          paymentId,
         };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },

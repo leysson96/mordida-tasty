@@ -1,5 +1,7 @@
 import { BadRequestException } from "@nestjs/common";
 import {
+  CashTrustEventType,
+  CashTrustStatus,
   DeliveryMethod,
   DiscountScope,
   DiscountType,
@@ -27,6 +29,9 @@ describe("OrdersService", () => {
     },
     product: {
       findMany: jest.fn(),
+    },
+    customerCashTrust: {
+      findUnique: jest.fn(),
     },
     $transaction: jest.fn(),
   };
@@ -63,6 +68,12 @@ describe("OrdersService", () => {
     prisma.order.count.mockResolvedValue(0);
     prisma.order.groupBy.mockResolvedValue([]);
     prisma.product.findMany.mockResolvedValue([]);
+    prisma.customerCashTrust.findUnique.mockResolvedValue({
+      status: CashTrustStatus.ENABLED,
+      cashEnabled: true,
+      successfulOrdersCount: 2,
+      requiredSuccessfulOrders: 2,
+    });
     prisma.$transaction.mockReset();
     settings.getServiceStatus.mockResolvedValue({ openNow: true });
     settings.getTaxRate.mockResolvedValue(0.1);
@@ -653,6 +664,110 @@ describe("OrdersService", () => {
     );
   });
 
+  it("rejects cash orders from guests before creating an order", async () => {
+    await expect(
+      service().createOrder(
+        {
+          customerName: "Cliente Test",
+          customerEmail: "cliente@example.com",
+          customerPhone: "+34611752804",
+          deliveryMethod: DeliveryMethod.PICKUP,
+          paymentMethod: OrderPaymentMethod.CASH,
+          items: [
+            {
+              productId: "00000000-0000-4000-8000-000000000001",
+              quantity: 1,
+            },
+          ],
+          acceptLegal: true,
+        },
+        "checkout-cash-guest-key",
+      ),
+    ).rejects.toThrow("Inicia sesion para pagar en efectivo.");
+
+    expect(prisma.customerCashTrust.findUnique).not.toHaveBeenCalled();
+    expect(prisma.product.findMany).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects cash orders when the customer has not earned cash trust", async () => {
+    prisma.customerCashTrust.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        status: CashTrustStatus.PENDING_ACTIVATION,
+        cashEnabled: false,
+        successfulOrdersCount: 1,
+        requiredSuccessfulOrders: 2,
+      });
+
+    const dto = {
+      customerName: "Cliente Test",
+      customerEmail: "cliente@example.com",
+      customerPhone: "+34611752804",
+      deliveryMethod: DeliveryMethod.PICKUP,
+      paymentMethod: OrderPaymentMethod.CASH,
+      items: [
+        {
+          productId: "00000000-0000-4000-8000-000000000001",
+          quantity: 1,
+        },
+      ],
+      acceptLegal: true,
+    };
+
+    await expect(
+      service().createOrder(
+        dto,
+        "checkout-cash-new-customer-key",
+        { id: "user-new" } as never,
+      ),
+    ).rejects.toThrow("Completa 2 pedidos con tarjeta");
+
+    await expect(
+      service().createOrder(
+        dto,
+        "checkout-cash-one-order-key",
+        { id: "user-one-order" } as never,
+      ),
+    ).rejects.toThrow("Completa 1 pedidos con tarjeta");
+
+    expect(prisma.product.findMany).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects cash orders when cash was blocked by an incident", async () => {
+    prisma.customerCashTrust.findUnique.mockResolvedValueOnce({
+      status: CashTrustStatus.BLOCKED_INCIDENT,
+      cashEnabled: false,
+      successfulOrdersCount: 2,
+      requiredSuccessfulOrders: 5,
+    });
+
+    await expect(
+      service().createOrder(
+        {
+          customerName: "Cliente Test",
+          customerEmail: "cliente@example.com",
+          customerPhone: "+34611752804",
+          deliveryMethod: DeliveryMethod.PICKUP,
+          paymentMethod: OrderPaymentMethod.CASH,
+          items: [
+            {
+              productId: "00000000-0000-4000-8000-000000000001",
+              quantity: 1,
+            },
+          ],
+          acceptLegal: true,
+        },
+        "checkout-cash-blocked-key",
+        { id: "user-blocked" } as never,
+      ),
+    ).rejects.toThrow("Completa 3 pedidos con tarjeta");
+
+    expect(prisma.product.findMany).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it("creates cash delivery orders as confirmed and stores change details", async () => {
     const productId = "00000000-0000-4000-8000-000000000001";
     prisma.product.findMany.mockResolvedValue([
@@ -705,6 +820,7 @@ describe("OrdersService", () => {
           acceptLegal: true,
         },
         "checkout-cash-key",
+        { id: "user-1" } as never,
       ),
     ).resolves.toEqual(
       expect.objectContaining({
@@ -716,6 +832,15 @@ describe("OrdersService", () => {
       }),
     );
 
+    expect(prisma.customerCashTrust.findUnique).toHaveBeenCalledWith({
+      where: { userId: "user-1" },
+      select: {
+        status: true,
+        cashEnabled: true,
+        successfulOrdersCount: true,
+        requiredSuccessfulOrders: true,
+      },
+    });
     expect(tx.order.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -1034,6 +1159,7 @@ describe("OrdersService", () => {
           acceptLegal: true,
         },
         "checkout-cash-low-key",
+        { id: "user-1" } as never,
       ),
     ).rejects.toThrow(
       "El importe en efectivo debe cubrir el total del pedido.",
@@ -1275,6 +1401,153 @@ describe("OrdersService", () => {
         releasedAt: expect.any(Date),
       },
     });
+  });
+
+  it("records cash trust progress when a customer order is delivered", async () => {
+    const trust = {
+      id: "cash-trust-1",
+      userId: "user-1",
+      status: CashTrustStatus.PENDING_ACTIVATION,
+      cashEnabled: false,
+      successfulOrdersCount: 1,
+      requiredSuccessfulOrders: 2,
+      lastIncidentReason: null,
+      lastIncidentAt: null,
+      unlockedAt: null,
+      createdAt: new Date("2026-10-11T12:00:00.000Z"),
+      updatedAt: new Date("2026-10-11T12:00:00.000Z"),
+    };
+    const updatedTrust = {
+      ...trust,
+      status: CashTrustStatus.ENABLED,
+      cashEnabled: true,
+      successfulOrdersCount: 2,
+      unlockedAt: new Date("2026-10-11T12:05:00.000Z"),
+    };
+    const tx = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "order-1",
+          userId: "user-1",
+          status: OrderStatus.READY,
+          paidAt: new Date("2026-10-11T12:00:00.000Z"),
+          paymentMethod: OrderPaymentMethod.CARD,
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "order-1",
+          userId: "user-1",
+          status: OrderStatus.DELIVERED,
+          statusHistory: [],
+          items: [],
+        }),
+      },
+      loyaltyRedemption: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      orderStatusHistory: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+      customerCashTrust: {
+        findUnique: jest.fn().mockResolvedValue(trust),
+        create: jest.fn(),
+        update: jest.fn().mockResolvedValue(updatedTrust),
+      },
+      cashTrustEvent: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+    };
+    prisma.$transaction.mockImplementation((callback) => callback(tx));
+
+    await service().transitionOrder(
+      "order-1",
+      OrderStatus.DELIVERED,
+      "admin-1",
+      "Entregado",
+    );
+
+    expect(tx.customerCashTrust.update).toHaveBeenCalledWith({
+      where: { id: "cash-trust-1" },
+      data: expect.objectContaining({
+        status: CashTrustStatus.ENABLED,
+        cashEnabled: true,
+        successfulOrdersCount: 2,
+        lastIncidentReason: null,
+        lastIncidentAt: null,
+      }),
+    });
+    expect(tx.cashTrustEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        trustId: "cash-trust-1",
+        userId: "user-1",
+        orderId: "order-1",
+        type: CashTrustEventType.ORDER_COMPLETED,
+        successfulOrdersBefore: 1,
+        successfulOrdersAfter: 2,
+        cashEnabledAfter: true,
+      }),
+    });
+    expect(tx.cashTrustEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        trustId: "cash-trust-1",
+        userId: "user-1",
+        orderId: "order-1",
+        type: CashTrustEventType.CASH_ENABLED,
+        successfulOrdersBefore: 1,
+        successfulOrdersAfter: 2,
+        cashEnabledAfter: true,
+      }),
+    });
+  });
+
+  it.each([
+    OrderStatus.CANCELLED,
+    OrderStatus.PAYMENT_FAILED,
+    OrderStatus.EXPIRED,
+  ])("does not record cash trust progress when an order becomes %s", async (toStatus) => {
+    const tx = {
+      order: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "order-1",
+          userId: "user-1",
+          status: OrderStatus.PENDING_PAYMENT,
+          paidAt: null,
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: "order-1",
+          userId: "user-1",
+          status: toStatus,
+          statusHistory: [],
+          items: [],
+        }),
+      },
+      loyaltyRedemption: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      orderStatusHistory: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+      customerCashTrust: {
+        findUnique: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+      cashTrustEvent: {
+        create: jest.fn(),
+      },
+    };
+    prisma.$transaction.mockImplementation((callback) => callback(tx));
+
+    await service().transitionOrder(
+      "order-1",
+      toStatus,
+      "admin-1",
+      "No cuenta como pedido correcto",
+    );
+
+    expect(tx.customerCashTrust.findUnique).not.toHaveBeenCalled();
+    expect(tx.customerCashTrust.create).not.toHaveBeenCalled();
+    expect(tx.customerCashTrust.update).not.toHaveBeenCalled();
+    expect(tx.cashTrustEvent.create).not.toHaveBeenCalled();
   });
 
   it("uses the configured business timezone for the admin today filter", async () => {

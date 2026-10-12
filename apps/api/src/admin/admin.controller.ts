@@ -69,6 +69,7 @@ import {
   UpdateTaxRateDto,
   UpdateTicketPrintConfigDto,
 } from "./dto/settings.dto";
+import { CancelCashIncidentOrderDto } from "./dto/cash-incident-order.dto";
 import { CancelOrderDto } from "./dto/cancel-order.dto";
 import { RemoveOrderItemDto } from "./dto/remove-order-item.dto";
 
@@ -243,6 +244,39 @@ export class AdminController {
         reason: dto.reason,
         refundedCents: result.refundedCents,
         stripeRefundId: result.stripeRefundId,
+      },
+      ip: request.ip,
+      userAgent: request.headers["user-agent"],
+    });
+
+    return result.order;
+  }
+
+  @Patch("orders/:orderId/cash-incident-cancel")
+  async cancelCashOrderForIncident(
+    @Param("orderId") orderId: string,
+    @Body() dto: CancelCashIncidentOrderDto,
+    @CurrentUser() user: { id: string },
+    @Req() request: Request,
+  ) {
+    const result = await this.paymentsService.cancelPendingCashOrderForIncident(
+      {
+        orderId,
+        reason: dto.reason,
+        note: dto.note,
+        actorId: user.id,
+      },
+    );
+
+    await this.auditService.log({
+      actorId: user.id,
+      action: "order.cash_incident.cancel",
+      entity: "order",
+      entityId: orderId,
+      metadata: {
+        reason: dto.reason,
+        note: dto.note,
+        paymentId: result.paymentId,
       },
       ip: request.ip,
       userAgent: request.headers["user-agent"],

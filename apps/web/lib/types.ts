@@ -10,6 +10,13 @@ export type LoyaltyRewardType = "DISCOUNT_PERCENT" | "FREE_PRODUCT";
 
 export type PromotionDiscountType = "PERCENTAGE" | "FIXED_AMOUNT";
 
+export type CashTrustStatus =
+  | "PENDING_ACTIVATION"
+  | "ENABLED"
+  | "BLOCKED_INCIDENT";
+
+export type CashTrustIncidentReason = "NO_PICKUP" | "NO_SHOW_DELIVERY";
+
 export type DiscountScope = "PRODUCTS" | "CATEGORY" | "ORDER_TOTAL";
 
 export type DiscountWeekday =
@@ -345,6 +352,17 @@ export interface CustomerLoyaltyProgress {
   availableRewards: number;
   rewardReady: boolean;
   rewardLabel: string;
+}
+
+export interface CustomerCashTrustState {
+  userId: string;
+  status: CashTrustStatus;
+  cashEnabled: boolean;
+  successfulOrdersCount: number;
+  requiredSuccessfulOrders: number;
+  ordersRemaining: number;
+  lastIncidentReason?: CashTrustIncidentReason | null;
+  lastIncidentAt?: string | null;
 }
 
 export interface StaffUser extends User {

@@ -1,7 +1,12 @@
 import { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { JwtService } from "@nestjs/jwt";
-import { DeliveryMethod, OrderStatus, Role } from "@prisma/client";
+import {
+  CashTrustIncidentReason,
+  DeliveryMethod,
+  OrderStatus,
+  Role,
+} from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { AdminTwoFactorGuard } from "../common/guards/admin-two-factor.guard";
 import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
@@ -87,6 +92,7 @@ describe("Admin authorization E2E", () => {
   const paymentsService = {
     removeOrderItemWithRefund: jest.fn(),
     cancelPaidOrderWithRefund: jest.fn(),
+    cancelPendingCashOrderForIncident: jest.fn(),
   };
 
   const productsService = {
@@ -300,6 +306,12 @@ describe("Admin authorization E2E", () => {
       .expect(403);
 
     await request(app.getHttpServer())
+      .patch("/admin/orders/order-1/cash-incident-cancel")
+      .set("Authorization", bearer("kitchen-token"))
+      .send({ reason: CashTrustIncidentReason.NO_PICKUP })
+      .expect(403);
+
+    await request(app.getHttpServer())
       .post("/admin/users")
       .set("Authorization", bearer("kitchen-token"))
       .send({
@@ -316,6 +328,9 @@ describe("Admin authorization E2E", () => {
     expect(settingsService.setPromotionCampaign).not.toHaveBeenCalled();
     expect(promotionsService.updateAdminDiscount).not.toHaveBeenCalled();
     expect(promotionsService.deactivateAdminDiscount).not.toHaveBeenCalled();
+    expect(
+      paymentsService.cancelPendingCashOrderForIncident,
+    ).not.toHaveBeenCalled();
     expect(staffService.createStaff).not.toHaveBeenCalled();
   });
 

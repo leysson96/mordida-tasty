@@ -1,5 +1,6 @@
 import { ForbiddenException } from "@nestjs/common";
 import {
+  CashTrustIncidentReason,
   DeliveryMethod,
   DiscountScope,
   DiscountType,
@@ -21,6 +22,7 @@ describe("AdminController", () => {
   const paymentsService = {
     removeOrderItemWithRefund: jest.fn(),
     cancelPaidOrderWithRefund: jest.fn(),
+    cancelPendingCashOrderForIncident: jest.fn(),
   };
 
   const productsService = {
@@ -213,6 +215,46 @@ describe("AdminController", () => {
           reason: "Cliente solicita cancelacion",
           refundedCents: 1440,
           stripeRefundId: "re_full",
+        },
+      }),
+    );
+  });
+
+  it("logs cash incident metadata when an admin cancels a pending cash order", async () => {
+    const order = { id: "order-cash", status: OrderStatus.CANCELLED };
+    paymentsService.cancelPendingCashOrderForIncident.mockResolvedValue({
+      order,
+      paymentId: "payment-cash",
+    });
+
+    await expect(
+      controller().cancelCashOrderForIncident(
+        "order-cash",
+        {
+          reason: CashTrustIncidentReason.NO_PICKUP,
+          note: "No recogio el pedido.",
+        },
+        { id: "admin-1" },
+        request as never,
+      ),
+    ).resolves.toBe(order);
+
+    expect(paymentsService.cancelPendingCashOrderForIncident).toHaveBeenCalledWith({
+      orderId: "order-cash",
+      reason: CashTrustIncidentReason.NO_PICKUP,
+      note: "No recogio el pedido.",
+      actorId: "admin-1",
+    });
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: "admin-1",
+        action: "order.cash_incident.cancel",
+        entity: "order",
+        entityId: "order-cash",
+        metadata: {
+          reason: CashTrustIncidentReason.NO_PICKUP,
+          note: "No recogio el pedido.",
+          paymentId: "payment-cash",
         },
       }),
     );

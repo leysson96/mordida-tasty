@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
+  CashTrustStatus,
   DeliveryMethod,
   LoyaltyRedemptionStatus,
   LoyaltyRewardType,
@@ -19,6 +20,7 @@ import {
 import { randomBytes } from "node:crypto";
 import { AuthenticatedUser } from "../common/decorators/current-user.decorator";
 import { AppEnv } from "../config/env";
+import { recordCashTrustSuccessfulOrder } from "../cash-trust/cash-trust.service";
 import { LEGAL_VERSION } from "../legal/legal-version";
 import { MailService } from "../mail/mail.service";
 import { DeliveryZonesService } from "../settings/delivery-zones.service";
@@ -230,6 +232,11 @@ export class OrdersService {
       throw new BadRequestException("La direccion de entrega es obligatoria.");
     }
 
+    const paymentMethod = dto.paymentMethod ?? OrderPaymentMethod.CARD;
+    if (paymentMethod === OrderPaymentMethod.CASH) {
+      await this.assertCashPaymentAllowed(user?.id);
+    }
+
     const orderLines = await this.resolveCheckoutOrderLines(dto.items);
     const subtotalCents = orderLines.reduce(
       (sum, item) => sum + item.lineTotalCents,
@@ -252,7 +259,6 @@ export class OrdersService {
     }
 
     const taxRate = await this.settingsService.getTaxRate();
-    const paymentMethod = dto.paymentMethod ?? OrderPaymentMethod.CARD;
     const loyaltyProgram = dto.useLoyaltyReward
       ? await this.settingsService.getLoyaltyProgram()
       : undefined;
@@ -849,6 +855,13 @@ export class OrdersService {
         },
       });
 
+      if (toStatus === OrderStatus.DELIVERED && order.userId) {
+        await recordCashTrustSuccessfulOrder(tx, {
+          userId: order.userId,
+          orderId: order.id,
+        });
+      }
+
       return updated;
     });
   }
@@ -857,6 +870,46 @@ export class OrdersService {
     if (orderUserId && orderUserId !== user?.id) {
       throw new ForbiddenException("You cannot access this order.");
     }
+  }
+
+  private async assertCashPaymentAllowed(userId: string | undefined) {
+    if (!userId) {
+      throw new BadRequestException(
+        "Inicia sesion para pagar en efectivo. Los clientes nuevos deben completar 2 pedidos con tarjeta sin incidencias.",
+      );
+    }
+
+    const cashTrust = await this.prisma.customerCashTrust.findUnique({
+      where: { userId },
+      select: {
+        status: true,
+        cashEnabled: true,
+        successfulOrdersCount: true,
+        requiredSuccessfulOrders: true,
+      },
+    });
+
+    if (cashTrust?.cashEnabled) {
+      return;
+    }
+
+    const requiredSuccessfulOrders =
+      cashTrust?.requiredSuccessfulOrders ?? 2;
+    const successfulOrdersCount = cashTrust?.successfulOrdersCount ?? 0;
+    const ordersRemaining = Math.max(
+      requiredSuccessfulOrders - successfulOrdersCount,
+      0,
+    );
+
+    if (cashTrust?.status === CashTrustStatus.BLOCKED_INCIDENT) {
+      throw new BadRequestException(
+        `El pago en efectivo esta bloqueado por una incidencia. Completa ${ordersRemaining} pedidos con tarjeta sin incidencias para recuperarlo.`,
+      );
+    }
+
+    throw new BadRequestException(
+      `El pago en efectivo aun no esta disponible para esta cuenta. Completa ${ordersRemaining} pedidos con tarjeta sin incidencias para activarlo.`,
+    );
   }
 
   private async resolveCheckoutOrderLines(items: CreateOrderItemDto[]) {

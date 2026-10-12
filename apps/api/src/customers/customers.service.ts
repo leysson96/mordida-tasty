@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { LoyaltyRedemptionStatus, OrderStatus } from '@prisma/client';
+import { CashTrustService } from '../cash-trust/cash-trust.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { UpsertAddressDto } from './dto/address.dto';
@@ -9,6 +10,7 @@ export class CustomersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settingsService: SettingsService,
+    private readonly cashTrustService: CashTrustService,
   ) {}
 
   listAddresses(userId: string) {
@@ -121,6 +123,10 @@ export class CustomersService {
           ? `${program.discountPercent}% de descuento`
           : program.freeProductName,
     };
+  }
+
+  getCashTrustState(userId: string) {
+    return this.cashTrustService.getState(userId);
   }
 
   private async ensureOwnedAddress(userId: string, addressId: string) {

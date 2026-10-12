@@ -19,6 +19,11 @@ export class CustomersController {
     return this.customersService.getLoyaltyProgress(user.id);
   }
 
+  @Get('cash-trust')
+  cashTrust(@CurrentUser() user: { id: string }) {
+    return this.customersService.getCashTrustState(user.id);
+  }
+
   @Post('addresses')
   createAddress(@CurrentUser() user: { id: string }, @Body() dto: UpsertAddressDto) {
     return this.customersService.createAddress(user.id, dto);
