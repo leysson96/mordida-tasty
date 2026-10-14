@@ -1708,6 +1708,11 @@ export function AdminOrdersClient() {
                   hay que emparejarla en la tablet o instalar su servicio de
                   impresion.
                 </p>
+                <p>
+                  Si Android se queda en "buscando impresora", el ticket ya
+                  esta listo: falta que la tablet tenga un servicio/driver de
+                  impresion compatible con esa impresora Bluetooth.
+                </p>
                 <div className="printer-settings-grid">
                   <label>
                     Papel
@@ -1858,8 +1863,9 @@ export function AdminOrdersClient() {
                   <li>Prueba de impresion hecha desde otra app Android.</li>
                 </ol>
                 <p>
-                  Si Android no lista la impresora, la siguiente fase es una app
-                  puente ESC/POS o impresora WiFi/LAN.
+                  Si Android no lista la impresora, no es un fallo de la web:
+                  la siguiente fase es una app puente ESC/POS o impresora
+                  WiFi/LAN.
                 </p>
               </div>
             </section>

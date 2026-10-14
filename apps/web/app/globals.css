@@ -1417,6 +1417,18 @@ p {
   box-shadow: var(--shadow-soft);
 }
 
+.cash-trust-panel {
+  background:
+    linear-gradient(135deg, rgba(33, 21, 18, 0.96), rgba(122, 0, 8, 0.82)),
+    var(--color-ink);
+}
+
+.cash-trust-panel.enabled {
+  background:
+    linear-gradient(135deg, rgba(35, 113, 90, 0.96), rgba(33, 21, 18, 0.82)),
+    #23715a;
+}
+
 .loyalty-copy,
 .loyalty-progress-card,
 .loyalty-progress-head,

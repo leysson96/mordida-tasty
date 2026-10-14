@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import {
+  Banknote,
   Gift,
   LogOut,
   MapPin,
@@ -18,6 +19,7 @@ import {
 import { ApiError, api, formatMoney } from "../../lib/api";
 import {
   Address,
+  CustomerCashTrustState,
   CustomerLoyaltyProgress,
   OrderSummary,
   User,
@@ -29,6 +31,7 @@ export default function AccountPage() {
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [loyalty, setLoyalty] = useState<CustomerLoyaltyProgress>();
+  const [cashTrust, setCashTrust] = useState<CustomerCashTrustState>();
   const [error, setError] = useState<string>();
   const [addressMessage, setAddressMessage] = useState<string>();
   const [addressBusy, setAddressBusy] = useState(false);
@@ -42,17 +45,29 @@ export default function AccountPage() {
       api<Address[]>("/customers/addresses"),
       api<OrderSummary[]>("/orders/mine"),
       api<CustomerLoyaltyProgress>("/customers/loyalty").catch(() => undefined),
+      api<CustomerCashTrustState>("/customers/cash-trust").catch(
+        () => undefined,
+      ),
     ])
-      .then(([me, savedAddresses, savedOrders, loyaltyProgress]) => {
-        if (!active) {
-          return;
-        }
-        setUser(me);
-        setAddresses(savedAddresses);
-        setOrders(savedOrders);
-        setLoyalty(loyaltyProgress);
-        setAuthenticated(true);
-      })
+      .then(
+        ([
+          me,
+          savedAddresses,
+          savedOrders,
+          loyaltyProgress,
+          cashTrustState,
+        ]) => {
+          if (!active) {
+            return;
+          }
+          setUser(me);
+          setAddresses(savedAddresses);
+          setOrders(savedOrders);
+          setLoyalty(loyaltyProgress);
+          setCashTrust(cashTrustState);
+          setAuthenticated(true);
+        },
+      )
       .catch((requestError: Error) => {
         if (!active) {
           return;
@@ -198,6 +213,8 @@ export default function AccountPage() {
     );
   }
 
+  const cashTrustInfo = cashTrust ? cashTrustDisplay(cashTrust) : undefined;
+
   return (
     <main className="page-shell account-page">
       <section className="page-title-row">
@@ -256,6 +273,39 @@ export default function AccountPage() {
             )}
           </div>
           <Gift className="loyalty-watermark" aria-hidden="true" size={96} />
+        </section>
+      )}
+
+      {cashTrust && cashTrustInfo && (
+        <section
+          className={`loyalty-panel cash-trust-panel ${
+            cashTrust.cashEnabled ? "enabled" : "locked"
+          }`}
+        >
+          <div className="loyalty-copy">
+            <span className="loyalty-badge">
+              <Banknote aria-hidden="true" size={17} />
+              {cashTrustInfo.badge}
+            </span>
+            <h2>{cashTrustInfo.title}</h2>
+            <p>{cashTrustInfo.description}</p>
+          </div>
+          <div className="loyalty-progress-card">
+            <div className="loyalty-progress-head">
+              <span>
+                {cashTrust.successfulOrdersCount}/
+                {cashTrust.requiredSuccessfulOrders} pedidos correctos
+              </span>
+              <strong>{cashTrustInfo.status}</strong>
+            </div>
+            <div className="loyalty-meter" aria-hidden="true">
+              <span style={{ width: `${cashTrustProgress(cashTrust)}%` }} />
+            </div>
+            <div className="loyalty-progress-foot">
+              <span>{cashTrustInfo.progress}</span>
+              <span>{cashTrustInfo.action}</span>
+            </div>
+          </div>
         </section>
       )}
 
@@ -447,5 +497,62 @@ export default function AccountPage() {
 function sortAddresses(addresses: Address[]) {
   return [...addresses].sort(
     (a, b) => Number(b.isDefault) - Number(a.isDefault),
+  );
+}
+
+function cashTrustDisplay(cashTrust: CustomerCashTrustState) {
+  if (cashTrust.cashEnabled) {
+    return {
+      badge: "Efectivo activo",
+      title: "Pago en efectivo disponible",
+      description:
+        "Ya puedes elegir efectivo en pedidos para recoger o entregar.",
+      status: "Activo",
+      progress: "Confianza completada",
+      action: "Disponible en checkout",
+    };
+  }
+
+  const remaining = Math.max(cashTrust.ordersRemaining, 0);
+  const orderWord = remaining === 1 ? "pedido" : "pedidos";
+
+  if (cashTrust.status === "BLOCKED_INCIDENT") {
+    return {
+      badge: "Efectivo bloqueado",
+      title: "Efectivo pausado por incidencia",
+      description:
+        "Para recuperar efectivo, completa pedidos con tarjeta sin incidencias.",
+      status: `Faltan ${remaining}`,
+      progress: `${remaining} ${orderWord} con tarjeta`,
+      action: "Solo tarjeta por ahora",
+    };
+  }
+
+  return {
+    badge: "Efectivo pendiente",
+    title: "Activa efectivo con pedidos correctos",
+    description:
+      "Los clientes nuevos completan primero pedidos con tarjeta sin incidencias.",
+    status: `Faltan ${remaining}`,
+    progress: `${remaining} ${orderWord} con tarjeta`,
+    action: "Solo tarjeta por ahora",
+  };
+}
+
+function cashTrustProgress(cashTrust: CustomerCashTrustState) {
+  if (cashTrust.cashEnabled) {
+    return 100;
+  }
+
+  if (cashTrust.requiredSuccessfulOrders <= 0) {
+    return 0;
+  }
+
+  return Math.min(
+    100,
+    Math.round(
+      (cashTrust.successfulOrdersCount / cashTrust.requiredSuccessfulOrders) *
+        100,
+    ),
   );
 }
