@@ -29,12 +29,12 @@ export function GoogleAnalytics() {
   }, []);
   const measurementId = useMemo(() => {
     const value = (process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID ?? "").trim();
-    return !tagManagerId && measurementIdPattern.test(value)
+    return measurementIdPattern.test(value)
       ? value.toUpperCase()
       : "";
-  }, [tagManagerId]);
+  }, []);
   const isAdminRoute = pathname?.startsWith("/admin") ?? false;
-  const trackingId = tagManagerId || measurementId;
+  const trackingId = measurementId || tagManagerId;
 
   useEffect(() => {
     function refreshConsent() {
@@ -65,7 +65,7 @@ export function GoogleAnalytics() {
       page_title: document.title,
     };
 
-    if (tagManagerId) {
+    if (!measurementId && tagManagerId) {
       window.dataLayer?.push({ event: "page_view", ...pageView });
       return;
     }
@@ -78,13 +78,14 @@ export function GoogleAnalytics() {
     scriptReady,
     tagManagerId,
     trackingId,
+    measurementId,
   ]);
 
   if (!analyticsAllowed || !trackingId || isAdminRoute) {
     return null;
   }
 
-  if (tagManagerId) {
+  if (!measurementId && tagManagerId) {
     return (
       <>
         <Script
@@ -118,11 +119,11 @@ export function GoogleAnalytics() {
       <Script
         src={`https://www.googletagmanager.com/gtag/js?id=${measurementId}`}
         strategy="afterInteractive"
+        onLoad={() => setScriptReady(true)}
       />
       <Script
         id="google-analytics"
         strategy="afterInteractive"
-        onReady={() => setScriptReady(true)}
       >
         {`
           window.dataLayer = window.dataLayer || [];

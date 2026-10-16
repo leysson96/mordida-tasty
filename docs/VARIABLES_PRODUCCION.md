@@ -14,11 +14,10 @@ Cloudflare o el proveedor elegido.
   esta variable se necesita durante el build de la web porque queda incluida en
   el JavaScript del navegador.
 - `NEXT_PUBLIC_GTM_ID`: ID del contenedor de Google Tag Manager. Tiene formato
-  `GTM-XXXXXXX`. Si existe, la web carga GTM y no carga Analytics directo para
-  evitar doble medicion.
+  `GTM-XXXXXXX`. Se usa como respaldo cuando no hay un ID de Analytics directo.
 - `NEXT_PUBLIC_GA_MEASUREMENT_ID`: ID de medicion de Google Analytics 4 para la
-  web. Tiene formato `G-XXXXXXXXXX`. Se usa solo si `NEXT_PUBLIC_GTM_ID` esta
-  vacio.
+  web. Tiene formato `G-XXXXXXXXXX`. Si existe, tiene prioridad sobre GTM y la
+  web carga `gtag.js` directamente para asegurar que la propiedad recibe datos.
 - `CHECKOUT_GRACE_MINUTES`: minutos de gracia para que un pedido ya creado
   pueda iniciar Stripe si la tienda cierra justo despues. Default: `15`.
 - `DELIVERY_COVERAGE_MODE`: politica de cobertura de reparto. Valores:
@@ -44,14 +43,17 @@ web y solo cuando el usuario acepta la medicion en el banner de cookies. El pane
 `/admin` queda fuera para no mezclar visitas internas del restaurante con
 clientes reales.
 
-En Render, agrega `NEXT_PUBLIC_GTM_ID` o `NEXT_PUBLIC_GA_MEASUREMENT_ID` en el
-servicio web `mordida-tasty-web`, no en la API. Despues de guardarla, ejecuta un
-nuevo deploy porque las variables `NEXT_PUBLIC_*` se integran en el build de
-Next.js.
+En Render, agrega `NEXT_PUBLIC_GA_MEASUREMENT_ID` en el servicio web
+`mordida-tasty-web`, no en la API. `NEXT_PUBLIC_GTM_ID` solo se necesita como
+respaldo si no se usa GA4 directo. Despues de guardar cualquier variable,
+ejecuta un nuevo deploy porque las variables `NEXT_PUBLIC_*` se integran en el
+build de Next.js.
 
 No configures a la vez una etiqueta GA4 directa y otra GA4 dentro de GTM con la
-misma propiedad, porque contaria visitas duplicadas. La recomendacion actual es:
-usar `NEXT_PUBLIC_GTM_ID` y administrar GA4 desde Google Tag Manager.
+misma propiedad, porque contaria visitas duplicadas. En esta aplicacion, si
+`NEXT_PUBLIC_GA_MEASUREMENT_ID` esta informado, la integracion directa gana y
+GTM queda sin cargar; si el ID directo esta vacio, se usa GTM y su contenedor
+debe tener configurada la etiqueta GA4.
 
 Para probar Tag Manager con el boton de Google, abre la web publica, acepta
 "Aceptar medicion" en el banner de cookies y vuelve a ejecutar la prueba. Si no
