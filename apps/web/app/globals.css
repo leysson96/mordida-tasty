@@ -3582,6 +3582,19 @@ textarea {
   background: var(--color-surface-solid);
 }
 
+.report-controls > label,
+.history-filter-bar > label,
+.order-filter-actions {
+  min-width: 0;
+}
+
+.report-controls input,
+.history-filter-bar input,
+.history-filter-bar select {
+  width: 100%;
+  min-width: 0;
+}
+
 .order-history-list {
   display: grid;
   gap: 10px;
@@ -3726,6 +3739,40 @@ textarea {
   white-space: nowrap;
 }
 
+@media (max-width: 1180px) {
+  .report-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .report-presets {
+    grid-column: 1 / -1;
+  }
+
+  .report-controls .button {
+    width: 100%;
+  }
+
+  .history-filter-bar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .history-filter-bar .search-field,
+  .history-filter-bar .order-filter-actions {
+    grid-column: 1 / -1;
+  }
+
+  .order-filter-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .order-history-layout {
+    grid-template-columns: 1fr;
+  }
+
+}
+
 .order-history-detail {
   position: sticky;
   top: calc(var(--header-height) + 14px);
@@ -3749,6 +3796,12 @@ textarea {
 .order-history-detail.empty strong {
   color: var(--color-ink);
   font-size: 1.05rem;
+}
+
+@media (max-width: 1180px) {
+  .order-history-detail {
+    position: static;
+  }
 }
 
 .history-detail-head {
