@@ -264,6 +264,10 @@ export function MenuClient() {
           </div>
         ) : error ? (
           <div className="empty-state error">{error}</div>
+        ) : categories.length === 0 ? (
+          <div className="empty-state menu-empty-state">
+            La carta todavia no tiene productos disponibles.
+          </div>
         ) : (
           <>
             <div
@@ -289,62 +293,68 @@ export function MenuClient() {
               className="product-grid"
               aria-label={selectedCategory?.name}
             >
-              {selectedCategory?.products?.map((product) => (
-                <article
-                  key={product.id}
-                  className={`product-card ${
-                    product.slug === siteContent.featuredProductSlug
-                      ? "featured"
-                      : ""
-                  }`}
-                >
-                  <Link
-                    href={`/producto/${product.slug}`}
-                    className="product-photo"
+              {selectedCategory?.products?.length ? (
+                selectedCategory.products.map((product) => (
+                  <article
+                    key={product.id}
+                    className={`product-card ${
+                      product.slug === siteContent.featuredProductSlug
+                        ? "featured"
+                        : ""
+                    }`}
                   >
-                    <ProductImage product={product} />
-                    {!product.available && (
-                      <span className="sold-out">Agotado</span>
-                    )}
-                  </Link>
-                  <div className="product-copy">
-                    <div>
-                      <h3>
-                        <Link href={`/producto/${product.slug}`}>
-                          {product.name}
-                        </Link>
-                      </h3>
-                      <p>{product.description}</p>
-                    </div>
-                    <div className="product-actions">
-                      <ProductUnitPrice product={product} />
-                      {productHasOptions(product) ? (
-                        <Link
-                          href={`/producto/${product.slug}`}
-                          className={`icon-button primary ${
-                            product.available ? "" : "disabled-link"
-                          }`}
-                          aria-disabled={!product.available}
-                          tabIndex={product.available ? undefined : -1}
-                          title="Configurar opciones"
-                        >
-                          <SlidersHorizontal aria-hidden="true" size={20} />
-                        </Link>
-                      ) : (
-                        <button
-                          type="button"
-                          className="icon-button primary"
-                          disabled={!product.available}
-                          onClick={() => addItem(product)}
-                          title="Anadir al carrito"
-                        >
-                          <Plus aria-hidden="true" size={20} />
-                        </button>
+                    <Link
+                      href={`/producto/${product.slug}`}
+                      className="product-photo"
+                    >
+                      <ProductImage product={product} />
+                      {!product.available && (
+                        <span className="sold-out">Agotado</span>
                       )}
+                    </Link>
+                    <div className="product-copy">
+                      <div>
+                        <h3>
+                          <Link href={`/producto/${product.slug}`}>
+                            {product.name}
+                          </Link>
+                        </h3>
+                        <p>{product.description}</p>
+                      </div>
+                      <div className="product-actions">
+                        <ProductUnitPrice product={product} />
+                        {productHasOptions(product) ? (
+                          <Link
+                            href={`/producto/${product.slug}`}
+                            className={`icon-button primary ${
+                              product.available ? "" : "disabled-link"
+                            }`}
+                            aria-disabled={!product.available}
+                            tabIndex={product.available ? undefined : -1}
+                            title="Configurar opciones"
+                          >
+                            <SlidersHorizontal aria-hidden="true" size={20} />
+                          </Link>
+                        ) : (
+                          <button
+                            type="button"
+                            className="icon-button primary"
+                            disabled={!product.available}
+                            onClick={() => addItem(product)}
+                            title="Anadir al carrito"
+                          >
+                            <Plus aria-hidden="true" size={20} />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                ))
+              ) : (
+                <div className="empty-state menu-empty-state">
+                  No hay productos disponibles en esta categoria.
+                </div>
+              )}
             </section>
           </>
         )}
@@ -472,6 +482,13 @@ function FeaturedPromotionCarousel({
       onMouseOut={handleMouseOut}
       onTouchStart={pause}
     >
+      <div className="featured-promotion-header">
+        <div>
+          <p className="eyebrow">Promociones</p>
+          <h2>Promos activas</h2>
+        </div>
+        <p>Revisa los dias validos antes de pedir.</p>
+      </div>
       <FeaturedPromotion key={activePromotion.id} promotion={activePromotion} />
       {showControls && (
         <div className="featured-promotion-controls">

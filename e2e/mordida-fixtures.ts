@@ -12,12 +12,27 @@ export interface ApiMockState {
   uploadedHeroSaved: boolean;
 }
 
-export async function mockMordidaApi(page: Page): Promise<ApiMockState> {
+interface MockMordidaOptions {
+  promotions?:
+    | boolean
+    | "active"
+    | "disabled"
+    | "expired"
+    | "outsideWeekday"
+    | "unavailable"
+    | "empty";
+}
+
+export async function mockMordidaApi(
+  page: Page,
+  options: MockMordidaOptions = {},
+): Promise<ApiMockState> {
   const state: ApiMockState = {
     checkoutRequests: 0,
     createdOrders: 0,
     uploadedHeroSaved: false,
   };
+  const promotionScenario = resolvePromotionScenario(options.promotions);
 
   await page.addInitScript(() => {
     window.localStorage.setItem("mordida_cookie_consent", "technical");
@@ -40,12 +55,12 @@ export async function mockMordidaApi(page: Page): Promise<ApiMockState> {
     }
 
     if (method === "GET" && pathname === "/menu") {
-      await json(route, menuFixture);
+      await json(route, menuFixtureForScenario(promotionScenario));
       return;
     }
 
     if (method === "GET" && pathname === "/settings/public") {
-      await json(route, publicSettingsFixture);
+      await json(route, publicSettingsFixtureForScenario(promotionScenario));
       return;
     }
 
@@ -86,7 +101,12 @@ export async function mockMordidaApi(page: Page): Promise<ApiMockState> {
 
     if (method === "POST" && pathname === "/orders") {
       state.createdOrders += 1;
-      await json(route, orderFromRequest(route), 201);
+      await json(route, orderFromRequest(route, promotionScenario === "active"), 201);
+      return;
+    }
+
+    if (method === "POST" && pathname === "/orders/quote") {
+      await json(route, quoteFromRequest(route, promotionScenario === "active"));
       return;
     }
 
@@ -201,6 +221,18 @@ export async function mockMordidaApi(page: Page): Promise<ApiMockState> {
   return state;
 }
 
+function resolvePromotionScenario(options: MockMordidaOptions["promotions"]) {
+  if (options === true) {
+    return "active";
+  }
+
+  if (!options || options === false) {
+    return "disabled";
+  }
+
+  return options;
+}
+
 function isMockedApiRequest(method: string, pathname: string) {
   if (method === "OPTIONS") {
     return isApiPath(pathname);
@@ -230,6 +262,7 @@ function isMockedApiRequest(method: string, pathname: string) {
     return (
       pathname === "/auth/register" ||
       pathname === "/auth/login" ||
+      pathname === "/orders/quote" ||
       pathname === "/orders" ||
       pathname === "/payments/checkout" ||
       pathname === "/admin/auth/login" ||
@@ -249,6 +282,7 @@ function isApiPath(pathname: string) {
     pathname.startsWith("/auth/") ||
     pathname.startsWith("/customers/") ||
     pathname === "/orders" ||
+    pathname === "/orders/quote" ||
     pathname.startsWith("/orders/") ||
     pathname.startsWith("/payments/") ||
     pathname.startsWith("/admin/auth/") ||
@@ -273,12 +307,16 @@ function requestBody(route: Route): Record<string, unknown> {
   return JSON.parse(body) as Record<string, unknown>;
 }
 
-function orderFromRequest(route: Route) {
+function orderFromRequest(route: Route, promotions = false) {
   const body = requestBody(route);
   const deliveryMethod = body.deliveryMethod === "DELIVERY" ? "DELIVERY" : "PICKUP";
   const paymentMethod = body.paymentMethod === "CARD" ? "CARD" : "CASH";
   const cashTenderedCents =
     typeof body.cashTenderedCents === "number" ? body.cashTenderedCents : null;
+  const subtotalCents = promotions ? 1071 : 1190;
+  const discountCents = promotions ? 119 : 0;
+  const totalCents =
+    deliveryMethod === "DELIVERY" ? subtotalCents + 250 : subtotalCents;
 
   return {
     ...trackingOrderFixture,
@@ -286,9 +324,57 @@ function orderFromRequest(route: Route) {
     paymentMethod,
     cashTenderedCents,
     cashChangeCents:
-      cashTenderedCents === null ? null : Math.max(0, cashTenderedCents - 1440),
+      cashTenderedCents === null ? null : Math.max(0, cashTenderedCents - totalCents),
     deliveryFeeCents: deliveryMethod === "DELIVERY" ? 250 : 0,
-    totalCents: deliveryMethod === "DELIVERY" ? 1440 : 1190,
+    subtotalCents,
+    discountCents,
+    promotionDiscountCents: discountCents,
+    totalCents,
+  };
+}
+
+function quoteFromRequest(route: Route, promotions = false) {
+  const body = requestBody(route);
+  const items = Array.isArray(body.items) ? body.items : [];
+  const smashItem = items.find(
+    (item) =>
+      item &&
+      typeof item === "object" &&
+      "productId" in item &&
+      item.productId === "product-1",
+  ) as { quantity?: number } | undefined;
+  const quantity =
+    typeof smashItem?.quantity === "number" && smashItem.quantity > 0
+      ? smashItem.quantity
+      : 1;
+  const originalUnitPriceCents = 1190;
+  const unitPriceCents = promotions ? 1071 : 1190;
+  const promotionDiscountUnitCents = promotions ? 119 : 0;
+
+  return {
+    subtotalCents: unitPriceCents * quantity,
+    grossSubtotalCents: originalUnitPriceCents * quantity,
+    promotionDiscountCents: promotionDiscountUnitCents * quantity,
+    items: [
+      {
+        itemIndex: 0,
+        productId: "product-1",
+        productName: "Mordida Smash",
+        quantity,
+        originalUnitPriceCents,
+        unitPriceCents,
+        discountedUnitPriceCents: unitPriceCents,
+        originalLineTotalCents: originalUnitPriceCents * quantity,
+        promotionDiscountId: promotions ? "discount-1" : null,
+        promotionDiscountName: promotions ? "PROMO TEMPORAL" : null,
+        promotionDiscountType: promotions ? "PERCENTAGE" : null,
+        promotionDiscountValue: promotions ? 10 : null,
+        promotionDiscountPriority: promotions ? 10 : null,
+        promotionDiscountUnitCents,
+        promotionDiscountCents: promotionDiscountUnitCents * quantity,
+        lineTotalCents: unitPriceCents * quantity,
+      },
+    ],
   };
 }
 
@@ -376,6 +462,53 @@ const categoriesFixture = [
 
 const menuFixture = categoriesFixture;
 
+const promotionPricingFixture = {
+  discountId: "discount-1",
+  discountName: "PROMO TEMPORAL",
+  discountType: "PERCENTAGE",
+  discountValue: 10,
+  priority: 10,
+  originalUnitPriceCents: 1190,
+  discountedUnitPriceCents: 1071,
+  unitDiscountCents: 119,
+};
+
+const menuWithPromotionFixture = categoriesFixture.map((category) => ({
+  ...category,
+  products: category.products.map((product) =>
+    product.id === "product-1"
+      ? { ...product, promotionPricing: promotionPricingFixture }
+      : product,
+  ),
+}));
+
+const menuWithUnavailableProductFixture = categoriesFixture.map((category) => ({
+  ...category,
+  products: category.products.map((product) =>
+    product.id === "product-1" ? { ...product, available: false } : product,
+  ),
+}));
+
+const emptyMenuFixture: typeof categoriesFixture = [];
+
+function menuFixtureForScenario(
+  scenario: ReturnType<typeof resolvePromotionScenario>,
+) {
+  if (scenario === "active") {
+    return menuWithPromotionFixture;
+  }
+
+  if (scenario === "unavailable") {
+    return menuWithUnavailableProductFixture;
+  }
+
+  if (scenario === "empty") {
+    return emptyMenuFixture;
+  }
+
+  return menuFixture;
+}
+
 const adminProductsFixture = categoriesFixture[0].products.map((product) => ({
   ...product,
   category: {
@@ -410,6 +543,19 @@ const loyaltyProgramFixture = {
   description: "Completa pedidos y desbloquea una recompensa.",
 };
 
+const disabledPromotionCampaignFixture = {
+  enabled: false,
+  badge: "",
+  title: "",
+  description: "",
+  productSlug: "",
+  discountId: "",
+  imageUrl: "",
+  startsOn: "",
+  endsOn: "",
+  ctaLabel: "",
+};
+
 const publicSettingsFixture = {
   taxRate: 0.1,
   deliveryFeeCents: 250,
@@ -421,9 +567,89 @@ const publicSettingsFixture = {
     pause: { paused: false, reason: "" },
   },
   siteContent: siteContentFixture,
+  promotionCampaign: disabledPromotionCampaignFixture,
+  discountCampaigns: [],
   loyaltyProgram: loyaltyProgramFixture,
   legalVersion: "2026-09-11",
 };
+
+const publicSettingsWithPromotionFixture = {
+  ...publicSettingsFixture,
+  promotionCampaign: {
+    enabled: true,
+    badge: "Promo activa",
+    title: "PROMO TEMPORAL Mordida Smash",
+    description: "Descuento visible de prueba para proteger la carta.",
+    productSlug: "mordida-smash",
+    discountId: "discount-1",
+    imageUrl: "",
+    startsOn: "2026-10-01",
+    endsOn: "2026-11-05",
+    ctaLabel: "Pedir promo",
+  },
+  discountCampaigns: [
+    {
+      id: "discount-1",
+      name: "PROMO TEMPORAL",
+      description: "10% de descuento en Mordida Smash.",
+      active: true,
+      type: "PERCENTAGE",
+      value: 10,
+      scope: "PRODUCTS",
+      startsOn: "2026-10-01",
+      endsOn: "2026-11-05",
+      weekdays: [],
+      priority: 10,
+      categoryId: null,
+      category: null,
+      productIds: ["product-1"],
+    },
+  ],
+};
+
+const publicSettingsExpiredPromotionFixture = {
+  ...publicSettingsWithPromotionFixture,
+  promotionCampaign: {
+    ...publicSettingsWithPromotionFixture.promotionCampaign,
+    startsOn: "2026-08-01",
+    endsOn: "2026-08-31",
+  },
+  discountCampaigns: publicSettingsWithPromotionFixture.discountCampaigns.map(
+    (discount) => ({
+      ...discount,
+      startsOn: "2026-08-01",
+      endsOn: "2026-08-31",
+    }),
+  ),
+};
+
+const publicSettingsOutsideWeekdayFixture = {
+  ...publicSettingsWithPromotionFixture,
+  discountCampaigns: publicSettingsWithPromotionFixture.discountCampaigns.map(
+    (discount) => ({
+      ...discount,
+      weekdays: ["SUN"],
+    }),
+  ),
+};
+
+function publicSettingsFixtureForScenario(
+  scenario: ReturnType<typeof resolvePromotionScenario>,
+) {
+  if (scenario === "active" || scenario === "unavailable") {
+    return publicSettingsWithPromotionFixture;
+  }
+
+  if (scenario === "expired") {
+    return publicSettingsExpiredPromotionFixture;
+  }
+
+  if (scenario === "outsideWeekday") {
+    return publicSettingsOutsideWeekdayFixture;
+  }
+
+  return publicSettingsFixture;
+}
 
 const deliveryQuoteFixture = {
   available: true,

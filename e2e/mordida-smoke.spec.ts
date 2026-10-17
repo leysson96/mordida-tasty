@@ -11,7 +11,9 @@ test("home renders menu on desktop and mobile", async ({ page }, testInfo) => {
     }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Elige tu mordida" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Mordida Smash" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Mordida Smash", exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: /Como llegar/i })).toBeVisible();
 
   await expectHealthyPage(page);
