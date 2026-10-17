@@ -378,7 +378,6 @@ function isCashPaymentCollected(order: OrderSummary) {
 
 function ticketPrintCss(config: TicketPrintConfig) {
   const paperWidth = config.paperWidth === "58mm" ? 58 : 80;
-  const contentWidth = paperWidth - 6;
   const baseFontSize =
     config.fontSize === "small" ? 10 : config.fontSize === "large" ? 14 : 12;
   const smallFontSize = Math.max(8, baseFontSize - 2);
@@ -388,7 +387,7 @@ function ticketPrintCss(config: TicketPrintConfig) {
   return `
     @page {
       size: ${paperWidth}mm auto;
-      margin: 3mm;
+      margin: 0;
     }
 
     * {
@@ -404,15 +403,19 @@ function ticketPrintCss(config: TicketPrintConfig) {
       font-family: Arial, "Helvetica Neue", sans-serif;
       font-size: ${baseFontSize}px;
       line-height: 1.3;
+      width: ${paperWidth}mm;
+      max-width: ${paperWidth}mm;
+      overflow: visible;
     }
 
     body {
-      width: ${contentWidth}mm;
+      min-width: ${paperWidth}mm;
     }
 
     .ticket {
-      width: ${contentWidth}mm;
-      padding: 0;
+      width: ${paperWidth}mm;
+      max-width: ${paperWidth}mm;
+      padding: 3mm;
       color: #000;
     }
 
@@ -535,14 +538,41 @@ function ticketPrintCss(config: TicketPrintConfig) {
     }
 
     @media screen {
+      html,
+      body {
+        width: auto;
+        max-width: none;
+        min-width: 0;
+      }
+
       body {
         padding: 12px;
+        background: #f3f3f3;
       }
 
       .ticket {
         margin: 0 auto;
         padding: 10px;
         border: 1px solid #ddd;
+        background: #fff;
+      }
+    }
+
+    @media print {
+      html,
+      body {
+        width: ${paperWidth}mm;
+        max-width: ${paperWidth}mm;
+        min-width: ${paperWidth}mm;
+        padding: 0;
+        margin: 0;
+      }
+
+      .ticket {
+        width: ${paperWidth}mm;
+        max-width: ${paperWidth}mm;
+        padding: 3mm;
+        border: 0;
       }
     }
   `;
