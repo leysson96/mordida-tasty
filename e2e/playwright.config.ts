@@ -8,6 +8,7 @@ export default defineConfig({
   testDir: ".",
   outputDir: "../test-results/e2e",
   fullyParallel: false,
+  workers: 2,
   reporter: [["list"]],
   timeout: 45_000,
   expect: {

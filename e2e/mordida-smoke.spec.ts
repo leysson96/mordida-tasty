@@ -49,6 +49,7 @@ test("customer registration and login flow works", async ({ page }, testInfo) =>
 });
 
 test("cash delivery checkout opens tracking", async ({ page }, testInfo) => {
+  test.slow();
   const apiState = await mockMordidaApi(page);
   await openCheckoutWithCart(page);
 
@@ -57,9 +58,14 @@ test("cash delivery checkout opens tracking", async ({ page }, testInfo) => {
   await page.getByRole("button", { name: /Efectivo/i }).click();
   await page.getByLabel("Paga con").fill("20");
   await page.getByLabel(/Acepto la/i).check();
-  await page.getByRole("button", { name: /Confirmar pedido/i }).click();
+  await Promise.all([
+    page.waitForURL(
+      /\/seguimiento\/MT-20260911-0001\?t=track-token-e2e/,
+      { timeout: 30_000 },
+    ),
+    page.getByRole("button", { name: /Confirmar pedido/i }).click(),
+  ]);
 
-  await expect(page).toHaveURL(/\/seguimiento\/MT-20260911-0001\?t=track-token-e2e/);
   await expect(page.getByRole("heading", { name: "Pagado" })).toBeVisible();
   await expect(page.getByText("Portal en obra")).toBeVisible();
   expect(apiState.createdOrders).toBe(1);

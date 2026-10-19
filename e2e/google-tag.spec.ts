@@ -56,7 +56,15 @@ test("starts denied before config and loads one public Google tag", async ({
 
   const contentSecurityPolicy =
     response?.headers()["content-security-policy"] ?? "";
-  expect(contentSecurityPolicy).toContain("https://www.googletagmanager.com");
+  const scriptSource =
+    contentSecurityPolicy
+      .split(";")
+      .map((directive) => directive.trim())
+      .find((directive) => directive.startsWith("script-src ")) ?? "";
+  expect(scriptSource).toContain("https://www.googletagmanager.com");
+  expect(scriptSource).toContain("https://www.googleadservices.com");
+  expect(scriptSource).toContain("https://googleads.g.doubleclick.net");
+  expect(scriptSource).toContain("https://www.google.com");
   expect(contentSecurityPolicy).toContain(
     "https://region1.analytics.google.com",
   );

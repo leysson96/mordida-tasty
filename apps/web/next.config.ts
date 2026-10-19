@@ -41,6 +41,9 @@ function contentSecurityPolicy() {
       production ? "" : "'unsafe-eval'",
       "https://www.googletagmanager.com",
       "https://www.google-analytics.com",
+      "https://www.googleadservices.com",
+      "https://googleads.g.doubleclick.net",
+      "https://www.google.com",
     ]
       .filter(Boolean)
       .join(" "),
