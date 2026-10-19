@@ -50,6 +50,7 @@ function startWebServer(portNumber) {
         NEXT_PUBLIC_API_URL: "http://127.0.0.1:4010",
         NEXT_PUBLIC_GA_MEASUREMENT_ID: "G-E2ETEST123",
         NEXT_PUBLIC_GOOGLE_ADS_ID: "AW-123456789",
+        NEXT_PUBLIC_GOOGLE_ADS_PURCHASE_LABEL: "PURCHASE_E2E",
         NEXT_PUBLIC_GTM_ID: "",
       }),
       stdio: ["ignore", "pipe", "pipe"],

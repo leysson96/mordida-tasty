@@ -21,6 +21,10 @@ Cloudflare o el proveedor elegido.
 - `NEXT_PUBLIC_GOOGLE_ADS_ID`: ID de la etiqueta de Google Ads. Tiene formato
   `AW-XXXXXXXXXXX`. Comparte la misma carga de `gtag.js` con GA4 para evitar
   etiquetas y visitas duplicadas.
+- `NEXT_PUBLIC_GOOGLE_ADS_PURCHASE_LABEL`: etiqueta de la accion de conversion
+  de compra de Google Ads. Es solo la parte que aparece despues de `/` en
+  `AW-XXXXXXXXXXX/ETIQUETA`. Si queda vacia, GA4 recibe `purchase`, pero Google
+  Ads no recibe esa conversion directa.
 - `CHECKOUT_GRACE_MINUTES`: minutos de gracia para que un pedido ya creado
   pueda iniciar Stripe si la tienda cierra justo despues. Default: `15`.
 - `DELIVERY_COVERAGE_MODE`: politica de cobertura de reparto. Valores:
@@ -36,15 +40,17 @@ cliente pueda abrir en navegador. Si se usan raiz y `www`, mantener ambos en
 `CORS_ORIGIN`, separados por coma. Despues de cambiar `CORS_ORIGIN`,
 `FRONTEND_URL` o `API_PUBLIC_URL`, redeplegar la API. Despues de cambiar
 `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_GTM_ID`, `NEXT_PUBLIC_GA_MEASUREMENT_ID` o
-`NEXT_PUBLIC_GOOGLE_ADS_ID`, usar `Save, rebuild, and deploy` en la web porque
-Next.js los integra en el build.
+`NEXT_PUBLIC_GOOGLE_ADS_ID` o `NEXT_PUBLIC_GOOGLE_ADS_PURCHASE_LABEL`, usar
+`Save, rebuild, and deploy` en la web porque Next.js los integra en el build.
 
 ## Analitica
 
-Google Tag Manager o Google Analytics se cargan solo en la parte publica de la
-web y solo cuando el usuario acepta la medicion en el banner de cookies. El panel
-`/admin` queda fuera para no mezclar visitas internas del restaurante con
-clientes reales.
+La parte publica usa Consent Mode v2 avanzado. La etiqueta de Google se carga
+con los cuatro estados inicialmente en `denied`; mientras sigan denegados puede
+enviar senales limitadas sin cookies, pero no crea cookies de analitica o
+publicidad. La eleccion del cliente actualiza esos estados sin recargar. El
+panel `/admin` no inicializa ni carga Google para no mezclar actividad interna
+con clientes reales.
 
 En Render, agrega `NEXT_PUBLIC_GA_MEASUREMENT_ID` en el servicio web
 `mordida-tasty-web`, no en la API. `NEXT_PUBLIC_GTM_ID` solo se necesita como
@@ -53,9 +59,12 @@ ejecuta un nuevo deploy porque las variables `NEXT_PUBLIC_*` se integran en el
 build de Next.js.
 
 Para Google Ads, agrega `NEXT_PUBLIC_GOOGLE_ADS_ID=AW-18512432756` en ese mismo
-servicio web. No pegues otra copia completa del script en el layout: el
-componente existente carga una sola etiqueta de Google y configura los destinos
-de GA4 y Ads juntos despues de que el cliente acepta la medicion.
+servicio web. Para medir compras directas en Ads, crea o abre la accion de
+conversion de compra, entra en su configuracion manual de etiqueta y localiza
+el destino `AW-XXXXXXXXXXX/ETIQUETA`. Guarda solo `ETIQUETA` en
+`NEXT_PUBLIC_GOOGLE_ADS_PURCHASE_LABEL`. La etiqueta no es una credencial
+secreta, pero no debe codificarse en componentes ni pruebas. No pegues otra
+copia del script: GA4 y Ads comparten una sola carga de `gtag.js`.
 
 No configures a la vez una etiqueta GA4 directa y otra GA4 dentro de GTM con la
 misma propiedad, porque contaria visitas duplicadas. En esta aplicacion, si
@@ -63,15 +72,32 @@ misma propiedad, porque contaria visitas duplicadas. En esta aplicacion, si
 GTM queda sin cargar; si el ID directo esta vacio, se usa GTM y su contenedor
 debe tener configurada la etiqueta GA4.
 
-Para probar Tag Manager con el boton de Google, abre la web publica, acepta
-"Aceptar medicion" en el banner de cookies y vuelve a ejecutar la prueba. Si no
-aceptas medicion, el sitio no carga la etiqueta por privacidad.
+Categorias del banner:
+
+- `Necesarias`: siempre activas para carrito, sesion y seguridad; no conceden
+  almacenamiento a Google.
+- `Analitica`: controla `analytics_storage`.
+- `Medicion publicitaria`: controla `ad_storage` y `ad_user_data`.
+- `Personalizacion`: controla `ad_personalization` y solo puede activarse junto
+  con medicion publicitaria.
+
+`Aceptar cookies` concede las tres categorias opcionales. `Solo necesarias`
+mantiene las cuatro senales de Google en `denied`. `Configurar` permite una
+eleccion granular. Una preferencia antigua `analytics` concede solo analitica,
+nunca publicidad ni personalizacion.
+
+Para probar la integracion usa `docs/GATE_GOOGLE_CONSENT_MODE_V2.md`. Tag
+Assistant debe mostrar el `consent default` antes de cualquier `config` y un
+`consent update` coherente con cada eleccion. Rechazar no debe impedir que la
+etiqueta cargue en modo avanzado, pero si debe impedir cookies de analitica y
+publicidad.
 
 Si manana quieres cambiar Analytics, Ads o Tag Manager no hay que tocar codigo:
-cambia `NEXT_PUBLIC_GTM_ID`, `NEXT_PUBLIC_GA_MEASUREMENT_ID` o
-`NEXT_PUBLIC_GOOGLE_ADS_ID` en Render Web y redepliega la web. Si usas GTM, los
-cambios de etiquetas se administran dentro de Google Tag Manager y luego se
-publican como una nueva version del contenedor.
+cambia `NEXT_PUBLIC_GTM_ID`, `NEXT_PUBLIC_GA_MEASUREMENT_ID`,
+`NEXT_PUBLIC_GOOGLE_ADS_ID` o `NEXT_PUBLIC_GOOGLE_ADS_PURCHASE_LABEL` en Render
+Web y redepliega la web. Si usas GTM, los cambios de etiquetas se administran
+dentro de Google Tag Manager y luego se publican como una nueva version del
+contenedor.
 
 ## Contenido editable sin tocar codigo
 

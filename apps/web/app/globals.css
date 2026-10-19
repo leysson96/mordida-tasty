@@ -5168,13 +5168,20 @@ code {
   color: var(--color-ink-soft);
 }
 
+.legal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
 .cookie-banner {
   position: fixed;
   right: 16px;
   bottom: 16px;
   z-index: 60;
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 12px;
   width: min(640px, calc(100% - 32px));
@@ -5192,6 +5199,7 @@ code {
 
 .cookie-actions {
   display: flex;
+  grid-column: 1 / -1;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
@@ -5201,6 +5209,146 @@ code {
   min-height: 40px;
   padding: 0 12px;
   font-size: 0.8rem;
+}
+
+.cookie-settings-trigger {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  display: inline-grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  color: var(--color-surface-solid);
+  border: 1px solid var(--color-brand-dark);
+  border-radius: 50%;
+  background: var(--color-brand-dark);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}
+
+.cookie-settings-trigger:hover {
+  background: var(--color-brand);
+}
+
+.cookie-settings-trigger:focus-visible,
+.cookie-switch:focus-visible,
+.cookie-dialog-close:focus-visible {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+.cookie-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(33, 21, 18, 0.58);
+}
+
+.cookie-dialog-content {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 81;
+  display: grid;
+  gap: 18px;
+  width: min(560px, calc(100% - 32px));
+  max-height: min(720px, calc(100vh - 32px));
+  padding: 22px;
+  overflow-y: auto;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: var(--color-surface-solid);
+  box-shadow: var(--shadow-soft);
+  transform: translate(-50%, -50%);
+}
+
+.cookie-dialog-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cookie-dialog-heading h2 {
+  margin: 0 0 6px;
+  font-size: 1.45rem;
+}
+
+.cookie-dialog-heading p,
+.cookie-preference-row p {
+  margin: 0;
+  color: var(--color-ink-soft);
+  line-height: 1.45;
+}
+
+.cookie-dialog-close {
+  flex: 0 0 auto;
+}
+
+.cookie-preference-list {
+  border-block: 1px solid var(--color-line);
+}
+
+.cookie-preference-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px;
+  padding: 15px 0;
+}
+
+.cookie-preference-row + .cookie-preference-row {
+  border-top: 1px solid var(--color-line);
+}
+
+.cookie-preference-row strong {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.cookie-switch {
+  position: relative;
+  width: 46px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: var(--color-paper-strong);
+  cursor: pointer;
+}
+
+.cookie-switch[data-state="checked"] {
+  border-color: var(--color-green);
+  background: var(--color-green);
+}
+
+.cookie-switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cookie-switch-thumb {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-surface-solid);
+  box-shadow: 0 1px 3px rgba(33, 21, 18, 0.28);
+  transform: translateX(2px);
+  transition: transform 140ms ease;
+}
+
+.cookie-switch[data-state="checked"] .cookie-switch-thumb {
+  transform: translateX(22px);
+}
+
+.cookie-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .modal-backdrop {
@@ -5700,12 +5848,31 @@ code {
   .cookie-actions .button {
     flex: 1 1 150px;
   }
+
+  .cookie-dialog-actions .button {
+    flex: 1 1 180px;
+  }
 }
 
 @media (max-width: 520px) {
   .page-shell {
     width: min(100% - 24px, var(--page-width));
     padding-top: 24px;
+  }
+
+  .cookie-dialog-content {
+    width: calc(100% - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 18px;
+  }
+
+  .cookie-dialog-heading h2 {
+    font-size: 1.25rem;
+  }
+
+  .cookie-dialog-actions .button,
+  .legal-actions .button {
+    width: 100%;
   }
 
   .brand-mark {
@@ -5954,7 +6121,10 @@ code {
 
   .no-print,
   .site-header,
-  .cookie-banner {
+  .cookie-banner,
+  .cookie-settings-trigger,
+  .cookie-dialog-overlay,
+  .cookie-dialog-content {
     display: none !important;
   }
 

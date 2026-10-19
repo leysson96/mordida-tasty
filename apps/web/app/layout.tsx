@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { CartProvider } from "../components/cart-provider";
 import { CookieBanner } from "../components/cookie-banner";
 import { GoogleAnalytics } from "../components/google-analytics";
+import { GoogleConsentDefaults } from "../components/google-consent-defaults";
 import { SiteHeader } from "../components/site-header";
 import { brandConfig } from "../lib/brand";
 import "./globals.css";
@@ -20,6 +21,7 @@ export default function RootLayout({
   return (
     <html lang="es" data-scroll-behavior="smooth">
       <body>
+        <GoogleConsentDefaults />
         <GoogleAnalytics />
         <CartProvider>
           <SiteHeader />

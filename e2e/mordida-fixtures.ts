@@ -9,11 +9,20 @@ const heroImage = "/images/menu/mordida-smash.png";
 export interface ApiMockState {
   checkoutRequests: number;
   createdOrders: number;
+  trackingRequests: number;
   uploadedHeroSaved: boolean;
 }
 
+interface CookieConsentFixture {
+  version: 2;
+  analytics: boolean;
+  advertising: boolean;
+  personalization: boolean;
+}
+
 interface MockMordidaOptions {
-  cookieConsent?: "analytics" | "technical";
+  cookieConsent?: "analytics" | "technical" | CookieConsentFixture;
+  trackingPayment?: "paid" | "pendingThenPaid";
   promotions?:
     | boolean
     | "active"
@@ -31,12 +40,21 @@ export async function mockMordidaApi(
   const state: ApiMockState = {
     checkoutRequests: 0,
     createdOrders: 0,
+    trackingRequests: 0,
     uploadedHeroSaved: false,
   };
   const promotionScenario = resolvePromotionScenario(options.promotions);
 
   await page.addInitScript((cookieConsent) => {
-    window.localStorage.setItem("mordida_cookie_consent", cookieConsent);
+    if (window.localStorage.getItem("mordida_cookie_consent") !== null) {
+      return;
+    }
+    window.localStorage.setItem(
+      "mordida_cookie_consent",
+      typeof cookieConsent === "string"
+        ? cookieConsent
+        : JSON.stringify(cookieConsent),
+    );
   }, options.cookieConsent ?? "technical");
 
   await page.route("**/*", async (route) => {
@@ -95,6 +113,11 @@ export async function mockMordidaApi(
       return;
     }
 
+    if (method === "GET" && pathname === "/customers/cash-trust") {
+      await json(route, cashTrustFixture);
+      return;
+    }
+
     if (method === "GET" && pathname === "/orders/mine") {
       await json(route, [trackingOrderFixture]);
       return;
@@ -121,7 +144,20 @@ export async function mockMordidaApi(
     }
 
     if (method === "GET" && pathname.startsWith("/orders/track/")) {
-      await json(route, trackingOrderFixture);
+      state.trackingRequests += 1;
+      const pending =
+        options.trackingPayment === "pendingThenPaid" &&
+        state.trackingRequests === 1;
+      await json(
+        route,
+        pending
+          ? {
+              ...trackingOrderFixture,
+              status: "PENDING_PAYMENT",
+              paidAt: null,
+            }
+          : trackingOrderFixture,
+      );
       return;
     }
 
@@ -247,6 +283,7 @@ function isMockedApiRequest(method: string, pathname: string) {
       pathname === "/auth/me" ||
       pathname === "/customers/addresses" ||
       pathname === "/customers/loyalty" ||
+      pathname === "/customers/cash-trust" ||
       pathname === "/orders/mine" ||
       pathname.startsWith("/orders/track/") ||
       pathname === "/admin/orders" ||
@@ -718,6 +755,17 @@ const loyaltyFixture = {
   availableRewards: 0,
   rewardReady: false,
   rewardLabel: "10% de descuento",
+};
+
+const cashTrustFixture = {
+  userId: "customer-1",
+  status: "ENABLED",
+  cashEnabled: true,
+  successfulOrdersCount: 2,
+  requiredSuccessfulOrders: 2,
+  ordersRemaining: 0,
+  lastIncidentReason: null,
+  lastIncidentAt: null,
 };
 
 const trackingOrderFixture = {

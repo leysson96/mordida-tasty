@@ -24,6 +24,7 @@ import {
   formatOrderItemPromotion,
   hasPromotionDiscount,
 } from "../lib/order-format";
+import { sendGooglePurchase } from "../lib/google-events";
 import { paymentMethodLabel, paymentSummaryText } from "../lib/payment-format";
 import type { OrderStatus, OrderSummary } from "../lib/types";
 import { useCart } from "./cart-provider";
@@ -72,6 +73,7 @@ export function TrackingClient({
         if (active) {
           setOrder(data);
           setError(undefined);
+          sendGooglePurchase(data);
         }
         if (
           window.sessionStorage.getItem(pendingCheckoutStorageKey) ===

@@ -540,6 +540,7 @@ export class OrdersService {
       cashTenderedCents: order.cashTenderedCents,
       cashChangeCents: order.cashChangeCents,
       totalCents: order.totalCents,
+      paidAt: order.paidAt,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
       items: order.items

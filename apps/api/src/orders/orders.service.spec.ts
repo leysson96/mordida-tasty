@@ -114,6 +114,71 @@ describe("OrdersService", () => {
     );
   }
 
+  function trackingOrder(paidAt: Date | null) {
+    return {
+      id: "order-1",
+      orderNumber: "MT-20261019-0001",
+      status: paidAt ? OrderStatus.PAID : OrderStatus.PENDING_PAYMENT,
+      deliveryMethod: DeliveryMethod.PICKUP,
+      paymentMethod: OrderPaymentMethod.CARD,
+      customerName: "Cliente Test",
+      customerEmail: "cliente@example.com",
+      customerPhone: "+34600000000",
+      deliveryName: null,
+      deliveryPhone: null,
+      deliveryStreet: null,
+      deliveryCity: null,
+      deliveryPostalCode: null,
+      deliveryNotes: null,
+      subtotalCents: 1190,
+      discountCents: 0,
+      deliveryFeeCents: 0,
+      taxCents: 108,
+      cashTenderedCents: null,
+      cashChangeCents: null,
+      totalCents: 1190,
+      paidAt,
+      createdAt: new Date("2026-10-19T10:00:00.000Z"),
+      updatedAt: new Date("2026-10-19T10:05:00.000Z"),
+      items: [],
+      statusHistory: [],
+    };
+  }
+
+  it("exposes a null paidAt while public tracking is pending", async () => {
+    prisma.order.findUnique.mockResolvedValue(trackingOrder(null));
+
+    const result = await service().getPublicTracking(
+      "MT-20261019-0001",
+      "valid-tracking-token",
+    );
+
+    expect(result.paidAt).toBeNull();
+  });
+
+  it("exposes paidAt when public tracking is paid", async () => {
+    const paidAt = new Date("2026-10-19T10:06:00.000Z");
+    prisma.order.findUnique.mockResolvedValue(trackingOrder(paidAt));
+
+    const result = await service().getPublicTracking(
+      "MT-20261019-0001",
+      "valid-tracking-token",
+    );
+
+    expect(result.paidAt).toEqual(paidAt);
+  });
+
+  it("keeps public tracking protected when the token is invalid", async () => {
+    prisma.order.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service().getPublicTracking(
+        "MT-20261019-0001",
+        "invalid-tracking-token",
+      ),
+    ).rejects.toThrow("Order not found.");
+  });
+
   it("rejects items from inactive products or inactive categories during checkout", async () => {
     const productId = "00000000-0000-4000-8000-000000000001";
 

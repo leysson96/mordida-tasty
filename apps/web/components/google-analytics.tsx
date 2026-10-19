@@ -6,13 +6,16 @@ import { useEffect, useMemo, useState } from "react";
 import {
   cookieConsentChangedEvent,
   cookieConsentStorageKey,
-  hasAnalyticsConsent,
+  deniedGoogleConsentState,
+  storedCookieConsentToGoogleState,
+  type GoogleConsentState,
 } from "../lib/cookie-consent";
 
 declare global {
   interface Window {
     dataLayer?: unknown[];
     gtag?: (...args: unknown[]) => void;
+    mordidaGoogleConsentInitialized?: boolean;
   }
 }
 
@@ -22,8 +25,10 @@ const tagManagerIdPattern = /^GTM-[A-Z0-9]+$/i;
 
 export function GoogleAnalytics() {
   const pathname = usePathname();
-  const [analyticsAllowed, setAnalyticsAllowed] = useState(false);
   const [scriptReady, setScriptReady] = useState(false);
+  const [consentState, setConsentState] = useState<GoogleConsentState>(
+    deniedGoogleConsentState,
+  );
   const tagManagerId = useMemo(() => {
     const value = (process.env.NEXT_PUBLIC_GTM_ID ?? "").trim();
     return tagManagerIdPattern.test(value) ? value.toUpperCase() : "";
@@ -43,9 +48,32 @@ export function GoogleAnalytics() {
   const trackingId = directGoogleTagId || tagManagerId;
 
   useEffect(() => {
+    if (isAdminRoute) {
+      return;
+    }
+
+    function ensureConsentDefaults() {
+      window.dataLayer = window.dataLayer ?? [];
+      window.gtag = window.gtag ?? function gtag(...args: unknown[]) {
+        window.dataLayer?.push(args);
+      };
+
+      if (window.mordidaGoogleConsentInitialized) {
+        return;
+      }
+
+      window.gtag("consent", "default", {
+        ...deniedGoogleConsentState,
+        wait_for_update: 500,
+      });
+      window.gtag("set", "ads_data_redaction", true);
+      window.mordidaGoogleConsentInitialized = true;
+    }
+
     function refreshConsent() {
-      setAnalyticsAllowed(
-        hasAnalyticsConsent(
+      ensureConsentDefaults();
+      setConsentState(
+        storedCookieConsentToGoogleState(
           window.localStorage.getItem(cookieConsentStorageKey),
         ),
       );
@@ -59,10 +87,18 @@ export function GoogleAnalytics() {
       window.removeEventListener(cookieConsentChangedEvent, refreshConsent);
       window.removeEventListener("storage", refreshConsent);
     };
-  }, []);
+  }, [isAdminRoute]);
 
   useEffect(() => {
-    if (!analyticsAllowed || !trackingId || isAdminRoute || !scriptReady) {
+    if (!trackingId || isAdminRoute || !scriptReady) {
+      return;
+    }
+
+    window.gtag?.("consent", "update", consentState);
+  }, [consentState, isAdminRoute, scriptReady, trackingId]);
+
+  useEffect(() => {
+    if (!trackingId || isAdminRoute || !scriptReady) {
       return;
     }
 
@@ -83,7 +119,6 @@ export function GoogleAnalytics() {
       });
     }
   }, [
-    analyticsAllowed,
     directGoogleTagId,
     isAdminRoute,
     pathname,
@@ -93,7 +128,7 @@ export function GoogleAnalytics() {
     measurementId,
   ]);
 
-  if (!analyticsAllowed || !trackingId || isAdminRoute) {
+  if (!trackingId || isAdminRoute) {
     return null;
   }
 
