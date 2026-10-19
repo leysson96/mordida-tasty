@@ -50,7 +50,7 @@ export function CookieBanner() {
           className="button primary"
           onClick={() => saveConsent("analytics")}
         >
-          Aceptar medicion
+          Aceptar cookies
         </button>
       </div>
     </aside>

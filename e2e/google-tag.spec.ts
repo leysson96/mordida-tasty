@@ -60,6 +60,24 @@ test("does not load Google tracking without analytics consent", async ({
   expect(await googleTagCalls(page)).toEqual([]);
 });
 
+test("shows the approved cookie consent label to new visitors", async ({
+  page,
+}) => {
+  await mockMordidaApi(page);
+  await page.addInitScript(() => {
+    window.localStorage.removeItem("mordida_cookie_consent");
+  });
+
+  await page.goto("/");
+
+  await expect(
+    page.getByRole("button", { name: "Aceptar cookies", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Aceptar medicion", exact: true }),
+  ).toHaveCount(0);
+});
+
 async function googleTagCalls(page: Page) {
   return page.evaluate(() =>
     (window.dataLayer ?? [])
