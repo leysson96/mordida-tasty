@@ -13,6 +13,7 @@ export interface ApiMockState {
 }
 
 interface MockMordidaOptions {
+  cookieConsent?: "analytics" | "technical";
   promotions?:
     | boolean
     | "active"
@@ -34,9 +35,9 @@ export async function mockMordidaApi(
   };
   const promotionScenario = resolvePromotionScenario(options.promotions);
 
-  await page.addInitScript(() => {
-    window.localStorage.setItem("mordida_cookie_consent", "technical");
-  });
+  await page.addInitScript((cookieConsent) => {
+    window.localStorage.setItem("mordida_cookie_consent", cookieConsent);
+  }, options.cookieConsent ?? "technical");
 
   await page.route("**/*", async (route) => {
     const request = route.request();

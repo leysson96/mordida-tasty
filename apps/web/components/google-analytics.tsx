@@ -17,6 +17,7 @@ declare global {
 }
 
 const measurementIdPattern = /^G-[A-Z0-9]+$/i;
+const googleAdsIdPattern = /^AW-\d+$/i;
 const tagManagerIdPattern = /^GTM-[A-Z0-9]+$/i;
 
 export function GoogleAnalytics() {
@@ -33,8 +34,13 @@ export function GoogleAnalytics() {
       ? value.toUpperCase()
       : "";
   }, []);
+  const googleAdsId = useMemo(() => {
+    const value = (process.env.NEXT_PUBLIC_GOOGLE_ADS_ID ?? "").trim();
+    return googleAdsIdPattern.test(value) ? value.toUpperCase() : "";
+  }, []);
   const isAdminRoute = pathname?.startsWith("/admin") ?? false;
-  const trackingId = measurementId || tagManagerId;
+  const directGoogleTagId = measurementId || googleAdsId;
+  const trackingId = directGoogleTagId || tagManagerId;
 
   useEffect(() => {
     function refreshConsent() {
@@ -65,14 +71,20 @@ export function GoogleAnalytics() {
       page_title: document.title,
     };
 
-    if (!measurementId && tagManagerId) {
+    if (!directGoogleTagId && tagManagerId) {
       window.dataLayer?.push({ event: "page_view", ...pageView });
       return;
     }
 
-    window.gtag?.("event", "page_view", pageView);
+    if (measurementId) {
+      window.gtag?.("event", "page_view", {
+        ...pageView,
+        send_to: measurementId,
+      });
+    }
   }, [
     analyticsAllowed,
+    directGoogleTagId,
     isAdminRoute,
     pathname,
     scriptReady,
@@ -85,7 +97,7 @@ export function GoogleAnalytics() {
     return null;
   }
 
-  if (!measurementId && tagManagerId) {
+  if (!directGoogleTagId && tagManagerId) {
     return (
       <>
         <Script
@@ -117,22 +129,23 @@ export function GoogleAnalytics() {
   return (
     <>
       <Script
-        src={`https://www.googletagmanager.com/gtag/js?id=${measurementId}`}
+        src={`https://www.googletagmanager.com/gtag/js?id=${directGoogleTagId}`}
         strategy="afterInteractive"
         onLoad={() => setScriptReady(true)}
       />
       <Script
-        id="google-analytics"
+        id="google-tag"
         strategy="afterInteractive"
       >
         {`
           window.dataLayer = window.dataLayer || [];
-          function gtag(){window.dataLayer.push(arguments);}
-          gtag('js', new Date());
-          gtag('config', '${measurementId}', {
+          window.gtag = window.gtag || function gtag(){window.dataLayer.push(arguments);};
+          window.gtag('js', new Date());
+          ${measurementId ? `window.gtag('config', '${measurementId}', {
             anonymize_ip: true,
             send_page_view: false
-          });
+          });` : ""}
+          ${googleAdsId ? `window.gtag('config', '${googleAdsId}');` : ""}
         `}
       </Script>
     </>

@@ -18,6 +18,9 @@ Cloudflare o el proveedor elegido.
 - `NEXT_PUBLIC_GA_MEASUREMENT_ID`: ID de medicion de Google Analytics 4 para la
   web. Tiene formato `G-XXXXXXXXXX`. Si existe, tiene prioridad sobre GTM y la
   web carga `gtag.js` directamente para asegurar que la propiedad recibe datos.
+- `NEXT_PUBLIC_GOOGLE_ADS_ID`: ID de la etiqueta de Google Ads. Tiene formato
+  `AW-XXXXXXXXXXX`. Comparte la misma carga de `gtag.js` con GA4 para evitar
+  etiquetas y visitas duplicadas.
 - `CHECKOUT_GRACE_MINUTES`: minutos de gracia para que un pedido ya creado
   pueda iniciar Stripe si la tienda cierra justo despues. Default: `15`.
 - `DELIVERY_COVERAGE_MODE`: politica de cobertura de reparto. Valores:
@@ -32,9 +35,9 @@ Para `mordidatasty.es`, la API debe permitir todos los origenes reales que el
 cliente pueda abrir en navegador. Si se usan raiz y `www`, mantener ambos en
 `CORS_ORIGIN`, separados por coma. Despues de cambiar `CORS_ORIGIN`,
 `FRONTEND_URL` o `API_PUBLIC_URL`, redeplegar la API. Despues de cambiar
-`NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_GTM_ID` o `NEXT_PUBLIC_GA_MEASUREMENT_ID`,
-usar `Save, rebuild, and deploy` en la web porque Next.js los integra en el
-build.
+`NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_GTM_ID`, `NEXT_PUBLIC_GA_MEASUREMENT_ID` o
+`NEXT_PUBLIC_GOOGLE_ADS_ID`, usar `Save, rebuild, and deploy` en la web porque
+Next.js los integra en el build.
 
 ## Analitica
 
@@ -49,6 +52,11 @@ respaldo si no se usa GA4 directo. Despues de guardar cualquier variable,
 ejecuta un nuevo deploy porque las variables `NEXT_PUBLIC_*` se integran en el
 build de Next.js.
 
+Para Google Ads, agrega `NEXT_PUBLIC_GOOGLE_ADS_ID=AW-18512432756` en ese mismo
+servicio web. No pegues otra copia completa del script en el layout: el
+componente existente carga una sola etiqueta de Google y configura los destinos
+de GA4 y Ads juntos despues de que el cliente acepta la medicion.
+
 No configures a la vez una etiqueta GA4 directa y otra GA4 dentro de GTM con la
 misma propiedad, porque contaria visitas duplicadas. En esta aplicacion, si
 `NEXT_PUBLIC_GA_MEASUREMENT_ID` esta informado, la integracion directa gana y
@@ -59,10 +67,11 @@ Para probar Tag Manager con el boton de Google, abre la web publica, acepta
 "Aceptar medicion" en el banner de cookies y vuelve a ejecutar la prueba. Si no
 aceptas medicion, el sitio no carga la etiqueta por privacidad.
 
-Si manana quieres cambiar Analytics o Tag Manager no hay que tocar codigo:
-cambia `NEXT_PUBLIC_GTM_ID` o `NEXT_PUBLIC_GA_MEASUREMENT_ID` en Render Web y
-redepliega la web. Si usas GTM, los cambios de etiquetas se administran dentro
-de Google Tag Manager y luego se publican como una nueva version del contenedor.
+Si manana quieres cambiar Analytics, Ads o Tag Manager no hay que tocar codigo:
+cambia `NEXT_PUBLIC_GTM_ID`, `NEXT_PUBLIC_GA_MEASUREMENT_ID` o
+`NEXT_PUBLIC_GOOGLE_ADS_ID` en Render Web y redepliega la web. Si usas GTM, los
+cambios de etiquetas se administran dentro de Google Tag Manager y luego se
+publican como una nueva version del contenedor.
 
 ## Contenido editable sin tocar codigo
 
@@ -276,7 +285,7 @@ Luego ese administrador inicia sesion de nuevo y activa 2FA otra vez desde
 
 | Cambio | Donde se cambia | Requiere deploy | Prueba obligatoria |
 | --- | --- | --- | --- |
-| GTM/GA | Render Web o Google Tag Manager | Si cambia `NEXT_PUBLIC_*`, rebuild web | Aceptar cookies y probar Tag Assistant |
+| GTM/GA/Ads | Render Web o Google Tag Manager | Si cambia `NEXT_PUBLIC_*`, rebuild web | Aceptar cookies y probar Tag Assistant |
 | URL API de la web | `NEXT_PUBLIC_API_URL` en Render Web | Rebuild web | Home carga menu y checkout consulta delivery |
 | CORS/origen web | `CORS_ORIGIN` en Render API | Redeploy API | Registro, login, admin y checkout desde dominio real |
 | URL publica web/API | `FRONTEND_URL`, `API_PUBLIC_URL` en Render API | Redeploy API | Correos, Stripe success URL y cookies |
