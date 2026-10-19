@@ -24,6 +24,8 @@ test("configures GA4 and Google Ads with one Google tag after consent", async ({
     "https://region1.analytics.google.com",
   );
   expect(contentSecurityPolicy).toContain("https://stats.g.doubleclick.net");
+  expect(contentSecurityPolicy).toContain("https://ad.doubleclick.net");
+  expect(contentSecurityPolicy).toContain("https://www.google.com");
   expect(contentSecurityPolicy).toContain("https://www.google.es");
 
   await expect(
