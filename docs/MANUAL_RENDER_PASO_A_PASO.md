@@ -156,6 +156,7 @@ FRONTEND_URL=https://mordida-tasty-web.onrender.com
 API_PUBLIC_URL=https://mordida-tasty-api.onrender.com
 CORS_ORIGIN=https://mordida-tasty-web.onrender.com
 JWT_SECRET=crear secreto largo aleatorio
+TOTP_ENCRYPTION_KEY=base64 de 32 bytes generado de forma segura
 JWT_EXPIRES_IN=7d
 ADMIN_JWT_EXPIRES_IN=12h
 SESSION_COOKIE_DOMAIN=
@@ -203,6 +204,29 @@ Notas:
   acepta reparto en zonas activas configuradas desde admin.
 
 Cuando guardes, Render empezara a construir y desplegar la API.
+
+### Gate de sesiones y 2FA antes del despliegue
+
+Antes de publicar una version que incluya sesiones renovables:
+
+1. Genera `TOTP_ENCRYPTION_KEY` una sola vez con un generador criptografico y
+   guardala como secreto de la API. No la agregues a Git ni a la Web.
+2. Confirma que el Pre-Deploy Command ejecuta
+   `npm run prisma:deploy -w @mordida/api`.
+3. Haz una copia de seguridad de PostgreSQL antes de aplicar las migraciones.
+4. Despliega primero la API y despues la Web.
+5. Los JWT antiguos dejaran de ser validos una vez; las contrasenas, cuentas y
+   pedidos no se modifican. A partir de ese login, la renovacion sera silenciosa.
+6. Prueba cliente, Admin y Cocina. Admin/Cocina deben configurar 2FA si todavia
+   no lo tienen y nunca deben entrar a pedidos con el token temporal.
+7. Verifica dos dispositivos: cerrar uno no cierra el otro; restablecer la
+   contrasena si debe cerrar ambos.
+
+Rollback: las migraciones son aditivas, por lo que el commit anterior puede
+volver a ejecutarse sin borrar columnas ni datos. No reviertas las migraciones
+con SQL destructivo durante una incidencia. Restaura el commit estable, conserva
+la base, investiga y aplica una migracion correctiva posterior. Conserva tambien
+`TOTP_ENCRYPTION_KEY`; retirarla rompe el 2FA ya cifrado.
 
 ## 7. Crear la web en Render
 

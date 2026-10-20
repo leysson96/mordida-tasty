@@ -16,6 +16,7 @@ describe("StaffService", () => {
 
   const authService = {
     requestPasswordReset: jest.fn(),
+    revokeAllSessions: jest.fn(),
   };
 
   const staffUser = {
@@ -41,6 +42,7 @@ describe("StaffService", () => {
     prisma.user.update.mockResolvedValue(staffUser);
     prisma.user.count.mockResolvedValue(1);
     authService.requestPasswordReset.mockResolvedValue({ ok: true });
+    authService.revokeAllSessions.mockResolvedValue(undefined);
   });
 
   function service() {
@@ -168,6 +170,17 @@ describe("StaffService", () => {
         },
       }),
     );
+    expect(authService.revokeAllSessions).toHaveBeenCalledWith("staff-1");
+  });
+
+  it("revokes all sessions when staff is disabled", async () => {
+    await service().setStaffActive({
+      actorId: "admin-1",
+      staffId: "staff-1",
+      active: false,
+    });
+
+    expect(authService.revokeAllSessions).toHaveBeenCalledWith("staff-1");
   });
 
   it("sends password reset only to active staff users", async () => {

@@ -36,6 +36,8 @@ services:
         value: https://www.tudominio.es,https://tudominio.es
       - key: JWT_SECRET
         sync: false
+      - key: TOTP_ENCRYPTION_KEY
+        sync: false
       - key: JWT_EXPIRES_IN
         value: 7d
       - key: ADMIN_JWT_EXPIRES_IN

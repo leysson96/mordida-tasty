@@ -5,6 +5,8 @@ export interface AuthenticatedUser {
   id: string;
   email: string;
   role: Role;
+  sessionId?: string;
+  authPurpose?: "session" | "2fa-enrollment";
 }
 
 export const CurrentUser = createParamDecorator(

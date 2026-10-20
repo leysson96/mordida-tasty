@@ -1,22 +1,29 @@
-import { Body, Controller, Get, Post, Res, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Post, Req, Res, UseGuards } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { Role } from "@prisma/client";
+import { AuthSessionScope, Role } from "@prisma/client";
 import { Throttle } from "@nestjs/throttler";
-import { Response } from "express";
+import { Request, Response } from "express";
 import { AuthService } from "../auth/auth.service";
 import {
-  ADMIN_SESSION_COOKIE,
-  ADMIN_SESSION_MAX_AGE_MS,
-  clearSessionCookie,
+  ADMIN_REFRESH_COOKIE,
+  clearAdminSessionCookies,
   SessionCookieConfig,
-  setSessionCookie,
+  setAdminSessionCookies,
+  setEnrollmentCookie,
 } from "../auth/auth-cookies";
 import { LoginDto } from "../auth/dto/login.dto";
 import { ConfirmTwoFactorDto } from "../auth/dto/two-factor.dto";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { Roles } from "../common/decorators/roles.decorator";
-import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import {
+  JwtAuthGuard,
+  OptionalJwtAuthGuard,
+} from "../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../common/guards/roles.guard";
+import {
+  AdminTwoFactorGuard,
+  TwoFactorEnrollmentGuard,
+} from "../common/guards/admin-two-factor.guard";
 import { AppEnv } from "../config/env";
 
 @Controller("admin/auth")
@@ -36,44 +43,85 @@ export class AdminAuthController {
       Role.ADMIN,
       Role.KITCHEN,
     ]);
-    setSessionCookie(
-      response,
-      ADMIN_SESSION_COOKIE,
-      session.accessToken,
-      this.cookieConfig(),
-      ADMIN_SESSION_MAX_AGE_MS,
-    );
+    clearAdminSessionCookies(response, this.cookieConfig());
+    if ("enrollmentToken" in session) {
+      setEnrollmentCookie(
+        response,
+        session.enrollmentToken,
+        this.cookieConfig(),
+      );
+      return {
+        user: session.user,
+        requiresTwoFactorSetup: true,
+      };
+    }
+    setAdminSessionCookies(response, session, this.cookieConfig());
     return { user: session.user };
   }
 
+  @Post("refresh")
+  @Throttle({ default: { limit: 12, ttl: 60_000 } })
+  async refresh(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    try {
+      const session = await this.authService.refreshSession(
+        request.cookies?.[ADMIN_REFRESH_COOKIE],
+        AuthSessionScope.STAFF,
+      );
+      setAdminSessionCookies(response, session, this.cookieConfig());
+      return { user: session.user };
+    } catch (error) {
+      clearAdminSessionCookies(response, this.cookieConfig());
+      throw error;
+    }
+  }
+
   @Post("logout")
-  logout(@Res({ passthrough: true }) response: Response) {
-    clearSessionCookie(response, ADMIN_SESSION_COOKIE, this.cookieConfig());
+  @UseGuards(OptionalJwtAuthGuard)
+  async logout(
+    @Res({ passthrough: true }) response: Response,
+    @Req() request: Request,
+    @CurrentUser() user?: { sessionId: string },
+  ) {
+    if (user?.sessionId) {
+      await this.authService.revokeSession(user.sessionId);
+    } else {
+      await this.authService.revokeRefreshSession(
+        request.cookies?.[ADMIN_REFRESH_COOKIE],
+        AuthSessionScope.STAFF,
+      );
+    }
+    clearAdminSessionCookies(response, this.cookieConfig());
     return { ok: true };
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, AdminTwoFactorGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.KITCHEN)
   @Get("me")
   me(@CurrentUser() user: { id: string }) {
     return this.authService.me(user.id);
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @UseGuards(TwoFactorEnrollmentGuard)
   @Post("2fa/setup")
   setupTwoFactor(@CurrentUser() user: { id: string }) {
     return this.authService.createTwoFactorSecret(user.id);
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @UseGuards(TwoFactorEnrollmentGuard)
   @Post("2fa/confirm")
-  confirmTwoFactor(
+  @Throttle({ default: { limit: 8, ttl: 60_000 } })
+  async confirmTwoFactor(
     @CurrentUser() user: { id: string },
     @Body() dto: ConfirmTwoFactorDto,
+    @Res({ passthrough: true }) response: Response,
   ) {
-    return this.authService.confirmTwoFactor(user.id, dto.code);
+    const session = await this.authService.confirmTwoFactor(user.id, dto.code);
+    clearAdminSessionCookies(response, this.cookieConfig());
+    setAdminSessionCookies(response, session, this.cookieConfig());
+    return { user: session.user };
   }
 
   private isProduction() {

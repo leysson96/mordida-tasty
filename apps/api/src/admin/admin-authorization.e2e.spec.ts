@@ -2,6 +2,7 @@ import { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { JwtService } from "@nestjs/jwt";
 import {
+  AuthSessionScope,
   CashTrustIncidentReason,
   DeliveryMethod,
   OrderStatus,
@@ -46,7 +47,7 @@ describe("Admin authorization E2E", () => {
         email: "cocina@mordidatasty.es",
         role: Role.KITCHEN,
         active: true,
-        twoFactorEnabled: false,
+        twoFactorEnabled: true,
       },
     ],
     [
@@ -77,6 +78,9 @@ describe("Admin authorization E2E", () => {
 
   const prismaService = {
     user: {
+      findUnique: jest.fn(),
+    },
+    authSession: {
       findUnique: jest.fn(),
     },
   };
@@ -180,9 +184,34 @@ describe("Admin authorization E2E", () => {
         sub: user.id,
         email: user.email,
         role: user.role,
+        sid: `session-${user.id}`,
       };
     });
 
+    prismaService.authSession.findUnique.mockImplementation(
+      async ({ where }: { where: { id: string } }) => {
+        const matching = [...usersByToken.entries()].find(
+          ([, user]) => `session-${user.id}` === where.id,
+        );
+        if (!matching) {
+          return null;
+        }
+
+        const user = matching[1];
+        return {
+          id: `session-${user.id}`,
+          userId: user.id,
+          scope:
+            user.role === Role.CLIENTE
+              ? AuthSessionScope.CUSTOMER
+              : AuthSessionScope.STAFF,
+          expiresAt: new Date(Date.now() + 60_000),
+          absoluteExpiresAt: new Date(Date.now() + 120_000),
+          revokedAt: null,
+          user,
+        };
+      },
+    );
     prismaService.user.findUnique.mockImplementation(
       async ({ where }: { where: { id: string } }) =>
         [...usersByToken.values()].find((user) => user.id === where.id) ??

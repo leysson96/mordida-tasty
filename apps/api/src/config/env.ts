@@ -9,6 +9,7 @@ const requiredInProduction = [
   "STRIPE_SECRET_KEY",
   "STRIPE_WEBHOOK_SECRET",
   "SMTP_FROM",
+  "TOTP_ENCRYPTION_KEY",
 ] as const;
 
 export interface AppEnv {
@@ -22,6 +23,7 @@ export interface AppEnv {
   JWT_SECRET: string;
   JWT_EXPIRES_IN: string;
   ADMIN_JWT_EXPIRES_IN: string;
+  TOTP_ENCRYPTION_KEY?: string;
   SESSION_COOKIE_DOMAIN?: string;
   SESSION_COOKIE_SAME_SITE: "lax" | "strict" | "none";
   STRIPE_SECRET_KEY: string;
@@ -138,12 +140,26 @@ function validateCloudinary(env: RawEnv) {
   }
 }
 
+function validateTotpEncryptionKey(value: string | undefined) {
+  if (!value) {
+    return;
+  }
+
+  const decoded = Buffer.from(value, "base64");
+  if (decoded.length !== 32 || decoded.toString("base64") !== value) {
+    throw new Error(
+      "TOTP_ENCRYPTION_KEY must be exactly 32 bytes encoded as base64.",
+    );
+  }
+}
+
 export function validateEnvironment(env: RawEnv): AppEnv {
   for (const key of requiredInAllEnvironments) {
     requireValue(env, key);
   }
 
   validateCloudinary(env);
+  validateTotpEncryptionKey(env.TOTP_ENCRYPTION_KEY);
 
   if (env.NODE_ENV === "production") {
     for (const key of requiredInProduction) {
@@ -180,6 +196,7 @@ export function validateEnvironment(env: RawEnv): AppEnv {
     JWT_SECRET: env.JWT_SECRET!,
     JWT_EXPIRES_IN: env.JWT_EXPIRES_IN ?? "7d",
     ADMIN_JWT_EXPIRES_IN: env.ADMIN_JWT_EXPIRES_IN ?? "12h",
+    TOTP_ENCRYPTION_KEY: env.TOTP_ENCRYPTION_KEY,
     SESSION_COOKIE_DOMAIN: env.SESSION_COOKIE_DOMAIN,
     SESSION_COOKIE_SAME_SITE: parseSameSite(env.SESSION_COOKIE_SAME_SITE),
     STRIPE_SECRET_KEY: env.STRIPE_SECRET_KEY ?? "",

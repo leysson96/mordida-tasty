@@ -5,7 +5,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import { Role } from "@prisma/client";
+import { AuthSessionScope, Role } from "@prisma/client";
 import { Request } from "express";
 import {
   ADMIN_SESSION_COOKIE,
@@ -18,6 +18,7 @@ interface JwtPayload {
   sub: string;
   email: string;
   role: Role;
+  sid?: string;
 }
 
 function readBearerToken(request: Request) {
@@ -51,24 +52,53 @@ async function activeUserFromPayload(
   prisma: PrismaService,
   payload: JwtPayload,
 ) {
-  const user = await prisma.user.findUnique({
-    where: { id: payload.sub },
+  if (!payload.sid) {
+    return undefined;
+  }
+
+  const session = await prisma.authSession.findUnique({
+    where: { id: payload.sid },
     select: {
       id: true,
-      email: true,
-      role: true,
-      active: true,
+      userId: true,
+      scope: true,
+      expiresAt: true,
+      absoluteExpiresAt: true,
+      revokedAt: true,
+      user: {
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          active: true,
+        },
+      },
     },
   });
 
-  if (!user?.active) {
+  if (
+    !session ||
+    session.userId !== payload.sub ||
+    session.revokedAt ||
+    session.expiresAt <= new Date() ||
+    session.absoluteExpiresAt <= new Date() ||
+    !session.user.active ||
+    session.user.email !== payload.email ||
+    session.user.role !== payload.role ||
+    session.scope !==
+      (payload.role === Role.CLIENTE
+        ? AuthSessionScope.CUSTOMER
+        : AuthSessionScope.STAFF)
+  ) {
     return undefined;
   }
 
   return {
-    id: user.id,
-    email: user.email,
-    role: user.role,
+    id: session.user.id,
+    email: session.user.email,
+    role: session.user.role,
+    sessionId: session.id,
+    authPurpose: "session",
   } satisfies AuthenticatedUser;
 }
 

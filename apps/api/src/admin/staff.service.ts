@@ -141,7 +141,7 @@ export class StaffService {
       }
     }
 
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: staff.id },
       data: {
         active: input.active,
@@ -149,12 +149,18 @@ export class StaffService {
       },
       select: staffUserSelect,
     });
+
+    if (!input.active) {
+      await this.authService.revokeAllSessions(staff.id);
+    }
+
+    return updated;
   }
 
   async resetTwoFactor(staffId: string) {
     await this.findStaffOrThrow(staffId);
 
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: staffId },
       data: {
         twoFactorEnabled: false,
@@ -162,6 +168,9 @@ export class StaffService {
       },
       select: staffUserSelect,
     });
+
+    await this.authService.revokeAllSessions(staffId);
+    return updated;
   }
 
   async requestPasswordReset(staffId: string) {

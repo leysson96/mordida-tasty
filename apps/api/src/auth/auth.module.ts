@@ -4,9 +4,11 @@ import { JwtModule } from '@nestjs/jwt';
 import { AppEnv } from '../config/env';
 import { JwtAuthGuard, OptionalJwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { TwoFactorEnrollmentGuard } from '../common/guards/admin-two-factor.guard';
 import { MailModule } from '../mail/mail.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { TotpCryptoService } from './totp-crypto.service';
 
 @Module({
   imports: [
@@ -22,7 +24,7 @@ import { AuthService } from './auth.service';
     })
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtAuthGuard, OptionalJwtAuthGuard, RolesGuard],
-  exports: [AuthService, JwtModule, JwtAuthGuard, OptionalJwtAuthGuard, RolesGuard]
+  providers: [AuthService, TotpCryptoService, JwtAuthGuard, OptionalJwtAuthGuard, RolesGuard, TwoFactorEnrollmentGuard],
+  exports: [AuthService, JwtModule, JwtAuthGuard, OptionalJwtAuthGuard, RolesGuard, TwoFactorEnrollmentGuard]
 })
 export class AuthModule {}

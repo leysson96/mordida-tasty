@@ -1,16 +1,16 @@
-import { Body, Controller, Get, Post, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Role } from '@prisma/client';
+import { AuthSessionScope, Role } from '@prisma/client';
 import { Throttle } from '@nestjs/throttler';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { JwtAuthGuard, OptionalJwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { AppEnv } from '../config/env';
 import {
-  clearSessionCookie,
-  CLIENT_SESSION_COOKIE,
+  clearCustomerSessionCookies,
+  CLIENT_REFRESH_COOKIE,
   SessionCookieConfig,
-  setSessionCookie
+  setCustomerSessionCookies
 } from './auth-cookies';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -35,13 +35,45 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) response: Response) {
     const session = await this.authService.login(dto, Role.CLIENTE);
-    setSessionCookie(response, CLIENT_SESSION_COOKIE, session.accessToken, this.cookieConfig());
+    if (!("accessToken" in session)) {
+      throw new Error("Customer login cannot create a 2FA enrollment session.");
+    }
+    setCustomerSessionCookies(response, session, this.cookieConfig());
     return { user: session.user };
   }
 
+  @Post('refresh')
+  @Throttle({ default: { limit: 12, ttl: 60_000 } })
+  async refresh(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
+    try {
+      const session = await this.authService.refreshSession(
+        request.cookies?.[CLIENT_REFRESH_COOKIE],
+        AuthSessionScope.CUSTOMER
+      );
+      setCustomerSessionCookies(response, session, this.cookieConfig());
+      return { user: session.user };
+    } catch (error) {
+      clearCustomerSessionCookies(response, this.cookieConfig());
+      throw error;
+    }
+  }
+
   @Post('logout')
-  logout(@Res({ passthrough: true }) response: Response) {
-    clearSessionCookie(response, CLIENT_SESSION_COOKIE, this.cookieConfig());
+  @UseGuards(OptionalJwtAuthGuard)
+  async logout(
+    @Res({ passthrough: true }) response: Response,
+    @Req() request: Request,
+    @CurrentUser() user?: { sessionId: string }
+  ) {
+    if (user?.sessionId) {
+      await this.authService.revokeSession(user.sessionId);
+    } else {
+      await this.authService.revokeRefreshSession(
+        request.cookies?.[CLIENT_REFRESH_COOKIE],
+        AuthSessionScope.CUSTOMER
+      );
+    }
+    clearCustomerSessionCookies(response, this.cookieConfig());
     return { ok: true };
   }
 

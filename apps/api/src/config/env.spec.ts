@@ -1,10 +1,13 @@
 import { validateEnvironment } from "./env";
 
+const totpEncryptionKey = Buffer.alloc(32, 9).toString("base64");
+
 describe("environment validation", () => {
   it("requires email delivery settings in production", () => {
     expect(() =>
       validateEnvironment({
         NODE_ENV: "production",
+        TOTP_ENCRYPTION_KEY: totpEncryptionKey,
         DATABASE_URL: "postgresql://example",
         JWT_SECRET: "a".repeat(40),
         FRONTEND_URL: "https://mordidatasty.es",
@@ -20,6 +23,7 @@ describe("environment validation", () => {
   it("accepts Brevo API email delivery in production", () => {
     const env = validateEnvironment({
       NODE_ENV: "production",
+      TOTP_ENCRYPTION_KEY: totpEncryptionKey,
       DATABASE_URL: "postgresql://example",
       JWT_SECRET: "a".repeat(40),
       FRONTEND_URL: "https://mordidatasty.es",
@@ -38,6 +42,7 @@ describe("environment validation", () => {
   it("accepts Cloudinary uploads in production without a persistent upload directory", () => {
     const env = validateEnvironment({
       NODE_ENV: "production",
+      TOTP_ENCRYPTION_KEY: totpEncryptionKey,
       DATABASE_URL: "postgresql://example",
       JWT_SECRET: "a".repeat(40),
       FRONTEND_URL: "https://mordidatasty.es",
@@ -69,6 +74,7 @@ describe("environment validation", () => {
     expect(() =>
       validateEnvironment({
         NODE_ENV: "production",
+        TOTP_ENCRYPTION_KEY: totpEncryptionKey,
         DATABASE_URL: "postgresql://example",
         JWT_SECRET: "a".repeat(40),
         FRONTEND_URL: "https://mordidatasty.es",
@@ -82,6 +88,7 @@ describe("environment validation", () => {
     expect(() =>
       validateEnvironment({
         NODE_ENV: "production",
+        TOTP_ENCRYPTION_KEY: totpEncryptionKey,
         DATABASE_URL: "postgresql://example",
         JWT_SECRET: "a".repeat(40),
         FRONTEND_URL: "https://mordidatasty.es",
@@ -157,6 +164,28 @@ describe("environment validation", () => {
         SESSION_COOKIE_SAME_SITE: "wide-open",
       }),
     ).toThrow("SESSION_COOKIE_SAME_SITE must be one of: lax, strict, none.");
+  });
+
+  it("requires a valid 32-byte TOTP encryption key in production", () => {
+    const production = {
+      NODE_ENV: "production",
+      DATABASE_URL: "postgresql://example",
+      JWT_SECRET: "a".repeat(40),
+      FRONTEND_URL: "https://mordidatasty.es",
+      API_PUBLIC_URL: "https://api.mordidatasty.es",
+      STRIPE_SECRET_KEY: "sk_live_example",
+      STRIPE_WEBHOOK_SECRET: "whsec_example",
+      SMTP_FROM: "Mordida Tasty <hola@mordidatasty.es>",
+      BREVO_API_KEY: "xkeysib-example",
+      UPLOAD_DIR: "/app/uploads",
+    };
+
+    expect(() => validateEnvironment(production)).toThrow(
+      "Missing required environment variable: TOTP_ENCRYPTION_KEY",
+    );
+    expect(() =>
+      validateEnvironment({ ...production, TOTP_ENCRYPTION_KEY: "invalid" }),
+    ).toThrow("TOTP_ENCRYPTION_KEY must be exactly 32 bytes encoded as base64.");
   });
 
   it("rejects invalid numeric environment settings", () => {

@@ -194,13 +194,30 @@ contrasenas ni ajustes ya existentes.
 ## Auth y cookies
 
 - `JWT_SECRET`: secreto largo, aleatorio y privado. Minimo 32 caracteres.
-- `JWT_EXPIRES_IN`: duracion de sesion cliente. Valor actual recomendado: `7d`.
-- `ADMIN_JWT_EXPIRES_IN`: duracion de sesion admin/cocina. Valor actual: `12h`.
+- `TOTP_ENCRYPTION_KEY`: clave base64 de exactamente 32 bytes para cifrar los
+  secretos 2FA con AES-256-GCM. Es obligatoria en produccion, solo va en la API
+  y nunca debe llamarse `NEXT_PUBLIC_*`.
+- Los accesos JWT duran 15 minutos. La renovacion HttpOnly mantiene al cliente
+  hasta 30 dias sin actividad, con limite absoluto de 90 dias. Admin y Cocina
+  tienen un limite absoluto de 12 horas. `JWT_EXPIRES_IN` y
+  `ADMIN_JWT_EXPIRES_IN` se conservan temporalmente por compatibilidad, pero no
+  alargan esos limites de seguridad.
 - `SESSION_COOKIE_DOMAIN`: normalmente vacio. Usalo solo si necesitas compartir
   cookies entre subdominios, por ejemplo `.mordidatasty.es`.
 - `SESSION_COOKIE_SAME_SITE`: `lax` si web y API estan en el mismo dominio raiz.
   Usa `none` solo si web y API quedan en dominios totalmente distintos; en ese
   caso tambien es obligatorio HTTPS.
+
+Genera `TOTP_ENCRYPTION_KEY` una sola vez en PowerShell y guardala directamente
+en el panel secreto de Render:
+
+```powershell
+[Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+```
+
+No rotar esa clave como parte de un despliegue normal: los usuarios con 2FA ya
+configurado dejarian de poder descifrar su secreto. Si alguna vez se compromete,
+la rotacion requiere un procedimiento especifico y nuevo enrolamiento 2FA.
 
 ## Stripe
 

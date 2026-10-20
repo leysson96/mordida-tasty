@@ -66,6 +66,19 @@ enum CashTrustIncidentReason {
   NO_SHOW_DELIVERY
 }
 
+enum AuthSessionScope {
+  CUSTOMER
+  STAFF
+}
+
+enum DataDeletionRequestStatus {
+  VERIFICATION_REQUIRED
+  VERIFIED
+  PROCESSING
+  COMPLETED
+  REJECTED
+}
+
 enum LoyaltyRewardType {
   DISCOUNT_PERCENT
   FREE_PRODUCT
@@ -125,6 +138,28 @@ model User {
   loyaltyRedemptions  LoyaltyRedemption[]
   cashTrust           CustomerCashTrust?
   cashTrustEvents     CashTrustEvent[]
+  authSessions        AuthSession[]
+  dataDeletionRequests         DataDeletionRequest[] @relation("PrivacySubject")
+  resolvedDataDeletionRequests DataDeletionRequest[] @relation("PrivacyResolver")
+}
+
+model AuthSession {
+  id                String           @id @default(uuid())
+  tokenHash         String           @unique
+  userId            String
+  scope             AuthSessionScope @default(CUSTOMER)
+  lastSeenAt        DateTime         @default(now())
+  expiresAt         DateTime
+  absoluteExpiresAt DateTime         @default(dbgenerated("(CURRENT_TIMESTAMP + interval '90 days')"))
+  revokedAt         DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@index([absoluteExpiresAt])
+  @@index([scope, revokedAt])
 }
 
 model EmailVerificationToken {
@@ -543,15 +578,27 @@ model AuditLog {
 }
 
 model DataDeletionRequest {
-  id         String    @id @default(uuid())
-  email      String
-  message    String?
-  resolved   Boolean   @default(false)
-  resolvedAt DateTime?
-  createdAt  DateTime  @default(now())
+  id                 String                    @id @default(uuid())
+  email              String
+  message            String?
+  status             DataDeletionRequestStatus @default(VERIFICATION_REQUIRED)
+  userId             String?
+  identityVerifiedAt DateTime?
+  identityVerificationNote String?
+  resolutionNote     String?
+  resolvedById       String?
+  resolvedAt         DateTime?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  resolved           Boolean                   @default(false)
+  user               User?                     @relation("PrivacySubject", fields: [userId], references: [id], onDelete: SetNull)
+  resolvedBy         User?                     @relation("PrivacyResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
 
   @@index([email])
+  @@index([status])
   @@index([resolved])
+  @@index([userId])
+  @@index([resolvedById])
   @@index([createdAt])
 }
 
