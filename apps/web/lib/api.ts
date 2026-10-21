@@ -87,6 +87,7 @@ async function parseResponse<T>(response: Response) {
 
 function refreshPathFor(path: string) {
   if (
+    path === "/admin/auth/me" ||
     (path.startsWith("/admin/") && !path.startsWith("/admin/auth/")) ||
     path.startsWith("/privacy/admin/")
   ) {
@@ -111,13 +112,15 @@ function refreshOnce(path: string) {
     return active;
   }
 
-  const pending = fetch(`${API_URL}${path}`, {
-    method: "POST",
-    cache: "no-store",
-    credentials: "include",
-  })
-    .then((response) => response.ok)
-    .catch(() => false)
+  const pending = withBrowserRefreshLock(path, () =>
+    fetch(`${API_URL}${path}`, {
+      method: "POST",
+      cache: "no-store",
+      credentials: "include",
+    })
+      .then((response) => response.ok)
+      .catch(() => false),
+  )
     .finally(() => {
       if (isAdmin) {
         adminRefresh = undefined;
@@ -132,6 +135,20 @@ function refreshOnce(path: string) {
     customerRefresh = pending;
   }
   return pending;
+}
+
+async function withBrowserRefreshLock<T>(
+  path: string,
+  refresh: () => Promise<T>,
+): Promise<T> {
+  if (typeof navigator === "undefined" || !navigator.locks) {
+    return refresh();
+  }
+
+  return await navigator.locks.request<Promise<T>>(
+    `mordida-session-refresh:${path}`,
+    refresh,
+  );
 }
 
 function notifySessionExpired(admin: boolean) {
