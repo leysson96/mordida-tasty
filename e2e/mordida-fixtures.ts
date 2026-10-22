@@ -118,6 +118,11 @@ export async function mockMordidaApi(
       return;
     }
 
+    if (method === "GET" && pathname === "/customers/commercial-consents") {
+      await json(route, commercialConsentFixture);
+      return;
+    }
+
     if (method === "GET" && pathname === "/orders/mine") {
       await json(route, [trackingOrderFixture]);
       return;
@@ -258,6 +263,39 @@ export async function mockMordidaApi(
   return state;
 }
 
+const commercialConsentFixture = [
+  {
+    channel: "EMAIL",
+    granted: false,
+    grantedAt: null,
+    withdrawnAt: null,
+    consentVersion: "2026-10",
+    source: null,
+    withdrawalSource: null,
+    updatedAt: null,
+  },
+  {
+    channel: "SMS",
+    granted: false,
+    grantedAt: null,
+    withdrawnAt: null,
+    consentVersion: "2026-10",
+    source: null,
+    withdrawalSource: null,
+    updatedAt: null,
+  },
+  {
+    channel: "WHATSAPP",
+    granted: false,
+    grantedAt: null,
+    withdrawnAt: null,
+    consentVersion: "2026-10",
+    source: null,
+    withdrawalSource: null,
+    updatedAt: null,
+  },
+];
+
 function resolvePromotionScenario(options: MockMordidaOptions["promotions"]) {
   if (options === true) {
     return "active";
@@ -284,6 +322,7 @@ function isMockedApiRequest(method: string, pathname: string) {
       pathname === "/customers/addresses" ||
       pathname === "/customers/loyalty" ||
       pathname === "/customers/cash-trust" ||
+      pathname === "/customers/commercial-consents" ||
       pathname === "/orders/mine" ||
       pathname.startsWith("/orders/track/") ||
       pathname === "/admin/orders" ||

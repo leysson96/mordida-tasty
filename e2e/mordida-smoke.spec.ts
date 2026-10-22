@@ -25,7 +25,9 @@ test("customer registration and login flow works", async ({ page }, testInfo) =>
   await page.goto("/auth/registro");
 
   await page.getByLabel("Nombre").fill("Cliente Mordida");
-  await page.getByLabel("Email").fill("cliente@mordida.test");
+  await page
+    .getByRole("textbox", { name: "Email", exact: true })
+    .fill("cliente@mordida.test");
   await page.getByLabel("Telefono").fill("+34600111222");
   await page.locator('input[name="password"]').fill("SuperSegura123!");
   await page.getByLabel(/Acepto la/i).check();

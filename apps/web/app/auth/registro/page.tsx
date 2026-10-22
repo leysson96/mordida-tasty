@@ -33,6 +33,9 @@ export default function RegisterPage() {
           phone: String(form.get("phone")),
           password: String(form.get("password")),
           acceptLegal: form.get("acceptLegal") === "on",
+          commercialConsentChannels: form
+            .getAll("commercialConsentChannels")
+            .map(String),
         }),
       });
       setMessage("Cuenta creada. Revisa tu email para verificarla.");
@@ -89,6 +92,37 @@ export default function RegisterPage() {
             las <Link href="/condiciones">condiciones</Link>.
           </span>
         </label>
+        <fieldset className="commercial-registration-consent">
+          <legend>Comunicaciones comerciales</legend>
+          <p>
+            Opcional. Elige por que canales quieres recibir ofertas y novedades.
+            Puedes retirar el permiso desde tu cuenta en cualquier momento.
+          </p>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              name="commercialConsentChannels"
+              value="EMAIL"
+            />
+            <span>Email</span>
+          </label>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              name="commercialConsentChannels"
+              value="SMS"
+            />
+            <span>SMS</span>
+          </label>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              name="commercialConsentChannels"
+              value="WHATSAPP"
+            />
+            <span>WhatsApp</span>
+          </label>
+        </fieldset>
         {message && <p className="form-success">{message}</p>}
         {verificationUrl && (
           <Link className="dev-link" href={verificationUrl}>
@@ -105,6 +139,34 @@ export default function RegisterPage() {
           {loading ? "Creando" : "Crear"}
         </button>
         <Link href="/auth/login">Ya tengo cuenta</Link>
+        <style jsx>{`
+          .commercial-registration-consent {
+            display: grid;
+            gap: 9px;
+            min-width: 0;
+            margin: 4px 0;
+            padding: 13px;
+            border: 1px solid var(--color-line);
+            border-radius: var(--radius-small);
+          }
+
+          .commercial-registration-consent legend {
+            padding: 0 5px;
+            font-weight: 950;
+          }
+
+          .commercial-registration-consent p {
+            margin: 0 0 2px;
+            color: var(--color-muted);
+            font-size: 0.82rem;
+            line-height: 1.45;
+          }
+
+          .commercial-registration-consent label {
+            justify-content: start;
+            min-height: 34px;
+          }
+        `}</style>
       </form>
     </main>
   );

@@ -1,5 +1,10 @@
 import { UnauthorizedException } from "@nestjs/common";
-import { AuthSessionScope, Role } from "@prisma/client";
+import {
+  AuthSessionScope,
+  CommercialConsentChannel,
+  CommercialConsentSource,
+  Role,
+} from "@prisma/client";
 import * as argon2 from "argon2";
 import { createHash } from "node:crypto";
 import { authenticator } from "otplib";
@@ -28,9 +33,7 @@ describe("AuthService sessions", () => {
   const jwtService = { signAsync: jest.fn() };
   const mailService = { sendVerificationEmail: jest.fn() };
   const configService = {
-    get: jest.fn((key: string) =>
-      key === "NODE_ENV" ? "test" : undefined,
-    ),
+    get: jest.fn((key: string) => (key === "NODE_ENV" ? "test" : undefined)),
   };
   const totpCrypto = {
     encrypt: jest.fn((value: string) => `v1.encrypted.${value}`),
@@ -57,9 +60,14 @@ describe("AuthService sessions", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(argon2, "verify").mockResolvedValue(true);
+    jest.spyOn(argon2, "hash").mockResolvedValue("new-password-hash");
     prisma.user.findUnique.mockResolvedValue(activeClient);
     prisma.user.findUniqueOrThrow.mockResolvedValue(activeClient);
     prisma.user.update.mockResolvedValue(activeClient);
+    prisma.user.create.mockResolvedValue({
+      ...activeClient,
+      emailVerifiedAt: null,
+    });
     prisma.emailVerificationToken.create.mockResolvedValue({});
     prisma.authSession.create.mockResolvedValue({});
     prisma.authSession.updateMany.mockResolvedValue({ count: 1 });
@@ -82,6 +90,54 @@ describe("AuthService sessions", () => {
       totpCrypto as never,
     );
   }
+
+  it("records explicit registration consent without preauthorizing other channels", async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+
+    await service().register({
+      email: "nuevo@mordida.test",
+      password: "Temporal123",
+      name: "Cliente Nuevo",
+      phone: "+34611752804",
+      acceptLegal: true,
+      commercialConsentChannels: [CommercialConsentChannel.EMAIL],
+    });
+
+    expect(prisma.user.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        commercialConsents: {
+          create: expect.arrayContaining([
+            expect.objectContaining({
+              channel: CommercialConsentChannel.EMAIL,
+              grantedAt: expect.any(Date),
+              withdrawnAt: null,
+              source: CommercialConsentSource.REGISTRATION,
+            }),
+            expect.objectContaining({
+              channel: CommercialConsentChannel.SMS,
+              grantedAt: null,
+              withdrawnAt: expect.any(Date),
+              withdrawalSource: CommercialConsentSource.REGISTRATION,
+            }),
+            expect.objectContaining({
+              channel: CommercialConsentChannel.WHATSAPP,
+              grantedAt: null,
+              withdrawnAt: expect.any(Date),
+              withdrawalSource: CommercialConsentSource.REGISTRATION,
+            }),
+          ]),
+        },
+        auditLogs: {
+          create: expect.objectContaining({
+            action: "commercial_consent.registration",
+            metadata: expect.objectContaining({
+              grantedChannels: [CommercialConsentChannel.EMAIL],
+            }),
+          }),
+        },
+      }),
+    });
+  });
 
   it("creates a short access token and stores only the refresh hash", async () => {
     const result = await service().login({
@@ -203,7 +259,10 @@ describe("AuthService sessions", () => {
   });
 
   it("rejects login for disabled users", async () => {
-    prisma.user.findUnique.mockResolvedValue({ ...activeClient, active: false });
+    prisma.user.findUnique.mockResolvedValue({
+      ...activeClient,
+      active: false,
+    });
     await expect(
       service().login({ email: activeClient.email, password: "Temporal123" }),
     ).rejects.toThrow(UnauthorizedException);
@@ -262,7 +321,9 @@ describe("AuthService sessions", () => {
       [Role.ADMIN, Role.KITCHEN],
     );
 
-    expect(result).toEqual(expect.objectContaining({ accessToken: expect.any(String) }));
+    expect(result).toEqual(
+      expect.objectContaining({ accessToken: expect.any(String) }),
+    );
     expect(prisma.user.update).toHaveBeenCalledWith({
       where: { id: "staff-1" },
       data: { twoFactorSecret: "v1.encrypted.LEGACYSECRET" },

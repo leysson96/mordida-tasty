@@ -1,13 +1,17 @@
 import {
+  ArrayUnique,
   Equals,
+  IsArray,
   IsEmail,
+  IsEnum,
   IsOptional,
   IsPhoneNumber,
   IsString,
   Matches,
   MaxLength,
-  MinLength
-} from 'class-validator';
+  MinLength,
+} from "class-validator";
+import { CommercialConsentChannel } from "@prisma/client";
 
 export class RegisterDto {
   @IsEmail()
@@ -16,9 +20,9 @@ export class RegisterDto {
   @IsString()
   @MinLength(10)
   @MaxLength(120)
-  @Matches(/[A-Z]/, { message: 'password must contain an uppercase letter' })
-  @Matches(/[a-z]/, { message: 'password must contain a lowercase letter' })
-  @Matches(/[0-9]/, { message: 'password must contain a number' })
+  @Matches(/[A-Z]/, { message: "password must contain an uppercase letter" })
+  @Matches(/[a-z]/, { message: "password must contain a lowercase letter" })
+  @Matches(/[0-9]/, { message: "password must contain a number" })
   password!: string;
 
   @IsString()
@@ -27,9 +31,15 @@ export class RegisterDto {
   name!: string;
 
   @IsOptional()
-  @IsPhoneNumber('ES')
+  @IsPhoneNumber("ES")
   phone?: string;
 
   @Equals(true)
   acceptLegal!: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsEnum(CommercialConsentChannel, { each: true })
+  commercialConsentChannels?: CommercialConsentChannel[];
 }

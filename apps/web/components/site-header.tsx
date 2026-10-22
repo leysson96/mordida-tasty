@@ -7,6 +7,7 @@ import {
   BarChart3,
   ChefHat,
   ClipboardList,
+  ContactRound,
   LogOut,
   Menu,
   ShoppingBag,
@@ -24,6 +25,7 @@ import { useCart } from './cart-provider';
 const adminLinks = [
   { href: '/admin', label: 'Pedidos', Icon: ClipboardList },
   { href: '/admin/menu', label: 'Menu', Icon: Menu },
+  { href: '/admin/clientes', label: 'Clientes', Icon: ContactRound },
   { href: '/admin/reportes', label: 'Reportes', Icon: BarChart3 },
   { href: '/admin/reparto', label: 'Reparto', Icon: Truck },
   { href: '/admin/staff', label: 'Staff', Icon: UsersRound },

@@ -39,6 +39,9 @@ test("concurrent protected requests share one transparent refresh", async ({
         json: { cashEnabled: false, successfulOrdersCount: 0 },
       });
     }
+    if (path === "/customers/commercial-consents") {
+      return route.fulfill({ status: 200, json: [] });
+    }
     return route.fulfill({ status: 404, json: {} });
   });
 

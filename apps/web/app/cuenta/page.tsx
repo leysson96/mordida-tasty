@@ -1,16 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState, type ReactNode } from "react";
+import * as Switch from "@radix-ui/react-switch";
 import {
   Banknote,
   Gift,
   LogOut,
+  Mail,
   MapPin,
   Pencil,
   Plus,
   ReceiptText,
   Save,
+  MessageCircle,
+  MessageSquareText,
+  ShieldCheck,
   Trash2,
   Trophy,
   UserRound,
@@ -20,7 +25,9 @@ import { ApiError, api, formatMoney } from "../../lib/api";
 import {
   Address,
   CustomerCashTrustState,
+  CustomerCommercialConsentPreference,
   CustomerLoyaltyProgress,
+  CommercialConsentChannel,
   OrderSummary,
   User,
 } from "../../lib/types";
@@ -32,6 +39,12 @@ export default function AccountPage() {
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [loyalty, setLoyalty] = useState<CustomerLoyaltyProgress>();
   const [cashTrust, setCashTrust] = useState<CustomerCashTrustState>();
+  const [commercialConsents, setCommercialConsents] = useState<
+    CustomerCommercialConsentPreference[]
+  >([]);
+  const [commercialBusy, setCommercialBusy] = useState(false);
+  const [commercialMessage, setCommercialMessage] = useState<string>();
+  const [commercialError, setCommercialError] = useState<string>();
   const [error, setError] = useState<string>();
   const [addressMessage, setAddressMessage] = useState<string>();
   const [addressBusy, setAddressBusy] = useState(false);
@@ -48,6 +61,9 @@ export default function AccountPage() {
       api<CustomerCashTrustState>("/customers/cash-trust").catch(
         () => undefined,
       ),
+      api<CustomerCommercialConsentPreference[]>(
+        "/customers/commercial-consents",
+      ),
     ])
       .then(
         ([
@@ -56,6 +72,7 @@ export default function AccountPage() {
           savedOrders,
           loyaltyProgress,
           cashTrustState,
+          consentPreferences,
         ]) => {
           if (!active) {
             return;
@@ -65,6 +82,7 @@ export default function AccountPage() {
           setOrders(savedOrders);
           setLoyalty(loyaltyProgress);
           setCashTrust(cashTrustState);
+          setCommercialConsents(consentPreferences);
           setAuthenticated(true);
         },
       )
@@ -181,6 +199,53 @@ export default function AccountPage() {
       await api("/auth/logout", { method: "POST" });
     } finally {
       window.location.href = "/";
+    }
+  }
+
+  async function updateCommercialConsent(
+    channel: CommercialConsentChannel,
+    granted: boolean,
+  ) {
+    if (commercialBusy) {
+      return;
+    }
+
+    const selectedChannels = new Set(
+      commercialConsents
+        .filter((preference) => preference.granted)
+        .map((preference) => preference.channel),
+    );
+    if (granted) {
+      selectedChannels.add(channel);
+    } else {
+      selectedChannels.delete(channel);
+    }
+
+    try {
+      setCommercialBusy(true);
+      setCommercialMessage(undefined);
+      setCommercialError(undefined);
+      const updated = await api<CustomerCommercialConsentPreference[]>(
+        "/customers/commercial-consents",
+        {
+          method: "PUT",
+          body: JSON.stringify({ channels: [...selectedChannels] }),
+        },
+      );
+      setCommercialConsents(updated);
+      setCommercialMessage(
+        granted
+          ? "Preferencia activada."
+          : "Preferencia retirada inmediatamente.",
+      );
+    } catch (requestError) {
+      setCommercialError(
+        requestError instanceof Error
+          ? requestError.message
+          : "No se pudo actualizar la preferencia.",
+      );
+    } finally {
+      setCommercialBusy(false);
     }
   }
 
@@ -308,6 +373,69 @@ export default function AccountPage() {
           </div>
         </section>
       )}
+
+      <section
+        className="commercial-preferences-panel"
+        aria-labelledby="commercial-preferences-title"
+      >
+        <div className="commercial-preferences-heading">
+          <ShieldCheck aria-hidden="true" size={22} />
+          <div>
+            <h2 id="commercial-preferences-title">
+              Comunicaciones comerciales
+            </h2>
+            <p>
+              Elige por separado como quieres recibir ofertas y novedades. Cada
+              cambio se guarda al momento y puedes retirar el permiso cuando
+              quieras.
+            </p>
+          </div>
+        </div>
+        <div className="commercial-preference-list">
+          <CommercialPreference
+            channel="EMAIL"
+            title="Email"
+            description="Ofertas y novedades en tu correo."
+            icon={<Mail aria-hidden="true" size={19} />}
+            checked={isCommercialChannelGranted(commercialConsents, "EMAIL")}
+            disabled={commercialBusy}
+            onCheckedChange={(checked) =>
+              updateCommercialConsent("EMAIL", checked)
+            }
+          />
+          <CommercialPreference
+            channel="SMS"
+            title="SMS"
+            description="Promociones breves en tu telefono."
+            icon={<MessageSquareText aria-hidden="true" size={19} />}
+            checked={isCommercialChannelGranted(commercialConsents, "SMS")}
+            disabled={commercialBusy}
+            onCheckedChange={(checked) =>
+              updateCommercialConsent("SMS", checked)
+            }
+          />
+          <CommercialPreference
+            channel="WHATSAPP"
+            title="WhatsApp"
+            description="Novedades comerciales por WhatsApp."
+            icon={<MessageCircle aria-hidden="true" size={19} />}
+            checked={isCommercialChannelGranted(commercialConsents, "WHATSAPP")}
+            disabled={commercialBusy}
+            onCheckedChange={(checked) =>
+              updateCommercialConsent("WHATSAPP", checked)
+            }
+          />
+        </div>
+        <div className="commercial-preferences-feedback" aria-live="polite">
+          {commercialBusy && <span>Guardando preferencia...</span>}
+          {commercialMessage && (
+            <span className="form-success">{commercialMessage}</span>
+          )}
+          {commercialError && (
+            <span className="form-error">{commercialError}</span>
+          )}
+        </div>
+      </section>
 
       <section className="account-grid">
         <form
@@ -490,7 +618,200 @@ export default function AccountPage() {
           ))
         )}
       </section>
+      <style jsx global>{`
+        .commercial-preferences-panel {
+          display: grid;
+          gap: 15px;
+          margin-bottom: 20px;
+          padding: 18px 20px;
+          border: 1px solid var(--color-line);
+          border-radius: var(--radius);
+          background: rgba(255, 250, 243, 0.98);
+          box-shadow: var(--shadow-tight);
+        }
+
+        .commercial-preferences-heading {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+        }
+
+        .commercial-preferences-heading h2,
+        .commercial-preferences-heading p {
+          margin: 0;
+        }
+
+        .commercial-preferences-heading h2 {
+          font-size: 1.05rem;
+        }
+
+        .commercial-preferences-heading p {
+          margin-top: 4px;
+          color: var(--color-muted);
+          font-size: 0.84rem;
+          line-height: 1.45;
+        }
+
+        .commercial-preference-list {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          border: 1px solid var(--color-line);
+          border-radius: var(--radius-small);
+        }
+
+        .commercial-preference-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+          padding: 13px;
+          border-right: 1px solid var(--color-line);
+        }
+
+        .commercial-preference-row:last-child {
+          border-right: 0;
+        }
+
+        .commercial-preference-copy {
+          display: grid;
+          gap: 2px;
+          min-width: 0;
+        }
+
+        .commercial-preference-copy strong {
+          font-size: 0.88rem;
+        }
+
+        .commercial-preference-copy span {
+          color: var(--color-muted);
+          font-size: 0.75rem;
+          line-height: 1.35;
+        }
+
+        .commercial-preference-switch {
+          position: relative;
+          flex: 0 0 auto;
+          width: 44px;
+          height: 24px;
+          margin-left: auto;
+          padding: 0;
+          border: 1px solid var(--color-line-strong);
+          border-radius: 999px;
+          background: #c9c0ba;
+          cursor: pointer;
+        }
+
+        .commercial-preference-switch[data-state="checked"] {
+          background: var(--color-green);
+        }
+
+        .commercial-preference-switch:focus-visible {
+          outline: 3px solid rgba(122, 0, 8, 0.25);
+          outline-offset: 2px;
+        }
+
+        .commercial-preference-switch:disabled {
+          cursor: wait;
+          opacity: 0.65;
+        }
+
+        .commercial-preference-thumb {
+          display: block;
+          width: 18px;
+          height: 18px;
+          transform: translateX(2px);
+          border-radius: 50%;
+          background: #fff;
+          box-shadow: 0 1px 3px rgba(33, 21, 18, 0.28);
+          transition: transform 130ms ease;
+        }
+
+        .commercial-preference-thumb[data-state="checked"] {
+          transform: translateX(22px);
+        }
+
+        .commercial-preferences-feedback {
+          min-height: 22px;
+          color: var(--color-muted);
+          font-size: 0.82rem;
+          font-weight: 850;
+        }
+
+        .commercial-preferences-feedback .form-success,
+        .commercial-preferences-feedback .form-error {
+          display: inline-block;
+          margin: 0;
+        }
+
+        @media (max-width: 760px) {
+          .commercial-preference-list {
+            grid-template-columns: 1fr;
+          }
+
+          .commercial-preference-row {
+            border-right: 0;
+            border-bottom: 1px solid var(--color-line);
+          }
+
+          .commercial-preference-row:last-child {
+            border-bottom: 0;
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .commercial-preference-thumb {
+            transition: none;
+          }
+        }
+      `}</style>
     </main>
+  );
+}
+
+function CommercialPreference({
+  channel,
+  title,
+  description,
+  icon,
+  checked,
+  disabled,
+  onCheckedChange,
+}: {
+  channel: CommercialConsentChannel;
+  title: string;
+  description: string;
+  icon: ReactNode;
+  checked: boolean;
+  disabled: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="commercial-preference-row">
+      {icon}
+      <div className="commercial-preference-copy">
+        <strong>{title}</strong>
+        <span>{description}</span>
+      </div>
+      <Switch.Root
+        className="commercial-preference-switch"
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onCheckedChange}
+        aria-label={`${title}: ${checked ? "activado" : "desactivado"}`}
+        data-channel={channel}
+      >
+        <Switch.Thumb className="commercial-preference-thumb" />
+      </Switch.Root>
+    </div>
+  );
+}
+
+function isCommercialChannelGranted(
+  preferences: CustomerCommercialConsentPreference[],
+  channel: CommercialConsentChannel,
+) {
+  return preferences.some(
+    (preference) => preference.channel === channel && preference.granted,
   );
 }
 

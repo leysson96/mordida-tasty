@@ -31,6 +31,10 @@ export interface AppEnv {
   STRIPE_SUCCESS_PATH: string;
   STRIPE_CANCEL_PATH: string;
   CHECKOUT_GRACE_MINUTES: number;
+  CRM_DEVELOPING_MAX_ORDERS: number;
+  CRM_FREQUENT_ORDER_THRESHOLD: number;
+  CRM_FREQUENT_WINDOW_DAYS: number;
+  CRM_INACTIVE_DAYS: number;
   SMTP_HOST?: string;
   SMTP_PORT: number;
   SMTP_SECURE: boolean;
@@ -118,6 +122,16 @@ function parseDatabaseUrl(value: string) {
   return value;
 }
 
+function parseTimezone(value: string | undefined) {
+  const timezone = value ?? "Europe/Madrid";
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
+  } catch {
+    throw new Error("APP_TIMEZONE must be a valid IANA timezone.");
+  }
+  return timezone;
+}
+
 function hasAnyCloudinaryValue(env: RawEnv) {
   return Boolean(
     env.CLOUDINARY_CLOUD_NAME ||
@@ -185,10 +199,30 @@ export function validateEnvironment(env: RawEnv): AppEnv {
     }
   }
 
+  const crmDevelopingMaxOrders = parseIntegerInRange(
+    env.CRM_DEVELOPING_MAX_ORDERS,
+    2,
+    "CRM_DEVELOPING_MAX_ORDERS",
+    1,
+    20,
+  );
+  const crmFrequentOrderThreshold = parseIntegerInRange(
+    env.CRM_FREQUENT_ORDER_THRESHOLD,
+    5,
+    "CRM_FREQUENT_ORDER_THRESHOLD",
+    2,
+    1000,
+  );
+  if (crmFrequentOrderThreshold <= crmDevelopingMaxOrders) {
+    throw new Error(
+      "CRM_FREQUENT_ORDER_THRESHOLD must be greater than CRM_DEVELOPING_MAX_ORDERS.",
+    );
+  }
+
   return {
     NODE_ENV: env.NODE_ENV ?? "development",
     PORT: parsePositiveInteger(env.PORT, 4000, "PORT"),
-    APP_TIMEZONE: env.APP_TIMEZONE ?? "Europe/Madrid",
+    APP_TIMEZONE: parseTimezone(env.APP_TIMEZONE),
     FRONTEND_URL: env.FRONTEND_URL ?? "http://localhost:3000",
     API_PUBLIC_URL: env.API_PUBLIC_URL ?? "http://localhost:4000",
     CORS_ORIGIN: env.CORS_ORIGIN ?? env.FRONTEND_URL ?? "http://localhost:3000",
@@ -211,6 +245,22 @@ export function validateEnvironment(env: RawEnv): AppEnv {
       "CHECKOUT_GRACE_MINUTES",
       1,
       120,
+    ),
+    CRM_DEVELOPING_MAX_ORDERS: crmDevelopingMaxOrders,
+    CRM_FREQUENT_ORDER_THRESHOLD: crmFrequentOrderThreshold,
+    CRM_FREQUENT_WINDOW_DAYS: parseIntegerInRange(
+      env.CRM_FREQUENT_WINDOW_DAYS,
+      90,
+      "CRM_FREQUENT_WINDOW_DAYS",
+      1,
+      3650,
+    ),
+    CRM_INACTIVE_DAYS: parseIntegerInRange(
+      env.CRM_INACTIVE_DAYS,
+      60,
+      "CRM_INACTIVE_DAYS",
+      1,
+      3650,
     ),
     SMTP_HOST: env.SMTP_HOST,
     SMTP_PORT: parsePositiveInteger(env.SMTP_PORT, 587, "SMTP_PORT"),

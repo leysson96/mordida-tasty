@@ -131,6 +131,41 @@ describe("environment validation", () => {
     expect(env.CHECKOUT_GRACE_MINUTES).toBe(30);
   });
 
+  it("provides validated CRM segmentation defaults", () => {
+    const env = validateEnvironment({
+      DATABASE_URL: "postgresql://example",
+      JWT_SECRET: "a".repeat(40),
+    });
+
+    expect(env.CRM_DEVELOPING_MAX_ORDERS).toBe(2);
+    expect(env.CRM_FREQUENT_ORDER_THRESHOLD).toBe(5);
+    expect(env.CRM_FREQUENT_WINDOW_DAYS).toBe(90);
+    expect(env.CRM_INACTIVE_DAYS).toBe(60);
+  });
+
+  it("rejects incoherent CRM segmentation thresholds", () => {
+    const baseEnv = {
+      DATABASE_URL: "postgresql://example",
+      JWT_SECRET: "a".repeat(40),
+    };
+
+    expect(() =>
+      validateEnvironment({
+        ...baseEnv,
+        CRM_DEVELOPING_MAX_ORDERS: "5",
+        CRM_FREQUENT_ORDER_THRESHOLD: "5",
+      }),
+    ).toThrow(
+      "CRM_FREQUENT_ORDER_THRESHOLD must be greater than CRM_DEVELOPING_MAX_ORDERS.",
+    );
+    expect(() =>
+      validateEnvironment({ ...baseEnv, CRM_INACTIVE_DAYS: "0" }),
+    ).toThrow("CRM_INACTIVE_DAYS must be an integer between 1 and 3650.");
+    expect(() =>
+      validateEnvironment({ ...baseEnv, APP_TIMEZONE: "Not/A_Timezone" }),
+    ).toThrow("APP_TIMEZONE must be a valid IANA timezone.");
+  });
+
   it("uses shorter default JWT sessions for staff", () => {
     const env = validateEnvironment({
       DATABASE_URL: "postgresql://example",

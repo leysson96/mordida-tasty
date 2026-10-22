@@ -79,6 +79,17 @@ enum DataDeletionRequestStatus {
   REJECTED
 }
 
+enum CommercialConsentChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum CommercialConsentSource {
+  REGISTRATION
+  ACCOUNT
+}
+
 enum LoyaltyRewardType {
   DISCOUNT_PERCENT
   FREE_PRODUCT
@@ -121,6 +132,7 @@ model User {
   active              Boolean                  @default(true)
   disabledAt          DateTime?
   emailVerifiedAt     DateTime?
+  lastLoginAt         DateTime?
   twoFactorSecret     String?
   twoFactorEnabled    Boolean                  @default(false)
   acceptedLegalAt     DateTime?
@@ -139,8 +151,27 @@ model User {
   cashTrust           CustomerCashTrust?
   cashTrustEvents     CashTrustEvent[]
   authSessions        AuthSession[]
+  commercialConsents  CommercialConsent[]
   dataDeletionRequests         DataDeletionRequest[] @relation("PrivacySubject")
   resolvedDataDeletionRequests DataDeletionRequest[] @relation("PrivacyResolver")
+}
+
+model CommercialConsent {
+  id               String                   @id @default(uuid())
+  userId           String
+  channel          CommercialConsentChannel
+  grantedAt        DateTime?
+  withdrawnAt      DateTime?
+  consentVersion   String
+  source           CommercialConsentSource
+  withdrawalSource CommercialConsentSource?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+  user             User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channel])
+  @@index([channel, withdrawnAt])
+  @@index([updatedAt])
 }
 
 model AuthSession {

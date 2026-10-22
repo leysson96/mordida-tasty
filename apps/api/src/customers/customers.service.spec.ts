@@ -1,4 +1,8 @@
 import { NotFoundException } from "@nestjs/common";
+import {
+  CommercialConsentChannel,
+  CommercialConsentSource,
+} from "@prisma/client";
 import { CustomersService } from "./customers.service";
 
 describe("CustomersService", () => {
@@ -16,6 +20,13 @@ describe("CustomersService", () => {
     },
     loyaltyRedemption: {
       count: jest.fn(),
+    },
+    commercialConsent: {
+      findMany: jest.fn(),
+      upsert: jest.fn(),
+    },
+    auditLog: {
+      create: jest.fn(),
     },
     $transaction: jest.fn(),
   };
@@ -41,8 +52,10 @@ describe("CustomersService", () => {
     jest.clearAllMocks();
     prisma.$transaction.mockImplementation(
       async (
-        callback: (transactionClient: typeof prisma) => Promise<unknown>,
-      ) => callback(prisma),
+        input:
+          | Promise<unknown>[]
+          | ((transactionClient: typeof prisma) => Promise<unknown>),
+      ) => (Array.isArray(input) ? Promise.all(input) : input(prisma)),
     );
     prisma.customerAddress.findFirst.mockResolvedValue({ id: "address-1" });
     prisma.customerAddress.updateMany.mockResolvedValue({ count: 1 });
@@ -50,6 +63,9 @@ describe("CustomersService", () => {
     prisma.customerAddress.delete.mockResolvedValue({});
     prisma.order.count.mockResolvedValue(0);
     prisma.loyaltyRedemption.count.mockResolvedValue(0);
+    prisma.commercialConsent.findMany.mockResolvedValue([]);
+    prisma.commercialConsent.upsert.mockResolvedValue({});
+    prisma.auditLog.create.mockResolvedValue({});
     settings.getLoyaltyProgram.mockResolvedValue({
       enabled: true,
       goalOrders: 5,
@@ -208,5 +224,129 @@ describe("CustomersService", () => {
     );
 
     expect(cashTrustService.getState).toHaveBeenCalledWith("user-1");
+  });
+
+  it("returns every commercial channel disabled when no preference exists", async () => {
+    const result = await service().getCommercialConsents("user-1");
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        channel: CommercialConsentChannel.EMAIL,
+        granted: false,
+      }),
+      expect.objectContaining({
+        channel: CommercialConsentChannel.SMS,
+        granted: false,
+      }),
+      expect.objectContaining({
+        channel: CommercialConsentChannel.WHATSAPP,
+        granted: false,
+      }),
+    ]);
+  });
+
+  it("stores selected channels and records the account change", async () => {
+    prisma.commercialConsent.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          channel: CommercialConsentChannel.EMAIL,
+          grantedAt: new Date(),
+          withdrawnAt: null,
+          consentVersion: "commercial-v1",
+          source: CommercialConsentSource.ACCOUNT,
+          withdrawalSource: null,
+          updatedAt: new Date(),
+        },
+      ]);
+
+    const result = await service().updateCommercialConsents("user-1", {
+      channels: [CommercialConsentChannel.EMAIL],
+    });
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: CommercialConsentChannel.EMAIL,
+          granted: true,
+        }),
+      ]),
+    );
+    expect(prisma.commercialConsent.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          userId_channel: {
+            userId: "user-1",
+            channel: CommercialConsentChannel.EMAIL,
+          },
+        },
+        update: expect.objectContaining({
+          grantedAt: expect.any(Date),
+          withdrawnAt: null,
+          source: CommercialConsentSource.ACCOUNT,
+          withdrawalSource: null,
+        }),
+      }),
+    );
+    expect(prisma.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorId: "user-1",
+        action: "commercial_consent.updated",
+        metadata: expect.objectContaining({
+          grantedChannels: [CommercialConsentChannel.EMAIL],
+        }),
+      }),
+    });
+  });
+
+  it("makes withdrawal prevail over a previous grant", async () => {
+    const grantedAt = new Date("2026-10-01T10:00:00.000Z");
+    prisma.commercialConsent.findMany
+      .mockResolvedValueOnce([
+        {
+          channel: CommercialConsentChannel.EMAIL,
+          grantedAt,
+          withdrawnAt: null,
+          consentVersion: "commercial-v1",
+          source: CommercialConsentSource.REGISTRATION,
+          withdrawalSource: null,
+          updatedAt: grantedAt,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          channel: CommercialConsentChannel.EMAIL,
+          grantedAt,
+          withdrawnAt: new Date(),
+          consentVersion: "commercial-v1",
+          source: CommercialConsentSource.REGISTRATION,
+          withdrawalSource: CommercialConsentSource.ACCOUNT,
+          updatedAt: new Date(),
+        },
+      ]);
+
+    const result = await service().updateCommercialConsents("user-1", {
+      channels: [],
+    });
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: CommercialConsentChannel.EMAIL,
+          granted: false,
+          grantedAt,
+          withdrawnAt: expect.any(Date),
+        }),
+      ]),
+    );
+    expect(prisma.commercialConsent.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          grantedAt,
+          withdrawnAt: expect.any(Date),
+          withdrawalSource: CommercialConsentSource.ACCOUNT,
+        }),
+      }),
+    );
   });
 });

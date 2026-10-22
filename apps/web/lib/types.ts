@@ -11,22 +11,14 @@ export type LoyaltyRewardType = "DISCOUNT_PERCENT" | "FREE_PRODUCT";
 export type PromotionDiscountType = "PERCENTAGE" | "FIXED_AMOUNT";
 
 export type CashTrustStatus =
-  | "PENDING_ACTIVATION"
-  | "ENABLED"
-  | "BLOCKED_INCIDENT";
+  "PENDING_ACTIVATION" | "ENABLED" | "BLOCKED_INCIDENT";
 
 export type CashTrustIncidentReason = "NO_PICKUP" | "NO_SHOW_DELIVERY";
 
 export type DiscountScope = "PRODUCTS" | "CATEGORY" | "ORDER_TOTAL";
 
 export type DiscountWeekday =
-  | "MON"
-  | "TUE"
-  | "WED"
-  | "THU"
-  | "FRI"
-  | "SAT"
-  | "SUN";
+  "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN";
 
 export type OrderStatus =
   | "CREATED"
@@ -363,6 +355,121 @@ export interface CustomerCashTrustState {
   ordersRemaining: number;
   lastIncidentReason?: CashTrustIncidentReason | null;
   lastIncidentAt?: string | null;
+}
+
+export type AdminCustomerStatus = "ALL" | "ACTIVE" | "DISABLED";
+
+export type AdminCustomerSortField = "CREATED_AT" | "NAME" | "LAST_LOGIN_AT";
+
+export type AdminCustomerSortDirection = "ASC" | "DESC";
+
+export interface AdminCustomerListItem {
+  id: string;
+  name: string;
+  anonymized: boolean;
+  active: boolean;
+  createdAt: string;
+  lastLoginAt: string | null;
+  lastPurchaseAt: string | null;
+  deliveredOrders: number;
+  cancelledOrders: number;
+  totalSpentCents: number;
+  averageTicketCents: number;
+}
+
+export interface AdminCustomerPagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface AdminCustomerListResponse {
+  items: AdminCustomerListItem[];
+  pagination: AdminCustomerPagination;
+}
+
+export type AdminCustomerSegmentKey =
+  "NEW" | "DEVELOPING" | "ACTIVE" | "FREQUENT" | "INACTIVE";
+
+export type CommercialConsentChannel = "EMAIL" | "SMS" | "WHATSAPP";
+
+export type CommercialConsentSource = "REGISTRATION" | "ACCOUNT";
+
+export interface AdminCustomerConsent {
+  channel: CommercialConsentChannel;
+  grantedAt: string | null;
+  withdrawnAt: string | null;
+  consentVersion: string;
+  source: CommercialConsentSource;
+  withdrawalSource: CommercialConsentSource | null;
+  updatedAt: string;
+}
+
+export interface CustomerCommercialConsentPreference {
+  channel: CommercialConsentChannel;
+  granted: boolean;
+  grantedAt: string | null;
+  withdrawnAt: string | null;
+  consentVersion: string;
+  source: CommercialConsentSource | null;
+  withdrawalSource: CommercialConsentSource | null;
+  updatedAt: string | null;
+}
+
+export interface AdminCustomerOrderHistoryItem {
+  id: string;
+  orderNumber: string;
+  status: OrderStatus;
+  deliveryMethod: DeliveryMethod;
+  paymentMethod: OrderPaymentMethod;
+  subtotalCents: number;
+  discountCents: number;
+  deliveryFeeCents: number;
+  taxCents: number;
+  totalCents: number;
+  currency: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminCustomerDetailResponse {
+  customer: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string | null;
+    active: boolean;
+    disabledAt: string | null;
+    createdAt: string;
+    lastLoginAt: string | null;
+  };
+  metrics: {
+    deliveredOrders: number;
+    cancelledOrders: number;
+    totalSpentCents: number;
+    averageTicketCents: number;
+    lastPurchaseAt: string | null;
+  };
+  segment: {
+    key: AdminCustomerSegmentKey;
+    label: string;
+    reason: string;
+  };
+  loyalty: CustomerLoyaltyProgress;
+  cashTrust: {
+    status: CashTrustStatus;
+    cashEnabled: boolean;
+    successfulOrdersCount: number;
+    requiredSuccessfulOrders: number;
+    ordersRemaining: number;
+    lastIncidentReason: CashTrustIncidentReason | null;
+    lastIncidentAt: string | null;
+    unlockedAt: string | null;
+  };
+  commercialConsents: AdminCustomerConsent[];
+  orders: AdminCustomerOrderHistoryItem[];
+  pagination: AdminCustomerPagination;
 }
 
 export interface StaffUser extends User {

@@ -1,45 +1,78 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CustomersService } from './customers.service';
-import { UpsertAddressDto } from './dto/address.dto';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  UseGuards,
+} from "@nestjs/common";
+import { Role } from "@prisma/client";
+import { CurrentUser } from "../common/decorators/current-user.decorator";
+import { Roles } from "../common/decorators/roles.decorator";
+import { JwtAuthGuard } from "../common/guards/jwt-auth.guard";
+import { RolesGuard } from "../common/guards/roles.guard";
+import { CustomersService } from "./customers.service";
+import { UpsertAddressDto } from "./dto/address.dto";
+import { UpdateCommercialConsentsDto } from "./dto/commercial-consent.dto";
 
 @UseGuards(JwtAuthGuard)
-@Controller('customers')
+@Controller("customers")
 export class CustomersController {
   constructor(private readonly customersService: CustomersService) {}
 
-  @Get('addresses')
+  @Get("addresses")
   listAddresses(@CurrentUser() user: { id: string }) {
     return this.customersService.listAddresses(user.id);
   }
 
-  @Get('loyalty')
+  @Get("loyalty")
   loyalty(@CurrentUser() user: { id: string }) {
     return this.customersService.getLoyaltyProgress(user.id);
   }
 
-  @Get('cash-trust')
+  @Get("cash-trust")
   cashTrust(@CurrentUser() user: { id: string }) {
     return this.customersService.getCashTrustState(user.id);
   }
 
-  @Post('addresses')
-  createAddress(@CurrentUser() user: { id: string }, @Body() dto: UpsertAddressDto) {
+  @Get("commercial-consents")
+  @Roles(Role.CLIENTE)
+  @UseGuards(RolesGuard)
+  commercialConsents(@CurrentUser() user: { id: string }) {
+    return this.customersService.getCommercialConsents(user.id);
+  }
+
+  @Put("commercial-consents")
+  @Roles(Role.CLIENTE)
+  @UseGuards(RolesGuard)
+  updateCommercialConsents(
+    @CurrentUser() user: { id: string },
+    @Body() dto: UpdateCommercialConsentsDto,
+  ) {
+    return this.customersService.updateCommercialConsents(user.id, dto);
+  }
+
+  @Post("addresses")
+  createAddress(
+    @CurrentUser() user: { id: string },
+    @Body() dto: UpsertAddressDto,
+  ) {
     return this.customersService.createAddress(user.id, dto);
   }
 
-  @Put('addresses/:id')
+  @Put("addresses/:id")
   updateAddress(
     @CurrentUser() user: { id: string },
-    @Param('id') id: string,
-    @Body() dto: UpsertAddressDto
+    @Param("id") id: string,
+    @Body() dto: UpsertAddressDto,
   ) {
     return this.customersService.updateAddress(user.id, id, dto);
   }
 
-  @Delete('addresses/:id')
-  deleteAddress(@CurrentUser() user: { id: string }, @Param('id') id: string) {
+  @Delete("addresses/:id")
+  deleteAddress(@CurrentUser() user: { id: string }, @Param("id") id: string) {
     return this.customersService.deleteAddress(user.id, id);
   }
 }

@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { validateEnvironment } from './config/env';
 import { AdminModule } from './admin/admin.module';
+import { AdminCustomersModule } from './admin-customers/admin-customers.module';
 import { AuthModule } from './auth/auth.module';
 import { CustomersModule } from './customers/customers.module';
 import { HealthModule } from './health/health.module';
@@ -38,6 +39,7 @@ import { OriginGuard } from './common/guards/origin.guard';
     OrdersModule,
     PaymentsModule,
     AdminModule,
+    AdminCustomersModule,
     PrivacyModule,
     HealthModule
   ],

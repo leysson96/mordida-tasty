@@ -16,6 +16,10 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { AppEnv } from "../config/env";
+import {
+  COMMERCIAL_CONSENT_VERSION,
+  registrationConsentRecords,
+} from "../customers/commercial-consent.policy";
 import { LEGAL_VERSION } from "../legal/legal-version";
 import { PrismaService } from "../prisma/prisma.service";
 import { MailService } from "../mail/mail.service";
@@ -67,6 +71,7 @@ export class AuthService {
     }
 
     const passwordHash = await argon2.hash(dto.password);
+    const selectedConsentChannels = dto.commercialConsentChannels ?? [];
     const user = await this.prisma.user.create({
       data: {
         email,
@@ -75,6 +80,19 @@ export class AuthService {
         phone: dto.phone,
         acceptedLegalAt: new Date(),
         legalVersion: LEGAL_VERSION,
+        commercialConsents: {
+          create: registrationConsentRecords(selectedConsentChannels),
+        },
+        auditLogs: {
+          create: {
+            action: "commercial_consent.registration",
+            entity: "CommercialConsent",
+            metadata: {
+              consentVersion: COMMERCIAL_CONSENT_VERSION,
+              grantedChannels: selectedConsentChannels,
+            },
+          },
+        },
       },
     });
 
@@ -136,7 +154,9 @@ export class AuthService {
       if (storedSecret.legacy) {
         await this.prisma.user.update({
           where: { id: user.id },
-          data: { twoFactorSecret: this.totpCrypto.encrypt(storedSecret.secret) },
+          data: {
+            twoFactorSecret: this.totpCrypto.encrypt(storedSecret.secret),
+          },
         });
       }
     }
@@ -144,7 +164,10 @@ export class AuthService {
     return this.createSession(user);
   }
 
-  async refreshSession(refreshToken: string | undefined, scope: AuthSessionScope) {
+  async refreshSession(
+    refreshToken: string | undefined,
+    scope: AuthSessionScope,
+  ) {
     const parsed = this.parseRefreshToken(refreshToken);
     const session = await this.prisma.authSession.findUnique({
       where: { id: parsed.sessionId },
@@ -349,7 +372,9 @@ export class AuthService {
       !user.active ||
       (user.role !== Role.ADMIN && user.role !== Role.KITCHEN)
     ) {
-      throw new UnauthorizedException("Two factor setup is restricted to staff.");
+      throw new UnauthorizedException(
+        "Two factor setup is restricted to staff.",
+      );
     }
     const secret = authenticator.generateSecret();
     await this.prisma.user.update({
@@ -379,7 +404,9 @@ export class AuthService {
       !user.active ||
       (user.role !== Role.ADMIN && user.role !== Role.KITCHEN)
     ) {
-      throw new UnauthorizedException("Two factor setup is restricted to staff.");
+      throw new UnauthorizedException(
+        "Two factor setup is restricted to staff.",
+      );
     }
 
     if (!user.twoFactorSecret) {
@@ -422,17 +449,23 @@ export class AuthService {
     const refreshSecret = this.rawToken();
     const window = sessionWindowForRole(user.role, now);
 
-    await this.prisma.authSession.create({
-      data: {
-        id: sessionId,
-        tokenHash: this.hashToken(refreshSecret),
-        userId: user.id,
-        scope: window.scope,
-        lastSeenAt: now,
-        expiresAt: window.expiresAt,
-        absoluteExpiresAt: window.absoluteExpiresAt,
-      },
-    });
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: now },
+      }),
+      this.prisma.authSession.create({
+        data: {
+          id: sessionId,
+          tokenHash: this.hashToken(refreshSecret),
+          userId: user.id,
+          scope: window.scope,
+          lastSeenAt: now,
+          expiresAt: window.expiresAt,
+          absoluteExpiresAt: window.absoluteExpiresAt,
+        },
+      }),
+    ]);
 
     return {
       accessToken: await this.signAccessToken(user, sessionId),
@@ -491,7 +524,9 @@ export class AuthService {
   private tokenHashesMatch(expectedHash: string, secret: string) {
     const actual = Buffer.from(this.hashToken(secret), "hex");
     const expected = Buffer.from(expectedHash, "hex");
-    return actual.length === expected.length && timingSafeEqual(actual, expected);
+    return (
+      actual.length === expected.length && timingSafeEqual(actual, expected)
+    );
   }
 
   private scopeForRole(role: Role) {
