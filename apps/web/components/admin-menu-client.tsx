@@ -10,7 +10,6 @@ import { brandConfig } from "../lib/brand";
 import {
   AdminDiscount,
   AdminProduct,
-  BrandLogoMode,
   Category,
   ProductOptionChoice,
   ProductOptionGroup,
@@ -117,24 +116,48 @@ export function AdminMenuClient() {
     const featuredProduct = products.find(
       (product) => product.slug === featuredProductSlug,
     );
-    const logoMode = String(
-      form.get("logoMode") || siteContent.logoMode,
-    ) as BrandLogoMode;
+    const removeSquareLogo = form.get("removeBrandSquareLogo") === "on";
+    const removeHeaderLogo = form.get("removeBrandHeaderLogo") === "on";
 
     try {
-      const uploadedHero = await uploadFormImage(form, "heroImageFile");
-      const uploadedLogo = await uploadFormImage(form, "logoImageFile", [
-        "image/png",
-      ]);
+      const [uploadedHero, uploadedSquareLogo, uploadedHeaderLogo] =
+        await Promise.all([
+          uploadFormImage(form, "heroImageFile"),
+          removeSquareLogo
+            ? Promise.resolve(undefined)
+            : uploadBrandLogo(form, "brandSquareLogoFile", "square"),
+          removeHeaderLogo
+            ? Promise.resolve(undefined)
+            : uploadBrandLogo(form, "brandHeaderLogoFile", "header"),
+        ]);
+      const brandSquareLogoUrl = removeSquareLogo
+        ? ""
+        : uploadedSquareLogo ??
+          String(
+            form.get("currentBrandSquareLogo") ||
+              siteContent.brandSquareLogoUrl,
+          );
+      const brandHeaderLogoUrl = removeHeaderLogo
+        ? ""
+        : uploadedHeaderLogo ??
+          String(
+            form.get("currentBrandHeaderLogo") ||
+              siteContent.brandHeaderLogoUrl,
+          );
+      const legacyLogoMode = brandHeaderLogoUrl
+        ? "LOGO"
+        : brandSquareLogoUrl
+          ? "ICON"
+          : "INITIALS";
       const updated = await api<SiteContent>("/admin/settings/site-content", {
         method: "PATCH",
         body: JSON.stringify({
           name: String(form.get("name")),
           initials: String(form.get("initials")),
-          logoMode,
-          logoImageUrl:
-            uploadedLogo ??
-            String(form.get("currentLogoImage") || siteContent.logoImageUrl),
+          logoMode: legacyLogoMode,
+          logoImageUrl: brandHeaderLogoUrl || brandSquareLogoUrl,
+          brandSquareLogoUrl,
+          brandHeaderLogoUrl,
           logoAlt: String(form.get("logoAlt") || form.get("name")),
           tagline: String(form.get("tagline")),
           heroTitle: String(form.get("heroTitle")),
@@ -620,6 +643,32 @@ export function AdminMenuClient() {
     return uploaded.url;
   }
 
+  async function uploadBrandLogo(
+    form: FormData,
+    fieldName: string,
+    variant: "square" | "header",
+  ) {
+    const value = form.get(fieldName);
+    if (!(value instanceof File) || value.size === 0) {
+      return undefined;
+    }
+
+    if (value.type !== "image/png") {
+      throw new Error("El logo debe ser un archivo PNG.");
+    }
+
+    const uploadForm = new FormData();
+    uploadForm.append("file", value);
+    const uploaded = await api<UploadedImage>(
+      `/admin/uploads/brand-logos/${variant}`,
+      {
+        method: "POST",
+        body: uploadForm,
+      },
+    );
+    return uploaded.url;
+  }
+
   function categoriesForProduct(product?: AdminProduct) {
     return categories.filter(
       (category) => category.active || category.id === product?.categoryId,
@@ -656,7 +705,6 @@ export function AdminMenuClient() {
 
       <MenuAdminShell
         activeSection={activeSection}
-        brandInitials={siteContent.initials}
         onSectionChange={setActiveSection}
         stats={menuStats}
       >
@@ -682,7 +730,7 @@ export function AdminMenuClient() {
 
         {activeSection === "brand" && (
           <BrandSection
-            key={`${siteContent.name}-${siteContent.initials}-${siteContent.logoMode}-${siteContent.logoImageUrl}-${siteContent.logoAlt}-${siteContent.heroTitle}-${siteContent.heroImage}-${siteContent.instagramUrl}-${siteContent.whatsappPhone}-${siteContent.locationTitle}-${siteContent.businessAddress}-${siteContent.businessCity}-${siteContent.businessPostalCode}-${siteContent.googleMapsUrl}-${siteContent.aboutTitle}-${siteContent.aboutText}`}
+            key={`${siteContent.name}-${siteContent.brandSquareLogoUrl}-${siteContent.brandHeaderLogoUrl}-${siteContent.logoAlt}-${siteContent.heroTitle}-${siteContent.heroImage}-${siteContent.instagramUrl}-${siteContent.whatsappPhone}-${siteContent.locationTitle}-${siteContent.businessAddress}-${siteContent.businessCity}-${siteContent.businessPostalCode}-${siteContent.googleMapsUrl}-${siteContent.aboutTitle}-${siteContent.aboutText}`}
             products={products}
             siteContent={siteContent}
             onSubmit={saveSiteContent}

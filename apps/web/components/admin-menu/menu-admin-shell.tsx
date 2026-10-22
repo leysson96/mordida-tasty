@@ -24,7 +24,6 @@ export interface MenuAdminStats {
 
 interface MenuAdminShellProps {
   activeSection: MenuAdminSection;
-  brandInitials: string;
   children: ReactNode;
   onSectionChange: (section: MenuAdminSection) => void;
   stats: MenuAdminStats;
@@ -33,7 +32,7 @@ interface MenuAdminShellProps {
 const menuSections: Array<{
   id: MenuAdminSection;
   label: string;
-  metric: (stats: MenuAdminStats, brandInitials: string) => number | string;
+  metric: (stats: MenuAdminStats) => number | string;
   icon: typeof Package;
 }> = [
   {
@@ -51,7 +50,7 @@ const menuSections: Array<{
   {
     id: "brand",
     label: "Portada",
-    metric: (_stats, brandInitials) => brandInitials,
+    metric: () => "Marca",
     icon: Palette,
   },
   {
@@ -70,7 +69,6 @@ const menuSections: Array<{
 
 export function MenuAdminShell({
   activeSection,
-  brandInitials,
   children,
   onSectionChange,
   stats,
@@ -93,7 +91,7 @@ export function MenuAdminShell({
               >
                 <Icon aria-hidden="true" size={19} />
                 <span>{section.label}</span>
-                <small>{section.metric(stats, brandInitials)}</small>
+                <small>{section.metric(stats)}</small>
               </button>
             );
           })}

@@ -1,9 +1,14 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from "react";
 import Image from "next/image";
 import { ImagePlus, Save } from "lucide-react";
-import type { AdminProduct, BrandLogoMode, SiteContent } from "../../lib/types";
+import type { AdminProduct, SiteContent } from "../../lib/types";
 
 interface BrandSectionProps {
   products: AdminProduct[];
@@ -16,11 +21,6 @@ export function BrandSection({
   siteContent,
   onSubmit,
 }: BrandSectionProps) {
-  const [logoMode, setLogoMode] = useState<BrandLogoMode>(
-    siteContent.logoMode,
-  );
-  const logoModeUsesImage = logoMode === "ICON" || logoMode === "LOGO";
-
   return (
     <form className="form-panel site-content-form" onSubmit={onSubmit}>
       <div className="section-heading">
@@ -52,65 +52,48 @@ export function BrandSection({
               <span>Logo de marca</span>
             </div>
             <div className="brand-logo-grid">
-              <label>
-                Tipo de logo
-                <select
-                  name="logoMode"
-                  value={logoMode}
-                  onChange={(event) =>
-                    setLogoMode(event.target.value as BrandLogoMode)
-                  }
-                >
-                  <option value="INITIALS">Iniciales</option>
-                  <option value="ICON">Icono PNG</option>
-                  <option value="LOGO">Logo PNG</option>
-                </select>
-              </label>
-              {logoMode === "INITIALS" ? (
-                <label>
-                  Iniciales
-                  <input
-                    name="initials"
-                    defaultValue={siteContent.initials}
-                    maxLength={8}
-                    required
-                  />
-                </label>
-              ) : (
-                <input
-                  type="hidden"
-                  name="initials"
-                  value={siteContent.initials}
-                  readOnly
-                />
-              )}
-              {logoModeUsesImage && (
-                <>
-                  <label>
-                    Archivo PNG
-                    <input name="logoImageFile" type="file" accept="image/png" />
-                  </label>
-                  <label>
-                    Texto alternativo
-                    <input
-                      name="logoAlt"
-                      defaultValue={siteContent.logoAlt}
-                      maxLength={80}
-                      placeholder={siteContent.name}
-                    />
-                  </label>
-                </>
-              )}
+              <BrandLogoField
+                currentUrl={siteContent.brandSquareLogoUrl}
+                fieldName="brandSquareLogoFile"
+                removeFieldName="removeBrandSquareLogo"
+                title="Logo cuadrado"
+                hint="PNG cuadrado. Recomendado 1200 x 1200 px; minimo 512 x 512 px. Maximo 5 MB."
+                previewClassName="brand-logo-preview-square"
+              />
+              <BrandLogoField
+                currentUrl={siteContent.brandHeaderLogoUrl}
+                fieldName="brandHeaderLogoFile"
+                removeFieldName="removeBrandHeaderLogo"
+                title="Logo horizontal"
+                hint="PNG entre 3:1 y 4:1. Recomendado 1200 x 400 o 1600 x 400 px. Maximo 5 MB."
+                previewClassName="brand-logo-preview-header"
+              />
             </div>
-            {logoModeUsesImage && siteContent.logoImageUrl && (
-              <p className="brand-logo-current">
-                Imagen actual guardada para la marca.
-              </p>
-            )}
+            <label>
+              Texto alternativo
+              <input
+                name="logoAlt"
+                defaultValue={siteContent.logoAlt}
+                maxLength={80}
+                placeholder={siteContent.name}
+              />
+            </label>
             <input
               type="hidden"
-              name="currentLogoImage"
-              value={siteContent.logoImageUrl}
+              name="initials"
+              value={siteContent.initials}
+              readOnly
+            />
+            <input
+              type="hidden"
+              name="currentBrandSquareLogo"
+              value={siteContent.brandSquareLogoUrl}
+              readOnly
+            />
+            <input
+              type="hidden"
+              name="currentBrandHeaderLogo"
+              value={siteContent.brandHeaderLogoUrl}
               readOnly
             />
           </div>
@@ -281,5 +264,85 @@ export function BrandSection({
         Guardar portada
       </button>
     </form>
+  );
+}
+
+interface BrandLogoFieldProps {
+  currentUrl: string;
+  fieldName: string;
+  hint: string;
+  previewClassName: string;
+  removeFieldName: string;
+  title: string;
+}
+
+function BrandLogoField({
+  currentUrl,
+  fieldName,
+  hint,
+  previewClassName,
+  removeFieldName,
+  title,
+}: BrandLogoFieldProps) {
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [removeCurrent, setRemoveCurrent] = useState(false);
+  const visiblePreview = removeCurrent ? "" : previewUrl || currentUrl;
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
+
+  function selectFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    setPreviewUrl(file ? URL.createObjectURL(file) : "");
+    if (file) {
+      setRemoveCurrent(false);
+    }
+  }
+
+  return (
+    <div className="brand-logo-field">
+      <div>
+        <strong>{title}</strong>
+        <p>{hint}</p>
+      </div>
+      <div className={`brand-logo-preview ${previewClassName}`}>
+        {visiblePreview ? (
+          <Image
+            src={visiblePreview}
+            alt={`Vista previa: ${title}`}
+            fill
+            sizes={previewClassName.includes("square") ? "160px" : "320px"}
+            unoptimized={visiblePreview.startsWith("blob:")}
+          />
+        ) : (
+          <span>Sin imagen</span>
+        )}
+      </div>
+      <label>
+        Seleccionar PNG
+        <input
+          name={fieldName}
+          type="file"
+          accept="image/png"
+          onChange={selectFile}
+        />
+      </label>
+      {(currentUrl || previewUrl) && (
+        <label className="brand-logo-remove">
+          <input
+            name={removeFieldName}
+            type="checkbox"
+            checked={removeCurrent}
+            onChange={(event) => setRemoveCurrent(event.target.checked)}
+          />
+          Retirar esta imagen al guardar
+        </label>
+      )}
+    </div>
   );
 }

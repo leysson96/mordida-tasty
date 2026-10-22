@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Get,
   Param,
+  ParseEnumPipe,
   Patch,
   Post,
   Query,
@@ -54,7 +55,11 @@ import {
 import { PromotionsService } from "../promotions/promotions.service";
 import { DeliveryZonesService } from "../settings/delivery-zones.service";
 import { SettingsService } from "../settings/settings.service";
-import { UploadedImageFile, UploadsService } from "../uploads/uploads.service";
+import {
+  BrandLogoVariant,
+  UploadedImageFile,
+  UploadsService,
+} from "../uploads/uploads.service";
 import {
   CreateDeliveryZoneDto,
   CreateSpecialClosureDto,
@@ -712,6 +717,37 @@ export class AdminController {
         url: image.url,
         mimeType: image.mimeType,
         size: image.size,
+        originalName: image.originalName,
+      },
+      ip: request.ip,
+      userAgent: request.headers["user-agent"],
+    });
+    return image;
+  }
+
+  @Post("uploads/brand-logos/:variant")
+  @UseInterceptors(
+    FileInterceptor("file", { limits: { fileSize: 5_242_880 } }),
+  )
+  async uploadBrandLogo(
+    @Param("variant", new ParseEnumPipe(BrandLogoVariant))
+    variant: BrandLogoVariant,
+    @UploadedFile() file: UploadedImageFile,
+    @CurrentUser() user: { id: string },
+    @Req() request: Request,
+  ) {
+    const image = await this.uploadsService.saveBrandLogo(file, variant);
+    await this.auditService.log({
+      actorId: user.id,
+      action: "upload.brand_logo",
+      entity: "upload",
+      metadata: {
+        variant: image.variant,
+        url: image.url,
+        mimeType: image.mimeType,
+        size: image.size,
+        width: image.width,
+        height: image.height,
         originalName: image.originalName,
       },
       ip: request.ip,

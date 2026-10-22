@@ -174,6 +174,8 @@ describe("SettingsService", () => {
         initials: "MA",
         logoMode: "INITIALS",
         logoImageUrl: "",
+        brandSquareLogoUrl: "",
+        brandHeaderLogoUrl: "",
         logoAlt: "Marca Antigua",
       }),
     );
@@ -193,6 +195,8 @@ describe("SettingsService", () => {
       expect.objectContaining({
         logoMode: "ICON",
         logoImageUrl,
+        brandSquareLogoUrl: logoImageUrl,
+        brandHeaderLogoUrl: "",
         logoAlt: "Icono Mordida",
       }),
     );
@@ -205,6 +209,37 @@ describe("SettingsService", () => {
             logoMode: "ICON",
             logoImageUrl,
             logoAlt: "Icono Mordida",
+          }),
+        },
+      }),
+    );
+  });
+
+  it("stores independent square and header brand logos", async () => {
+    const brandSquareLogoUrl =
+      "https://res.cloudinary.com/demo/image/upload/v1/mordida-square.png";
+    const brandHeaderLogoUrl =
+      "https://res.cloudinary.com/demo/image/upload/v1/mordida-header.png";
+
+    await expect(
+      service().setSiteContent({
+        brandSquareLogoUrl,
+        brandHeaderLogoUrl,
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        brandSquareLogoUrl,
+        brandHeaderLogoUrl,
+      }),
+    );
+
+    expect(prisma.setting.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { key: "site_content" },
+        update: {
+          value: expect.objectContaining({
+            brandSquareLogoUrl,
+            brandHeaderLogoUrl,
           }),
         },
       }),

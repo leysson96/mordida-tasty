@@ -545,6 +545,8 @@ export interface SiteContent {
   initials: string;
   logoMode: BrandLogoMode;
   logoImageUrl: string;
+  brandSquareLogoUrl: string;
+  brandHeaderLogoUrl: string;
   logoAlt: string;
   tagline: string;
   heroTitle: string;

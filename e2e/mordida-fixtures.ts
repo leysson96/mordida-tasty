@@ -10,6 +10,7 @@ export interface ApiMockState {
   checkoutRequests: number;
   createdOrders: number;
   trackingRequests: number;
+  uploadedBrandLogosSaved: boolean;
   uploadedHeroSaved: boolean;
 }
 
@@ -41,6 +42,7 @@ export async function mockMordidaApi(
     checkoutRequests: 0,
     createdOrders: 0,
     trackingRequests: 0,
+    uploadedBrandLogosSaved: false,
     uploadedHeroSaved: false,
   };
   const promotionScenario = resolvePromotionScenario(options.promotions);
@@ -214,6 +216,11 @@ export async function mockMordidaApi(
       return;
     }
 
+    if (method === "GET" && pathname === "/admin/discounts") {
+      await json(route, []);
+      return;
+    }
+
     if (method === "POST" && pathname === "/admin/uploads/images") {
       await json(route, {
         url: "https://res.cloudinary.com/demo/image/upload/v1/e2e/hero.png",
@@ -224,12 +231,38 @@ export async function mockMordidaApi(
       return;
     }
 
+    if (
+      method === "POST" &&
+      pathname.startsWith("/admin/uploads/brand-logos/")
+    ) {
+      const variant = pathname.endsWith("/square") ? "square" : "header";
+      await json(
+        route,
+        {
+          url: `https://res.cloudinary.com/demo/image/upload/v1/e2e/brand-${variant}.png`,
+          originalName: `brand-${variant}.png`,
+          mimeType: "image/png",
+          size: 68,
+          variant,
+          width: variant === "square" ? 1200 : 1600,
+          height: variant === "square" ? 1200 : 400,
+        },
+        201,
+      );
+      return;
+    }
+
     if (method === "PATCH" && pathname === "/admin/settings/site-content") {
       const body = requestBody(route);
       state.uploadedHeroSaved =
         body.heroImage ===
         "https://res.cloudinary.com/demo/image/upload/v1/e2e/hero.png";
-      await json(route, { ...siteContentFixture, heroImage });
+      state.uploadedBrandLogosSaved =
+        body.brandSquareLogoUrl ===
+          "https://res.cloudinary.com/demo/image/upload/v1/e2e/brand-square.png" &&
+        body.brandHeaderLogoUrl ===
+          "https://res.cloudinary.com/demo/image/upload/v1/e2e/brand-header.png";
+      await json(route, { ...siteContentFixture, ...body });
       return;
     }
 
@@ -330,6 +363,7 @@ function isMockedApiRequest(method: string, pathname: string) {
       pathname === "/admin/settings" ||
       pathname === "/admin/products" ||
       pathname === "/admin/categories" ||
+      pathname === "/admin/discounts" ||
       pathname === "/admin/reports/sales" ||
       pathname === "/admin/orders/history"
     );
@@ -345,7 +379,8 @@ function isMockedApiRequest(method: string, pathname: string) {
       pathname === "/admin/auth/login" ||
       pathname === "/admin/auth/2fa/setup" ||
       pathname === "/admin/auth/2fa/confirm" ||
-      pathname === "/admin/uploads/images"
+      pathname === "/admin/uploads/images" ||
+      pathname.startsWith("/admin/uploads/brand-logos/")
     );
   }
 
@@ -368,7 +403,9 @@ function isApiPath(pathname: string) {
     pathname === "/admin/settings" ||
     pathname === "/admin/products" ||
     pathname === "/admin/categories" ||
+    pathname === "/admin/discounts" ||
     pathname === "/admin/uploads/images" ||
+    pathname.startsWith("/admin/uploads/brand-logos/") ||
     pathname === "/admin/settings/site-content" ||
     pathname === "/admin/reports/sales" ||
     pathname === "/admin/orders/history"

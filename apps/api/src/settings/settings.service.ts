@@ -20,6 +20,8 @@ export interface SiteContent {
   initials: string;
   logoMode: BrandLogoMode;
   logoImageUrl: string;
+  brandSquareLogoUrl: string;
+  brandHeaderLogoUrl: string;
   logoAlt: string;
   tagline: string;
   heroTitle: string;
@@ -573,6 +575,8 @@ export class SettingsService {
       initials: "MT",
       logoMode: "INITIALS",
       logoImageUrl: "",
+      brandSquareLogoUrl: "",
+      brandHeaderLogoUrl: "",
       logoAlt: "Mordida Tasty",
       tagline: "Smash burgers, entrantes y limonadas listas para hoy.",
       heroTitle: "Smash burgers hechas para pedir otra mordida.",
@@ -801,16 +805,28 @@ export class SettingsService {
     const defaults = this.defaultSiteContent();
     const source = isRecord(value) ? value : {};
     const name = cleanText(source.name, defaults.name);
+    const logoMode = cleanText(
+      source.logoMode,
+      defaults.logoMode,
+    ) as BrandLogoMode;
+    const legacyLogoUrl = cleanText(source.logoImageUrl, "")
+      ? this.normalizeImagePath(source.logoImageUrl, "")
+      : "";
     const content = {
       name,
       initials: cleanText(source.initials, defaults.initials).slice(0, 8),
-      logoMode: cleanText(
-        source.logoMode,
-        defaults.logoMode,
-      ) as BrandLogoMode,
-      logoImageUrl: cleanText(source.logoImageUrl, "")
-        ? this.normalizeImagePath(source.logoImageUrl, "")
-        : "",
+      logoMode,
+      logoImageUrl: legacyLogoUrl,
+      brandSquareLogoUrl: cleanText(source.brandSquareLogoUrl, "")
+        ? this.normalizeImagePath(source.brandSquareLogoUrl, "")
+        : logoMode === "ICON"
+          ? legacyLogoUrl
+          : "",
+      brandHeaderLogoUrl: cleanText(source.brandHeaderLogoUrl, "")
+        ? this.normalizeImagePath(source.brandHeaderLogoUrl, "")
+        : logoMode === "LOGO"
+          ? legacyLogoUrl
+          : "",
       logoAlt: cleanText(source.logoAlt, name).slice(0, 80),
       tagline: cleanText(source.tagline, defaults.tagline),
       heroTitle: cleanText(source.heroTitle, defaults.heroTitle),

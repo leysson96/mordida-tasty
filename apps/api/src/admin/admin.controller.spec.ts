@@ -9,6 +9,7 @@ import {
   Role,
 } from "@prisma/client";
 import { AdminController } from "./admin.controller";
+import { BrandLogoVariant } from "../uploads/uploads.service";
 
 describe("AdminController", () => {
   const ordersService = {
@@ -77,6 +78,7 @@ describe("AdminController", () => {
 
   const uploadsService = {
     saveImage: jest.fn(),
+    saveBrandLogo: jest.fn(),
   };
 
   const auditService = {
@@ -117,6 +119,41 @@ describe("AdminController", () => {
 
     expect(ordersService.transitionOrder).not.toHaveBeenCalled();
     expect(auditService.log).not.toHaveBeenCalled();
+  });
+
+  it("uploads an inspected brand logo and records its dimensions", async () => {
+    const image = {
+      url: "https://res.cloudinary.com/demo/image/upload/brand.png",
+      originalName: "brand.png",
+      mimeType: "image/png",
+      size: 2048,
+      variant: BrandLogoVariant.SQUARE,
+      width: 1200,
+      height: 1200,
+    };
+    uploadsService.saveBrandLogo.mockResolvedValue(image);
+
+    await expect(
+      controller().uploadBrandLogo(
+        BrandLogoVariant.SQUARE,
+        { buffer: Buffer.from("png") } as never,
+        { id: "admin-1" },
+        request as never,
+      ),
+    ).resolves.toEqual(image);
+
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: "admin-1",
+        action: "upload.brand_logo",
+        entity: "upload",
+        metadata: expect.objectContaining({
+          variant: BrandLogoVariant.SQUARE,
+          width: 1200,
+          height: 1200,
+        }),
+      }),
+    );
   });
 
   it("lets kitchen users advance orders through the kitchen flow", async () => {

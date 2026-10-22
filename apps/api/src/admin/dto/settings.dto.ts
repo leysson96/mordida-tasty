@@ -283,6 +283,16 @@ export class UpdateSiteContentDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(700)
+  brandSquareLogoUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(700)
+  brandHeaderLogoUrl?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(80)
   logoAlt?: string;
 

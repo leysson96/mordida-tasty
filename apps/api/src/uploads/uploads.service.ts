@@ -4,7 +4,10 @@ import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
+import type { Metadata } from 'sharp';
 import { AppEnv } from '../config/env';
+
+const sharpFactory = require('sharp') as typeof import('sharp').default;
 
 const imageExtensions = new Map([
   ['image/jpeg', '.jpg'],
@@ -24,6 +27,17 @@ export interface StoredImage {
   originalName: string;
   mimeType: string;
   size: number;
+}
+
+export enum BrandLogoVariant {
+  SQUARE = 'square',
+  HEADER = 'header',
+}
+
+export interface StoredBrandLogo extends StoredImage {
+  variant: BrandLogoVariant;
+  width: number;
+  height: number;
 }
 
 interface CloudinaryCredentials {
@@ -102,6 +116,48 @@ export class UploadsService {
     };
   }
 
+  async saveBrandLogo(
+    file: UploadedImageFile | undefined,
+    variant: BrandLogoVariant,
+  ): Promise<StoredBrandLogo> {
+    if (!file) {
+      throw new BadRequestException('Logo file is required.');
+    }
+
+    if (file.mimetype !== 'image/png') {
+      throw new BadRequestException('Brand logos must be PNG files.');
+    }
+
+    const maxBytes = Math.min(this.uploadLimit(), 5_242_880);
+    if (file.size > maxBytes) {
+      throw new BadRequestException('Brand logo cannot exceed 5 MB.');
+    }
+
+    if (!this.matchesImageSignature(file.buffer, file.mimetype)) {
+      throw new BadRequestException('Logo content does not match the PNG file type.');
+    }
+
+    let metadata: Metadata;
+    try {
+      metadata = await sharpFactory(file.buffer, {
+        failOn: 'error',
+        limitInputPixels: 25_000_000,
+      }).metadata();
+    } catch {
+      throw new BadRequestException('Logo is not a valid PNG image.');
+    }
+
+    const width = metadata.width;
+    const height = metadata.height;
+    if (!width || !height || metadata.format !== 'png') {
+      throw new BadRequestException('Logo dimensions could not be verified.');
+    }
+
+    this.validateBrandLogoDimensions(variant, width, height);
+    const stored = await this.saveImage(file);
+    return { ...stored, variant, width, height };
+  }
+
   private async uploadToCloudinary(
     file: UploadedImageFile,
     bucket: string,
@@ -158,6 +214,38 @@ export class UploadsService {
     }
 
     return { cloudName, apiKey, apiSecret };
+  }
+
+  private uploadLimit() {
+    const maxBytes = this.configService.get('UPLOAD_MAX_BYTES', { infer: true });
+    if (!Number.isFinite(maxBytes) || maxBytes <= 0) {
+      throw new BadRequestException('Upload limit is misconfigured.');
+    }
+    return maxBytes;
+  }
+
+  private validateBrandLogoDimensions(
+    variant: BrandLogoVariant,
+    width: number,
+    height: number,
+  ) {
+    if (variant === BrandLogoVariant.SQUARE) {
+      if (width !== height) {
+        throw new BadRequestException('Square logo must use a 1:1 aspect ratio.');
+      }
+      if (width < 512 || width > 4096) {
+        throw new BadRequestException('Square logo must be between 512 x 512 and 4096 x 4096 px.');
+      }
+      return;
+    }
+
+    const ratio = width / height;
+    if (ratio < 3 || ratio > 4) {
+      throw new BadRequestException('Header logo aspect ratio must be between 3:1 and 4:1.');
+    }
+    if (width < 1200 || width > 4096 || height < 300 || height > 1366) {
+      throw new BadRequestException('Header logo must be between 1200 and 4096 px wide and at least 300 px high.');
+    }
   }
 
   private uploadRoot() {

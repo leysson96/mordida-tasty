@@ -139,6 +139,28 @@ test("admin image upload and reports smoke", async ({ page }, testInfo) => {
   await capture(page, testInfo, "admin-reports");
 });
 
+test("admin stores square and horizontal brand logos", async ({ page }, testInfo) => {
+  const apiState = await mockMordidaApi(page);
+
+  await page.goto("/admin/menu");
+  await page.getByRole("button", { name: /Portada/i }).click();
+  await page.locator('input[name="brandSquareLogoFile"]').setInputFiles({
+    name: "brand-square.png",
+    mimeType: "image/png",
+    buffer: tinyPng(),
+  });
+  await page.locator('input[name="brandHeaderLogoFile"]').setInputFiles({
+    name: "brand-header.png",
+    mimeType: "image/png",
+    buffer: tinyPng(),
+  });
+  await capture(page, testInfo, "admin-brand-logos");
+  await page.getByRole("button", { name: /Guardar portada/i }).click();
+
+  await expect(page.getByText("Portada guardada.")).toBeVisible();
+  expect(apiState.uploadedBrandLogosSaved).toBe(true);
+});
+
 async function openCheckoutWithCart(page: Page) {
   await page.goto("/");
 

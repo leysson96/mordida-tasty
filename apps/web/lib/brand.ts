@@ -8,6 +8,8 @@ export const brandConfig = {
   initials: "MT",
   logoMode: "INITIALS",
   logoImageUrl: "",
+  brandSquareLogoUrl: "",
+  brandHeaderLogoUrl: "",
   logoAlt: "Mordida Tasty",
   tagline: "Smash burgers, entrantes y limonadas listas para hoy.",
   heroTitle: "Smash burgers hechas para pedir otra mordida.",

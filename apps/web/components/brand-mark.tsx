@@ -7,7 +7,12 @@ import type { SiteContent } from '../lib/types';
 
 type BrandMarkContent = Pick<
   SiteContent,
-  'name' | 'initials' | 'logoMode' | 'logoImageUrl' | 'logoAlt'
+  | 'name'
+  | 'logoMode'
+  | 'logoImageUrl'
+  | 'brandSquareLogoUrl'
+  | 'brandHeaderLogoUrl'
+  | 'logoAlt'
 >;
 
 export function BrandMark({
@@ -17,41 +22,53 @@ export function BrandMark({
   compact?: boolean;
   content?: BrandMarkContent;
 }) {
-  const [imageFailed, setImageFailed] = useState(false);
-  const initials = content.initials || brandConfig.initials;
+  const [failedUrls, setFailedUrls] = useState<string[]>([]);
   const logoMode = content.logoMode ?? 'INITIALS';
-  const logoImageUrl = content.logoImageUrl?.trim() ?? '';
-  const usesImage = logoMode === 'ICON' || logoMode === 'LOGO';
-  const showImage = usesImage && logoImageUrl.length > 0 && !imageFailed;
+  const legacyLogoUrl = content.logoImageUrl?.trim() ?? '';
+  const headerLogoUrl =
+    content.brandHeaderLogoUrl?.trim() ||
+    (logoMode === 'LOGO' ? legacyLogoUrl : '');
+  const squareLogoUrl =
+    content.brandSquareLogoUrl?.trim() ||
+    (logoMode === 'ICON' ? legacyLogoUrl : '');
+  const logoImageUrl = [headerLogoUrl, squareLogoUrl].find(
+    (url) => url && !failedUrls.includes(url),
+  );
+  const showImage = Boolean(logoImageUrl);
+  const showHorizontalLogo = logoImageUrl === headerLogoUrl;
   const markClassName = [
     'brand-mark',
     showImage ? 'brand-mark-image-mode' : '',
-    showImage && logoMode === 'LOGO' ? 'brand-mark-logo-mode' : '',
+    showHorizontalLogo ? 'brand-mark-logo-mode' : '',
   ]
     .filter(Boolean)
     .join(' ');
-  const showName = !compact && !(showImage && logoMode === 'LOGO');
+  const showName = !compact && !showHorizontalLogo;
 
   useEffect(() => {
-    setImageFailed(false);
-  }, [logoImageUrl, logoMode]);
+    setFailedUrls([]);
+  }, [headerLogoUrl, squareLogoUrl]);
 
   return (
     <span className="brand-lockup">
-      <span className={markClassName} aria-hidden="true">
-        {showImage ? (
+      {showImage && (
+        <span className={markClassName}>
           <Image
-            src={logoImageUrl}
-            alt=""
+            src={logoImageUrl!}
+            alt={content.logoAlt || content.name}
             fill
-            sizes={logoMode === 'LOGO' ? '180px' : '46px'}
+            sizes={showHorizontalLogo ? '180px' : '46px'}
             className="brand-mark-image"
-            onError={() => setImageFailed(true)}
+            onError={() =>
+              setFailedUrls((current) =>
+                current.includes(logoImageUrl!)
+                  ? current
+                  : [...current, logoImageUrl!],
+              )
+            }
           />
-        ) : (
-          initials
-        )}
-      </span>
+        </span>
+      )}
       {showName && <span className="brand-name">{content.name}</span>}
     </span>
   );
