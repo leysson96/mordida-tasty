@@ -1,6 +1,10 @@
 import { ExecutionContext, UnauthorizedException } from "@nestjs/common";
 import { AuthSessionScope, Role } from "@prisma/client";
-import { JwtAuthGuard, OptionalJwtAuthGuard } from "./jwt-auth.guard";
+import {
+  GuestOrCustomerJwtAuthGuard,
+  JwtAuthGuard,
+  OptionalJwtAuthGuard,
+} from "./jwt-auth.guard";
 
 describe("JWT session guards", () => {
   const request: Record<string, unknown> = {
@@ -20,6 +24,9 @@ describe("JWT session guards", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     delete request.user;
+    request.headers = { authorization: "Bearer signed-token" };
+    request.path = "/customers/me";
+    delete request.cookies;
     jwtService.verifyAsync.mockResolvedValue({
       sub: "user-1",
       email: "cliente@mordida.test",
@@ -44,7 +51,9 @@ describe("JWT session guards", () => {
 
   it("accepts a signed token backed by an active server session", async () => {
     await expect(
-      new JwtAuthGuard(jwtService as never, prisma as never).canActivate(context),
+      new JwtAuthGuard(jwtService as never, prisma as never).canActivate(
+        context,
+      ),
     ).resolves.toBe(true);
 
     expect(prisma.authSession.findUnique).toHaveBeenCalledWith(
@@ -81,7 +90,9 @@ describe("JWT session guards", () => {
     });
 
     await expect(
-      new JwtAuthGuard(jwtService as never, prisma as never).canActivate(context),
+      new JwtAuthGuard(jwtService as never, prisma as never).canActivate(
+        context,
+      ),
     ).rejects.toThrow(UnauthorizedException);
   });
 
@@ -93,7 +104,9 @@ describe("JWT session guards", () => {
     });
 
     await expect(
-      new JwtAuthGuard(jwtService as never, prisma as never).canActivate(context),
+      new JwtAuthGuard(jwtService as never, prisma as never).canActivate(
+        context,
+      ),
     ).rejects.toThrow(UnauthorizedException);
     expect(prisma.authSession.findUnique).not.toHaveBeenCalled();
   });
@@ -116,5 +129,90 @@ describe("JWT session guards", () => {
       ).canActivate(context),
     ).resolves.toBe(true);
     expect(request.user).toBeUndefined();
+  });
+
+  it("allows a real guest without a customer token", async () => {
+    request.headers = {};
+
+    await expect(
+      new GuestOrCustomerJwtAuthGuard(
+        jwtService as never,
+        prisma as never,
+      ).canActivate(context),
+    ).resolves.toBe(true);
+
+    expect(jwtService.verifyAsync).not.toHaveBeenCalled();
+    expect(request.user).toBeUndefined();
+  });
+
+  it("rejects an invalid customer token instead of treating it as a guest", async () => {
+    jwtService.verifyAsync.mockRejectedValue(new Error("expired"));
+
+    await expect(
+      new GuestOrCustomerJwtAuthGuard(
+        jwtService as never,
+        prisma as never,
+      ).canActivate(context),
+    ).rejects.toThrow(UnauthorizedException);
+
+    expect(request.user).toBeUndefined();
+  });
+
+  it("rejects a staff session on a guest-or-customer route", async () => {
+    jwtService.verifyAsync.mockResolvedValue({
+      sub: "staff-1",
+      email: "staff@mordida.test",
+      role: Role.ADMIN,
+      sid: "session-1",
+    });
+    prisma.authSession.findUnique.mockResolvedValue({
+      id: "session-1",
+      userId: "staff-1",
+      scope: AuthSessionScope.STAFF,
+      expiresAt: new Date(Date.now() + 60_000),
+      absoluteExpiresAt: new Date(Date.now() + 120_000),
+      revokedAt: null,
+      user: {
+        id: "staff-1",
+        email: "staff@mordida.test",
+        role: Role.ADMIN,
+        active: true,
+      },
+    });
+
+    await expect(
+      new GuestOrCustomerJwtAuthGuard(
+        jwtService as never,
+        prisma as never,
+      ).canActivate(context),
+    ).rejects.toThrow(UnauthorizedException);
+  });
+
+  it("does not use an admin cookie as a customer session", async () => {
+    request.headers = {};
+    request.cookies = { mordida_admin_session: "admin-token" };
+
+    await expect(
+      new GuestOrCustomerJwtAuthGuard(
+        jwtService as never,
+        prisma as never,
+      ).canActivate(context),
+    ).resolves.toBe(true);
+
+    expect(jwtService.verifyAsync).not.toHaveBeenCalled();
+  });
+
+  it("does not use a customer cookie on an admin route", async () => {
+    request.headers = {};
+    request.path = "/admin/orders";
+    request.cookies = { mordida_session: "customer-token" };
+
+    await expect(
+      new JwtAuthGuard(jwtService as never, prisma as never).canActivate(
+        context,
+      ),
+    ).rejects.toThrow("Authentication token is required.");
+
+    expect(jwtService.verifyAsync).not.toHaveBeenCalled();
   });
 });

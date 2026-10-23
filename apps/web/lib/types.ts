@@ -359,13 +359,23 @@ export interface CustomerCashTrustState {
 
 export type AdminCustomerStatus = "ALL" | "ACTIVE" | "DISABLED";
 
+export type AdminCustomerSource = "REGISTERED" | "GUEST";
+
+export type AdminCustomerVerificationStatus = "VERIFIED" | "PENDING" | "GUEST";
+
 export type AdminCustomerSortField = "CREATED_AT" | "NAME" | "LAST_LOGIN_AT";
 
 export type AdminCustomerSortDirection = "ASC" | "DESC";
 
 export interface AdminCustomerListItem {
   id: string;
+  displayId: string;
   name: string;
+  accountType: AdminCustomerSource;
+  verificationStatus: AdminCustomerVerificationStatus;
+  maskedEmail: string | null;
+  maskedPhone: string | null;
+  postalCode: string | null;
   anonymized: boolean;
   active: boolean;
   createdAt: string;

@@ -83,10 +83,36 @@ export function representativeCustomerList(size = 1_500) {
     return {
       ...seed,
       id: customerId(sequence),
+      displayId: `CLI-${String(sequence).padStart(8, "0")}`,
       name: `Cliente Demo ${sequence}`,
+      maskedEmail: `cl***${String(sequence).slice(-2).padStart(2, "0")}@example.test`,
       anonymized: false,
     };
   });
+}
+
+export function representativeGuestList(): AdminCustomerListItem[] {
+  return [
+    {
+      id: "INV-12AB34CD56",
+      displayId: "INV-12AB34CD56",
+      name: "Compra Invitada",
+      accountType: "GUEST",
+      verificationStatus: "GUEST",
+      maskedEmail: "co***da@example.test",
+      maskedPhone: "+34*****2804",
+      postalCode: "15001",
+      anonymized: false,
+      active: true,
+      createdAt: "2026-10-01T10:00:00.000Z",
+      lastLoginAt: null,
+      lastPurchaseAt: recentPurchase,
+      deliveredOrders: 2,
+      cancelledOrders: 0,
+      totalSpentCents: 3000,
+      averageTicketCents: 1500,
+    },
+  ];
 }
 
 function scenario(input: {
@@ -115,7 +141,15 @@ function scenario(input: {
 
   const customer: AdminCustomerListItem = {
     id,
+    displayId: `CLI-${String(input.sequence).padStart(8, "0")}`,
     name: input.name,
+    accountType: "REGISTERED",
+    verificationStatus: "VERIFIED",
+    maskedEmail: email.endsWith("@anonymized.invalid")
+      ? null
+      : `cl***${String(input.sequence).slice(-2).padStart(2, "0")}@example.test`,
+    maskedPhone: phone ? "+34*****0000" : null,
+    postalCode: "15001",
     anonymized: email.endsWith("@anonymized.invalid"),
     active,
     createdAt: "2026-01-05T10:00:00.000Z",

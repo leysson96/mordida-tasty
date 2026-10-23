@@ -17,6 +17,10 @@ import {
 } from "node:crypto";
 import { AppEnv } from "../config/env";
 import {
+  normalizeCustomerEmail,
+  normalizeCustomerPhone,
+} from "../common/customer-identifier";
+import {
   COMMERCIAL_CONSENT_VERSION,
   registrationConsentRecords,
 } from "../customers/commercial-consent.policy";
@@ -49,7 +53,7 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    const email = dto.email.toLowerCase().trim();
+    const email = normalizeCustomerEmail(dto.email);
     const existing = await this.prisma.user.findUnique({ where: { email } });
 
     if (existing) {
@@ -77,7 +81,7 @@ export class AuthService {
         email,
         passwordHash,
         name: dto.name.trim(),
-        phone: dto.phone,
+        phone: normalizeCustomerPhone(dto.phone),
         acceptedLegalAt: new Date(),
         legalVersion: LEGAL_VERSION,
         commercialConsents: {

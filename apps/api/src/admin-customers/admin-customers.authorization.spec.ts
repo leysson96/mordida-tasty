@@ -136,6 +136,18 @@ describe("Admin customers authorization", () => {
       .get("/admin/customers?status=UNKNOWN")
       .set("Authorization", "Bearer admin")
       .expect(400);
+    await request(app.getHttpServer())
+      .get("/admin/customers?source=UNKNOWN")
+      .set("Authorization", "Bearer admin")
+      .expect(400);
+    await request(app.getHttpServer())
+      .get("/admin/customers?source=GUEST")
+      .set("Authorization", "Bearer admin")
+      .expect(200);
+
+    expect(customers.listCustomers).toHaveBeenLastCalledWith(
+      expect.objectContaining({ source: "GUEST" }),
+    );
   });
 
   it("protects the detail route and validates its pagination", async () => {

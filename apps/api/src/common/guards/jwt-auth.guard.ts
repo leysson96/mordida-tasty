@@ -37,10 +37,9 @@ function readCookieTokens(request: Request) {
     return [];
   }
 
-  const prefersAdmin = request.path.startsWith("/admin");
-  const cookieNames = prefersAdmin
-    ? [ADMIN_SESSION_COOKIE, CLIENT_SESSION_COOKIE]
-    : [CLIENT_SESSION_COOKIE, ADMIN_SESSION_COOKIE];
+  const cookieNames = request.path.startsWith("/admin")
+    ? [ADMIN_SESSION_COOKIE]
+    : [CLIENT_SESSION_COOKIE];
 
   return cookieNames.flatMap((cookieName) => {
     const token = cookies[cookieName];
@@ -173,5 +172,44 @@ export class OptionalJwtAuthGuard implements CanActivate {
     }
 
     return true;
+  }
+}
+
+@Injectable()
+export class GuestOrCustomerJwtAuthGuard implements CanActivate {
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  async canActivate(context: ExecutionContext) {
+    const request = context
+      .switchToHttp()
+      .getRequest<Request & { user?: AuthenticatedUser }>();
+    const bearerToken = readBearerToken(request);
+    const tokens = bearerToken
+      ? [bearerToken, ...readCookieTokens(request)]
+      : readCookieTokens(request);
+
+    if (tokens.length === 0) {
+      return true;
+    }
+
+    for (const token of tokens) {
+      try {
+        const payload = await this.jwtService.verifyAsync<JwtPayload>(token);
+        const user = await activeUserFromPayload(this.prisma, payload);
+        if (user?.role !== Role.CLIENTE) {
+          continue;
+        }
+
+        request.user = user;
+        return true;
+      } catch {
+        request.user = undefined;
+      }
+    }
+
+    throw new UnauthorizedException("Invalid or expired customer session.");
   }
 }

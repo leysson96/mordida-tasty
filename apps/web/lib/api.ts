@@ -100,7 +100,8 @@ function refreshPathFor(path: string) {
     "/customers/",
     "/orders/mine",
   ];
-  return customerRoutes.some((route) => path.startsWith(route))
+  return path === "/orders" ||
+    customerRoutes.some((route) => path.startsWith(route))
     ? "/auth/refresh"
     : undefined;
 }
@@ -120,14 +121,13 @@ function refreshOnce(path: string) {
     })
       .then((response) => response.ok)
       .catch(() => false),
-  )
-    .finally(() => {
-      if (isAdmin) {
-        adminRefresh = undefined;
-      } else {
-        customerRefresh = undefined;
-      }
-    });
+  ).finally(() => {
+    if (isAdmin) {
+      adminRefresh = undefined;
+    } else {
+      customerRefresh = undefined;
+    }
+  });
 
   if (isAdmin) {
     adminRefresh = pending;

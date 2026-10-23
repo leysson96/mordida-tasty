@@ -19,6 +19,11 @@ import {
 } from "@prisma/client";
 import { randomBytes } from "node:crypto";
 import { AuthenticatedUser } from "../common/decorators/current-user.decorator";
+import {
+  normalizeCustomerEmail,
+  normalizeCustomerPhone,
+  normalizeCustomerPostalCode,
+} from "../common/customer-identifier";
 import { AppEnv } from "../config/env";
 import { recordCashTrustSuccessfulOrder } from "../cash-trust/cash-trust.service";
 import { LEGAL_VERSION } from "../legal/legal-version";
@@ -212,6 +217,18 @@ export class OrdersService {
       throw new BadRequestException("Idempotency-Key header is required.");
     }
 
+    const customerPhone = normalizeCustomerPhone(dto.customerPhone);
+    const deliveryPhone = normalizeCustomerPhone(dto.address?.phone);
+    const deliveryPostalCode = normalizeCustomerPostalCode(
+      dto.address?.postalCode,
+    );
+    if (
+      !customerPhone ||
+      (dto.address && (!deliveryPhone || !deliveryPostalCode))
+    ) {
+      throw new BadRequestException("Telefono o codigo postal no valido.");
+    }
+
     const existing = await this.prisma.order.findUnique({
       where: { idempotencyKey },
       include: orderInclude,
@@ -343,15 +360,15 @@ export class OrdersService {
               orderNumber,
               trackingToken: this.trackingToken(),
               userId: user?.id,
-              customerEmail: dto.customerEmail.toLowerCase().trim(),
+              customerEmail: normalizeCustomerEmail(dto.customerEmail),
               customerName: dto.customerName.trim(),
-              customerPhone: dto.customerPhone.trim(),
+              customerPhone,
               deliveryMethod: dto.deliveryMethod,
               deliveryName: dto.address?.name.trim(),
-              deliveryPhone: dto.address?.phone.trim(),
+              deliveryPhone,
               deliveryStreet: dto.address?.street.trim(),
               deliveryCity: dto.address?.city.trim(),
-              deliveryPostalCode: dto.address?.postalCode.trim(),
+              deliveryPostalCode,
               deliveryNotes: dto.address?.notes?.trim(),
               status: initialStatus,
               paymentMethod,

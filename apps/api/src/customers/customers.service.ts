@@ -1,10 +1,18 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import {
   CommercialConsentSource,
   LoyaltyRedemptionStatus,
   OrderStatus,
 } from "@prisma/client";
 import { CashTrustService } from "../cash-trust/cash-trust.service";
+import {
+  normalizeCustomerPhone,
+  normalizeCustomerPostalCode,
+} from "../common/customer-identifier";
 import { PrismaService } from "../prisma/prisma.service";
 import { SettingsService } from "../settings/settings.service";
 import { UpsertAddressDto } from "./dto/address.dto";
@@ -241,13 +249,19 @@ export class CustomersService {
   }
 
   private addressData(dto: UpsertAddressDto) {
+    const phone = normalizeCustomerPhone(dto.phone);
+    const postalCode = normalizeCustomerPostalCode(dto.postalCode);
+    if (!phone || !postalCode) {
+      throw new BadRequestException("Telefono o codigo postal no valido.");
+    }
+
     return {
       label: dto.label.trim(),
       recipientName: dto.recipientName.trim(),
-      phone: dto.phone.trim(),
+      phone,
       street: dto.street.trim(),
       city: dto.city.trim(),
-      postalCode: dto.postalCode.trim(),
+      postalCode,
       notes: dto.notes?.trim(),
     };
   }

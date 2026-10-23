@@ -12,6 +12,8 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  ShoppingBag,
+  UserRoundCheck,
 } from "lucide-react";
 import {
   createColumnHelper,
@@ -28,6 +30,7 @@ import type {
   AdminCustomerListItem,
   AdminCustomerSortDirection,
   AdminCustomerSortField,
+  AdminCustomerSource,
   AdminCustomerStatus,
 } from "../../lib/types";
 import { CustomerDetail } from "./customer-detail";
@@ -42,6 +45,7 @@ export function CustomerTable() {
   const [customers, setCustomers] = useState<AdminCustomerListItem[]>([]);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<AdminCustomerStatus>("ALL");
+  const [source, setSource] = useState<AdminCustomerSource>("REGISTERED");
   const [sortBy, setSortBy] = useState<AdminCustomerSortField>("CREATED_AT");
   const [sortDirection, setSortDirection] =
     useState<AdminCustomerSortDirection>("DESC");
@@ -66,6 +70,7 @@ export function CustomerTable() {
         const response = await listAdminCustomers({
           query: debouncedQuery,
           status,
+          source,
           sortBy,
           sortDirection,
           page,
@@ -111,6 +116,7 @@ export function CustomerTable() {
     reloadKey,
     sortBy,
     sortDirection,
+    source,
     status,
   ]);
 
@@ -142,21 +148,34 @@ export function CustomerTable() {
         cell: ({ row }) => (
           <div className="crm-customer-identity">
             <strong>{row.original.name}</strong>
+            <span>{row.original.displayId}</span>
             <span>
-              {row.original.anonymized
-                ? "Cuenta anonimizada"
-                : "Datos de contacto ocultos"}
+              {row.original.maskedEmail ??
+                (row.original.anonymized
+                  ? "Identidad eliminada"
+                  : "Correo no indicado")}
+            </span>
+            <span>
+              {row.original.maskedPhone ?? "Telefono no indicado"}
+              {row.original.postalCode
+                ? ` · CP ${row.original.postalCode}`
+                : " · Sin CP"}
             </span>
           </div>
         ),
       }),
-      columnHelper.accessor("active", {
+      columnHelper.accessor("verificationStatus", {
         header: "Estado",
-        cell: ({ getValue }) => (
-          <span className={`crm-status ${getValue() ? "active" : "disabled"}`}>
-            {getValue() ? "Activo" : "Desactivado"}
-          </span>
-        ),
+        cell: ({ row }) => {
+          const state = row.original.active
+            ? row.original.verificationStatus.toLowerCase()
+            : "disabled";
+          return (
+            <span className={`crm-status ${state}`}>
+              {customerStateLabel(row.original)}
+            </span>
+          );
+        },
       }),
       columnHelper.accessor("lastPurchaseAt", {
         header: "Ultima compra",
@@ -179,32 +198,33 @@ export function CustomerTable() {
         header: "Gasto",
         cell: ({ getValue }) => <strong>{formatMoney(getValue())}</strong>,
       }),
-      columnHelper.accessor("averageTicketCents", {
-        header: "Ticket medio",
-        cell: ({ getValue }) => formatMoney(getValue()),
-      }),
-      columnHelper.accessor("lastLoginAt", {
-        header: () => sortableHeader("Ultimo acceso", "LAST_LOGIN_AT"),
-        cell: ({ getValue }) => formatDate(getValue()),
-      }),
-      columnHelper.accessor("createdAt", {
-        header: () => sortableHeader("Alta", "CREATED_AT"),
-        cell: ({ getValue }) => formatDate(getValue()),
-      }),
       columnHelper.display({
         id: "detail",
-        header: "Detalle",
-        cell: ({ row }) => (
-          <button
-            type="button"
-            className="icon-button crm-detail-button"
-            onClick={() => setSelectedCustomerId(row.original.id)}
-            aria-label={`Abrir ficha de ${row.original.name}`}
-            title="Abrir ficha"
-          >
-            <Eye aria-hidden="true" size={18} />
-          </button>
+        header: () => (
+          <>
+            <span className="crm-detail-label-full">Detalle</span>
+            <span className="crm-detail-label-short">Ver</span>
+          </>
         ),
+        cell: ({ row }) =>
+          row.original.accountType === "REGISTERED" ? (
+            <button
+              type="button"
+              className="icon-button crm-detail-button"
+              onClick={() => setSelectedCustomerId(row.original.id)}
+              aria-label={`Abrir ficha de ${row.original.name}`}
+              title="Abrir ficha"
+            >
+              <Eye aria-hidden="true" size={18} />
+            </button>
+          ) : (
+            <span
+              className="crm-no-detail"
+              title="Compra sin cuenta registrada"
+            >
+              -
+            </span>
+          ),
       }),
     ]);
 
@@ -253,7 +273,9 @@ export function CustomerTable() {
           <h1>Clientes</h1>
         </div>
         <div className="crm-toolbar-status" aria-live="polite">
-          <span>{total} clientes</span>
+          <span>
+            {total} {source === "REGISTERED" ? "cuentas" : "invitados"}
+          </span>
           <button
             type="button"
             className="icon-button crm-refresh-button"
@@ -272,6 +294,41 @@ export function CustomerTable() {
       </section>
 
       <section className="crm-filters" aria-label="Filtros de clientes">
+        <div
+          className="crm-source-tabs"
+          role="tablist"
+          aria-label="Tipo de cliente"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={source === "REGISTERED"}
+            className={source === "REGISTERED" ? "active" : undefined}
+            onClick={() => {
+              setSource("REGISTERED");
+              setSelectedCustomerId(undefined);
+              setPage(1);
+            }}
+          >
+            <UserRoundCheck aria-hidden="true" size={17} />
+            Registrados
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={source === "GUEST"}
+            className={source === "GUEST" ? "active" : undefined}
+            onClick={() => {
+              setSource("GUEST");
+              setStatus("ALL");
+              setSelectedCustomerId(undefined);
+              setPage(1);
+            }}
+          >
+            <ShoppingBag aria-hidden="true" size={17} />
+            Invitados
+          </button>
+        </div>
         <label className="search-field crm-search-field">
           Buscar cliente
           <div>
@@ -292,6 +349,7 @@ export function CustomerTable() {
           Estado
           <select
             value={status}
+            disabled={source === "GUEST"}
             onChange={(event) => {
               setStatus(event.target.value as AdminCustomerStatus);
               setPage(1);
@@ -356,9 +414,11 @@ export function CustomerTable() {
           </span>
         </div>
         <div className="crm-table-scroll">
-          <table className="crm-table" aria-busy={loading}>
+          <table className="crm-table" data-source={source} aria-busy={loading}>
             <caption className="crm-sr-only">
-              Clientes registrados, actividad y metricas de pedidos
+              {source === "REGISTERED"
+                ? "Cuentas registradas, identidad y actividad"
+                : "Compradores invitados, identidad y actividad"}
             </caption>
             <thead>
               {table.getHeaderGroups().map((headerGroup) => (
@@ -389,7 +449,9 @@ export function CustomerTable() {
                       ? "Cargando clientes..."
                       : hasFilters
                         ? "No hay clientes que coincidan con los filtros."
-                        : "Todavia no hay clientes registrados."}
+                        : source === "REGISTERED"
+                          ? "Todavia no hay clientes registrados."
+                          : "Todavia no hay compradores invitados."}
                   </td>
                 </tr>
               ) : (
@@ -502,6 +564,36 @@ export function CustomerTable() {
           box-shadow: var(--shadow-tight);
         }
 
+        .crm-source-tabs {
+          display: flex;
+          grid-column: 1 / -1;
+          gap: 4px;
+          width: fit-content;
+          padding: 3px;
+          border: 1px solid var(--color-line);
+          border-radius: var(--radius-small);
+          background: var(--color-surface);
+        }
+
+        .crm-source-tabs button {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          min-height: 38px;
+          padding: 0 12px;
+          color: var(--color-muted);
+          border: 0;
+          border-radius: 4px;
+          background: transparent;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .crm-source-tabs button.active {
+          color: #fff;
+          background: var(--color-brand-dark);
+        }
+
         .crm-filters label {
           display: grid;
           gap: 6px;
@@ -566,7 +658,7 @@ export function CustomerTable() {
 
         .crm-table {
           width: 100%;
-          min-width: 1120px;
+          min-width: 880px;
           border-collapse: collapse;
         }
 
@@ -629,6 +721,10 @@ export function CustomerTable() {
           text-align: center !important;
         }
 
+        .crm-detail-label-short {
+          display: none;
+        }
+
         .crm-sort-button:focus-visible {
           outline: 2px solid var(--color-brand);
           outline-offset: 3px;
@@ -676,6 +772,21 @@ export function CustomerTable() {
           background: var(--color-green);
         }
 
+        .crm-status.verified {
+          color: #fff;
+          background: var(--color-green);
+        }
+
+        .crm-status.pending {
+          color: var(--color-ink);
+          background: #f4c95d;
+        }
+
+        .crm-status.guest {
+          color: #fff;
+          background: var(--color-brand-dark);
+        }
+
         .crm-status.disabled {
           color: #fff;
           background: var(--color-danger);
@@ -683,6 +794,11 @@ export function CustomerTable() {
 
         .crm-order-counts small {
           color: var(--color-danger);
+        }
+
+        .crm-no-detail {
+          color: var(--color-muted);
+          font-weight: 900;
         }
 
         .crm-empty-cell {
@@ -737,12 +853,7 @@ export function CustomerTable() {
           }
 
           .crm-table {
-            min-width: 810px;
-          }
-
-          .crm-column-averageTicketCents,
-          .crm-column-createdAt {
-            display: none;
+            min-width: 720px;
           }
         }
 
@@ -773,12 +884,10 @@ export function CustomerTable() {
           }
 
           .crm-table {
-            min-width: 650px;
+            min-width: 610px;
           }
 
-          .crm-column-lastLoginAt,
-          .crm-column-averageTicketCents,
-          .crm-column-createdAt {
+          .crm-column-lastPurchaseAt {
             display: none;
           }
 
@@ -810,21 +919,44 @@ export function CustomerTable() {
             table-layout: fixed;
           }
 
-          .crm-column-lastPurchaseAt,
           .crm-column-orders {
             display: none;
           }
 
-          .crm-column-name {
-            width: 43%;
-          }
-
-          .crm-column-active {
-            width: 34%;
-          }
-
           .crm-column-totalSpentCents {
-            width: 23%;
+            display: none;
+          }
+
+          .crm-column-name {
+            width: 56%;
+          }
+
+          .crm-column-verificationStatus {
+            width: 28%;
+          }
+
+          .crm-column-detail {
+            width: 16%;
+          }
+
+          .crm-detail-label-full {
+            display: none;
+          }
+
+          .crm-detail-label-short {
+            display: inline;
+          }
+
+          .crm-table[data-source="GUEST"] .crm-column-name {
+            width: 68%;
+          }
+
+          .crm-table[data-source="GUEST"] .crm-column-verificationStatus {
+            width: 32%;
+          }
+
+          .crm-table[data-source="GUEST"] .crm-column-detail {
+            display: none;
           }
 
           .crm-customer-identity {
@@ -856,6 +988,21 @@ function useDebouncedValue<T>(value: T, delay: number) {
   }, [delay, value]);
 
   return debouncedValue;
+}
+
+function customerStateLabel(customer: AdminCustomerListItem) {
+  if (customer.anonymized) {
+    return "Anonimizado";
+  }
+  if (!customer.active) {
+    return "Desactivado";
+  }
+  if (customer.verificationStatus === "GUEST") {
+    return "Invitado";
+  }
+  return customer.verificationStatus === "VERIFIED"
+    ? "Verificado"
+    : "Pendiente";
 }
 
 function formatDate(value: string | null) {

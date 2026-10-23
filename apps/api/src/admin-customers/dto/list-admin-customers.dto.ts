@@ -15,6 +15,11 @@ export enum CustomerAccountStatus {
   DISABLED = "DISABLED",
 }
 
+export enum CustomerListSource {
+  REGISTERED = "REGISTERED",
+  GUEST = "GUEST",
+}
+
 export enum CustomerSortField {
   CREATED_AT = "CREATED_AT",
   NAME = "NAME",
@@ -35,6 +40,10 @@ export class ListAdminCustomersDto {
   @IsOptional()
   @IsEnum(CustomerAccountStatus)
   status: CustomerAccountStatus = CustomerAccountStatus.ALL;
+
+  @IsOptional()
+  @IsEnum(CustomerListSource)
+  source?: CustomerListSource = CustomerListSource.REGISTERED;
 
   @IsOptional()
   @IsEnum(CustomerSortField)

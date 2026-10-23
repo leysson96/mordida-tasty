@@ -1,25 +1,43 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import {
-  CashTrustStatus,
-  OrderStatus,
-  Prisma,
-  Role,
-} from "@prisma/client";
+import { createHash } from "node:crypto";
+import { CashTrustStatus, OrderStatus, Prisma, Role } from "@prisma/client";
 import { CASH_TRUST_INITIAL_REQUIRED_ORDERS } from "../cash-trust/cash-trust.service";
 import { AppEnv } from "../config/env";
 import { CustomersService } from "../customers/customers.service";
 import { PrismaService } from "../prisma/prisma.service";
+import {
+  formatCustomerDisplayId,
+  maskCustomerEmail,
+  maskCustomerPhone,
+  normalizeCustomerEmail,
+  normalizeCustomerPhone,
+  normalizeCustomerPostalCode,
+} from "../common/customer-identifier";
 import {
   CustomerHistoryQueryDto,
   CustomerSegmentKey,
 } from "./dto/customer-detail.dto";
 import {
   CustomerAccountStatus,
+  CustomerListSource,
   CustomerSortField,
   ListAdminCustomersDto,
   SortDirection,
 } from "./dto/list-admin-customers.dto";
+
+interface GuestCustomerAggregate {
+  normalizedEmail: string;
+  normalizedPhone: string;
+  name: string;
+  postalCode: string | null;
+  postalCodeAt: Date | null;
+  createdAt: Date;
+  lastPurchaseAt: Date;
+  deliveredOrders: number;
+  cancelledOrders: number;
+  totalSpentCents: number;
+}
 
 @Injectable()
 export class AdminCustomersService {
@@ -30,6 +48,10 @@ export class AdminCustomersService {
   ) {}
 
   async listCustomers(query: ListAdminCustomersDto) {
+    if (query.source === CustomerListSource.GUEST) {
+      return this.listGuestCustomers(query);
+    }
+
     const where = this.customerWhere(query);
     const orderBy = this.customerOrderBy(query);
     const skip = (query.page - 1) * query.pageSize;
@@ -41,9 +63,16 @@ export class AdminCustomersService {
           id: true,
           name: true,
           email: true,
+          phone: true,
           active: true,
+          emailVerifiedAt: true,
           createdAt: true,
           lastLoginAt: true,
+          addresses: {
+            select: { postalCode: true },
+            orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
+            take: 1,
+          },
         },
         orderBy,
         skip,
@@ -93,11 +122,22 @@ export class AdminCustomersService {
         const delivered = deliveredByUser.get(user.id);
         const deliveredOrders = delivered?._count._all ?? 0;
         const totalSpentCents = delivered?._sum.totalCents ?? 0;
+        const anonymized = user.email.endsWith("@anonymized.invalid");
 
         return {
           id: user.id,
+          displayId: formatCustomerDisplayId(user.id),
           name: user.name,
-          anonymized: user.email.endsWith("@anonymized.invalid"),
+          accountType: "REGISTERED" as const,
+          verificationStatus: user.emailVerifiedAt
+            ? ("VERIFIED" as const)
+            : ("PENDING" as const),
+          maskedEmail: anonymized ? null : maskCustomerEmail(user.email),
+          maskedPhone: maskCustomerPhone(user.phone),
+          postalCode: normalizeCustomerPostalCode(
+            user.addresses[0]?.postalCode,
+          ),
+          anonymized,
           active: user.active,
           createdAt: user.createdAt,
           lastLoginAt: user.lastLoginAt,
@@ -120,10 +160,196 @@ export class AdminCustomersService {
     };
   }
 
-  async getCustomerDetail(
-    customerId: string,
-    query: CustomerHistoryQueryDto,
-  ) {
+  private async listGuestCustomers(query: ListAdminCustomersDto) {
+    if (query.status === CustomerAccountStatus.DISABLED) {
+      return this.emptyCustomerPage(query);
+    }
+
+    const search = query.q?.trim();
+    const rows = await this.prisma.order.groupBy({
+      by: [
+        "customerEmail",
+        "customerPhone",
+        "customerName",
+        "deliveryPostalCode",
+        "status",
+      ],
+      where: {
+        userId: null,
+        ...(search
+          ? {
+              OR: [
+                {
+                  customerName: {
+                    contains: search,
+                    mode: "insensitive" as const,
+                  },
+                },
+                {
+                  customerEmail: {
+                    contains: search,
+                    mode: "insensitive" as const,
+                  },
+                },
+                {
+                  customerPhone: {
+                    contains: search,
+                    mode: "insensitive" as const,
+                  },
+                },
+                {
+                  deliveryPostalCode: {
+                    contains: search,
+                    mode: "insensitive" as const,
+                  },
+                },
+              ],
+            }
+          : {}),
+      },
+      _count: { _all: true },
+      _sum: { totalCents: true },
+      _min: { createdAt: true },
+      _max: { createdAt: true },
+    });
+
+    const guests = new Map<string, GuestCustomerAggregate>();
+    for (const row of rows) {
+      const normalizedEmail = normalizeCustomerEmail(row.customerEmail);
+      const normalizedPhone =
+        normalizeCustomerPhone(row.customerPhone) ?? row.customerPhone.trim();
+      const createdAt = row._min.createdAt;
+      const lastPurchaseAt = row._max.createdAt;
+      if (!createdAt || !lastPurchaseAt) {
+        continue;
+      }
+
+      const key = `${normalizedEmail}\u0000${normalizedPhone}`;
+      const current = guests.get(key);
+      const postalCode = normalizeCustomerPostalCode(row.deliveryPostalCode);
+      const count = row._count._all;
+      const deliveredOrders = row.status === OrderStatus.DELIVERED ? count : 0;
+      const cancelledOrders = row.status === OrderStatus.CANCELLED ? count : 0;
+      const totalSpentCents =
+        row.status === OrderStatus.DELIVERED ? (row._sum.totalCents ?? 0) : 0;
+
+      if (!current) {
+        guests.set(key, {
+          normalizedEmail,
+          normalizedPhone,
+          name: row.customerName.trim(),
+          postalCode,
+          postalCodeAt: postalCode ? lastPurchaseAt : null,
+          createdAt,
+          lastPurchaseAt,
+          deliveredOrders,
+          cancelledOrders,
+          totalSpentCents,
+        });
+        continue;
+      }
+
+      if (lastPurchaseAt > current.lastPurchaseAt) {
+        current.name = row.customerName.trim();
+        current.lastPurchaseAt = lastPurchaseAt;
+      }
+      if (createdAt < current.createdAt) {
+        current.createdAt = createdAt;
+      }
+      if (
+        postalCode &&
+        (!current.postalCodeAt || lastPurchaseAt > current.postalCodeAt)
+      ) {
+        current.postalCode = postalCode;
+        current.postalCodeAt = lastPurchaseAt;
+      }
+      current.deliveredOrders += deliveredOrders;
+      current.cancelledOrders += cancelledOrders;
+      current.totalSpentCents += totalSpentCents;
+    }
+
+    const direction = query.sortDirection === SortDirection.ASC ? 1 : -1;
+    const sortedGuests = [...guests.values()].sort((left, right) => {
+      const primary =
+        query.sortBy === CustomerSortField.NAME
+          ? left.name.localeCompare(right.name, "es", {
+              sensitivity: "base",
+            })
+          : query.sortBy === CustomerSortField.CREATED_AT
+            ? left.createdAt.getTime() - right.createdAt.getTime()
+            : left.lastPurchaseAt.getTime() - right.lastPurchaseAt.getTime();
+      if (primary !== 0) {
+        return primary * direction;
+      }
+
+      return (
+        left.normalizedEmail.localeCompare(right.normalizedEmail) ||
+        left.normalizedPhone.localeCompare(right.normalizedPhone)
+      );
+    });
+    const total = sortedGuests.length;
+    const skip = (query.page - 1) * query.pageSize;
+    const page = sortedGuests.slice(skip, skip + query.pageSize);
+
+    return {
+      items: page.map((guest) => {
+        return {
+          id: this.guestDisplayId(guest.normalizedEmail, guest.normalizedPhone),
+          displayId: this.guestDisplayId(
+            guest.normalizedEmail,
+            guest.normalizedPhone,
+          ),
+          name: guest.name,
+          accountType: "GUEST" as const,
+          verificationStatus: "GUEST" as const,
+          maskedEmail: maskCustomerEmail(guest.normalizedEmail),
+          maskedPhone: maskCustomerPhone(guest.normalizedPhone),
+          postalCode: guest.postalCode,
+          anonymized: false,
+          active: true,
+          createdAt: guest.createdAt,
+          lastLoginAt: null,
+          lastPurchaseAt: guest.lastPurchaseAt,
+          deliveredOrders: guest.deliveredOrders,
+          cancelledOrders: guest.cancelledOrders,
+          totalSpentCents: guest.totalSpentCents,
+          averageTicketCents:
+            guest.deliveredOrders === 0
+              ? 0
+              : Math.round(guest.totalSpentCents / guest.deliveredOrders),
+        };
+      }),
+      pagination: {
+        page: query.page,
+        pageSize: query.pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
+      },
+    };
+  }
+
+  private guestDisplayId(email: string, phone: string) {
+    const digest = createHash("sha256")
+      .update(`${email}\u0000${phone}`)
+      .digest("hex")
+      .slice(0, 10)
+      .toUpperCase();
+    return `INV-${digest}`;
+  }
+
+  private emptyCustomerPage(query: ListAdminCustomersDto) {
+    return {
+      items: [],
+      pagination: {
+        page: query.page,
+        pageSize: query.pageSize,
+        total: 0,
+        totalPages: 1,
+      },
+    };
+  }
+
+  async getCustomerDetail(customerId: string, query: CustomerHistoryQueryDto) {
     const customer = await this.prisma.user.findFirst({
       where: { id: customerId, role: Role.CLIENTE },
       select: {
@@ -264,8 +490,7 @@ export class AdminCustomersService {
       cashTrust: {
         ...cashTrust,
         ordersRemaining: Math.max(
-          cashTrust.requiredSuccessfulOrders -
-            cashTrust.successfulOrdersCount,
+          cashTrust.requiredSuccessfulOrders - cashTrust.successfulOrdersCount,
           0,
         ),
       },
@@ -280,9 +505,7 @@ export class AdminCustomersService {
     };
   }
 
-  private customerWhere(
-    query: ListAdminCustomersDto,
-  ): Prisma.UserWhereInput {
+  private customerWhere(query: ListAdminCustomersDto): Prisma.UserWhereInput {
     const search = query.q?.trim();
 
     return {
@@ -321,10 +544,9 @@ export class AdminCustomersService {
 
   private segmentThresholds() {
     return {
-      developingMaxOrders: this.configService.get(
-        "CRM_DEVELOPING_MAX_ORDERS",
-        { infer: true },
-      ),
+      developingMaxOrders: this.configService.get("CRM_DEVELOPING_MAX_ORDERS", {
+        infer: true,
+      }),
       frequentOrderThreshold: this.configService.get(
         "CRM_FREQUENT_ORDER_THRESHOLD",
         { infer: true },
@@ -371,10 +593,7 @@ export class AdminCustomersService {
       };
     }
 
-    if (
-      input.frequentWindowOrders >=
-      input.thresholds.frequentOrderThreshold
-    ) {
+    if (input.frequentWindowOrders >= input.thresholds.frequentOrderThreshold) {
       return {
         key: CustomerSegmentKey.FREQUENT,
         label: "Frecuente",

@@ -4,12 +4,14 @@ import type {
   AdminCustomerListResponse,
   AdminCustomerSortDirection,
   AdminCustomerSortField,
+  AdminCustomerSource,
   AdminCustomerStatus,
 } from "./types";
 
 export interface ListAdminCustomersParameters {
   query?: string;
   status: AdminCustomerStatus;
+  source: AdminCustomerSource;
   sortBy: AdminCustomerSortField;
   sortDirection: AdminCustomerSortDirection;
   page: number;
@@ -20,6 +22,7 @@ export interface ListAdminCustomersParameters {
 export function listAdminCustomers({
   query,
   status,
+  source,
   sortBy,
   sortDirection,
   page,
@@ -28,6 +31,7 @@ export function listAdminCustomers({
 }: ListAdminCustomersParameters) {
   const parameters = new URLSearchParams({
     status,
+    source,
     sortBy,
     sortDirection,
     page: String(page),

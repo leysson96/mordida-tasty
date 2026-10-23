@@ -2,6 +2,7 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import path from "node:path";
 import {
   crmScenarios,
+  representativeGuestList,
   representativeCustomerList,
 } from "./admin-customers-fixtures";
 
@@ -9,6 +10,16 @@ const apiPattern = /http:\/\/(?:127\.0\.0\.1:4010|localhost:4000)\/.*/;
 const performanceBudgetMs = 2_000;
 
 test.beforeEach(async ({ page }) => {
+  await page.route("**/brand-icon.png", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "image/png",
+      body: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z2t8AAAAASUVORK5CYII=",
+        "base64",
+      ),
+    });
+  });
   await page.addInitScript(() => {
     window.localStorage.setItem("mordida_cookie_consent", "technical");
   });
@@ -26,7 +37,7 @@ test("CRM list and detail preserve privacy, pagination and clean console", async
     page.getByRole("heading", { name: "Clientes", level: 1 }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Listado" })).toBeVisible();
-  await expect(page.getByText("1500 clientes")).toHaveCount(1);
+  await expect(page.getByText("1500 cuentas")).toHaveCount(1);
   await expect(page.getByText("1-25 de 1500")).toBeVisible();
   for (const name of [
     "Cliente Nuevo",
@@ -99,7 +110,7 @@ test("CRM filters are server-side and anonymized accounts cannot reveal identity
 
   await page.getByLabel("Buscar cliente").fill("Cliente eliminado");
   await expect(page.getByText("1-1 de 1")).toBeVisible();
-  await expect(page.getByText("Cuenta anonimizada")).toBeVisible();
+  await expect(page.getByText("Anonimizado", { exact: true })).toBeVisible();
   expect(state.lastQuery).toBe("Cliente eliminado");
 
   await page
@@ -114,6 +125,39 @@ test("CRM filters are server-side and anonymized accounts cannot reveal identity
   ).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Mostrar" })).toHaveCount(0);
   await expect(dialog.getByText(/@anonymized\.invalid/)).toHaveCount(0);
+});
+
+test("CRM separates registered accounts from guest buyers", async ({
+  page,
+}, testInfo) => {
+  const state = await mockAdminCustomers(page);
+  await page.goto("/admin/clientes");
+
+  await page.getByRole("tab", { name: "Invitados" }).click();
+  await expect(page.getByText("1-1 de 1")).toBeVisible();
+  await expect(
+    page.getByText("Compra Invitada", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("INV-12AB34CD56", { exact: true })).toBeVisible();
+  await expect(page.getByText("co***da@example.test")).toBeVisible();
+  await expect(page.getByText(/CP 15001/)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Abrir ficha de Compra Invitada" }),
+  ).toHaveCount(0);
+  expect(state.lastSource).toBe("GUEST");
+  await assertNoPageOverflow(page);
+  await expect
+    .poll(() =>
+      page
+        .locator(".crm-table-scroll")
+        .evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+    )
+    .toBe(true);
+  await saveGateScreenshot(page, testInfo, "guest-list");
+
+  await page.getByRole("tab", { name: "Registrados" }).click();
+  await expect(page.getByText("1-25 de 1500")).toBeVisible();
+  expect(state.lastSource).toBe("REGISTERED");
 });
 
 test("CRM rejects an expired admin session without exposing customer data", async ({
@@ -158,6 +202,7 @@ test("CRM remains usable at tablet width", async ({ page }, testInfo) => {
 
 async function mockAdminCustomers(page: Page) {
   const customers = representativeCustomerList();
+  const guests = representativeGuestList();
   const details = new Map(
     Object.values(crmScenarios).map(({ detail }) => [
       detail.customer.id,
@@ -168,6 +213,7 @@ async function mockAdminCustomers(page: Page) {
     listRequests: 0,
     maxPageSize: 0,
     lastQuery: "",
+    lastSource: "REGISTERED",
   };
 
   await page.route(apiPattern, async (route) => {
@@ -188,15 +234,18 @@ async function mockAdminCustomers(page: Page) {
       const pageSize = Number(url.searchParams.get("pageSize") ?? 25);
       const query = (url.searchParams.get("q") ?? "").trim();
       const status = url.searchParams.get("status") ?? "ALL";
+      const source = url.searchParams.get("source") ?? "REGISTERED";
       state.maxPageSize = Math.max(state.maxPageSize, pageSize);
       state.lastQuery = query;
+      state.lastSource = source;
 
-      let filtered = customers.filter((customer) => {
+      const sourceCustomers = source === "GUEST" ? guests : customers;
+      let filtered = sourceCustomers.filter((customer) => {
         const matchesStatus =
           status === "ALL" ||
           (status === "ACTIVE" ? customer.active : !customer.active);
-      const contact = details.get(customer.id)?.customer;
-      const searchable = `${customer.name} ${contact?.email ?? ""} ${contact?.phone ?? ""}`;
+        const contact = details.get(customer.id)?.customer;
+        const searchable = `${customer.name} ${contact?.email ?? customer.maskedEmail ?? ""} ${contact?.phone ?? customer.maskedPhone ?? ""} ${customer.postalCode ?? ""}`;
         return (
           matchesStatus &&
           searchable.toLowerCase().includes(query.toLowerCase())

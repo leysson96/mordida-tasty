@@ -2,7 +2,11 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { AppEnv } from '../config/env';
-import { JwtAuthGuard, OptionalJwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import {
+  GuestOrCustomerJwtAuthGuard,
+  JwtAuthGuard,
+  OptionalJwtAuthGuard,
+} from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { TwoFactorEnrollmentGuard } from '../common/guards/admin-two-factor.guard';
 import { MailModule } from '../mail/mail.module';
@@ -24,7 +28,23 @@ import { TotpCryptoService } from './totp-crypto.service';
     })
   ],
   controllers: [AuthController],
-  providers: [AuthService, TotpCryptoService, JwtAuthGuard, OptionalJwtAuthGuard, RolesGuard, TwoFactorEnrollmentGuard],
-  exports: [AuthService, JwtModule, JwtAuthGuard, OptionalJwtAuthGuard, RolesGuard, TwoFactorEnrollmentGuard]
+  providers: [
+    AuthService,
+    TotpCryptoService,
+    JwtAuthGuard,
+    OptionalJwtAuthGuard,
+    GuestOrCustomerJwtAuthGuard,
+    RolesGuard,
+    TwoFactorEnrollmentGuard
+  ],
+  exports: [
+    AuthService,
+    JwtModule,
+    JwtAuthGuard,
+    OptionalJwtAuthGuard,
+    GuestOrCustomerJwtAuthGuard,
+    RolesGuard,
+    TwoFactorEnrollmentGuard
+  ]
 })
 export class AuthModule {}
