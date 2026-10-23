@@ -317,7 +317,7 @@ function BrandLogoField({
             alt={`Vista previa: ${title}`}
             fill
             sizes={previewClassName.includes("square") ? "160px" : "320px"}
-            unoptimized={visiblePreview.startsWith("blob:")}
+            unoptimized
           />
         ) : (
           <span>Sin imagen</span>
