@@ -6,7 +6,7 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from "react";
-import Image from "next/image";
+import Image from "../site-image";
 import { ImagePlus, Save } from "lucide-react";
 import type { AdminProduct, SiteContent } from "../../lib/types";
 

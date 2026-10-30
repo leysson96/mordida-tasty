@@ -2,7 +2,7 @@
 
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
-import Image from "next/image";
+import Image from "../site-image";
 import { BadgePercent, ChevronDown, Plus, Save, Trash2 } from "lucide-react";
 import { formatMoney } from "../../lib/api";
 import type {

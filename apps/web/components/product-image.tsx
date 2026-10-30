@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
+import Image from "./site-image";
 import { Product } from "../lib/types";
 
 export function ProductImage({

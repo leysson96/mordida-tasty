@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { api, formatMoney } from "../lib/api";
+import { startPolling } from "../lib/polling";
 import {
   orderStatusLabels,
   trackingProgressStatuses,
@@ -58,10 +59,8 @@ export function TrackingClient({
   const { clear } = useCart();
 
   useEffect(() => {
-    let active = true;
-
-    async function load() {
-      try {
+    return startPolling(
+      async (signal) => {
         if (!trackingToken) {
           throw new Error("El enlace de seguimiento no es valido.");
         }
@@ -69,12 +68,12 @@ export function TrackingClient({
         const query = new URLSearchParams({ t: trackingToken });
         const data = await api<OrderSummary>(
           `/orders/track/${encodeURIComponent(orderNumber)}?${query.toString()}`,
+          { signal },
         );
-        if (active) {
-          setOrder(data);
-          setError(undefined);
-          sendGooglePurchase(data);
-        }
+        signal.throwIfAborted();
+        setOrder(data);
+        setError(undefined);
+        sendGooglePurchase(data);
         if (
           window.sessionStorage.getItem(pendingCheckoutStorageKey) ===
           data.orderNumber
@@ -82,26 +81,19 @@ export function TrackingClient({
           clear();
           window.sessionStorage.removeItem(pendingCheckoutStorageKey);
         }
-      } catch (requestError) {
-        if (active) {
-          setError(
-            requestError instanceof Error
-              ? requestError.message
-              : "No se pudo cargar.",
-          );
-        }
-      }
-    }
-
-    load();
-    const id = window.setInterval(load, 10_000);
-    return () => {
-      active = false;
-      window.clearInterval(id);
-    };
+      },
+      10_000,
+      (requestError) => {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "No se pudo cargar.",
+        );
+      },
+    );
   }, [clear, orderNumber, trackingToken]);
 
-  if (error) {
+  if (error && !order) {
     return <main className="page-shell empty-state error">{error}</main>;
   }
 
@@ -136,6 +128,11 @@ export function TrackingClient({
 
   return (
     <main className="page-shell tracking-page">
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
       <section className="tracking-hero">
         <div>
           <p className="eyebrow">Pedido {order.orderNumber}</p>

@@ -1,3 +1,5 @@
+import { waitForSignal } from "./polling";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 export class ApiError extends Error {
@@ -27,7 +29,12 @@ export async function api<T>(
   const refreshPath = refreshPathFor(path);
 
   if (response.status === 401 && refreshPath) {
-    const refreshed = await refreshOnce(refreshPath);
+    options.signal?.throwIfAborted();
+    const refreshed = await waitForSignal(
+      refreshOnce(refreshPath),
+      options.signal,
+    );
+    options.signal?.throwIfAborted();
     if (refreshed) {
       const retried = await send(path, options);
       return parseResponse<T>(retried);
@@ -118,9 +125,16 @@ function refreshOnce(path: string) {
       method: "POST",
       cache: "no-store",
       credentials: "include",
-    })
-      .then((response) => response.ok)
-      .catch(() => false),
+      signal: AbortSignal.timeout(15000),
+    }).then((response) => {
+      if (response.status === 401 || response.status === 403) return false;
+      if (!response.ok)
+        throw new ApiError(
+          "No se pudo renovar la sesion. Se reintentara la consulta.",
+          response.status,
+        );
+      return true;
+    }),
   ).finally(() => {
     if (isAdmin) {
       adminRefresh = undefined;

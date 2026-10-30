@@ -11,6 +11,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { api, formatMoney } from "../lib/api";
+import { startPolling } from "../lib/polling";
 import {
   readableErrorMessage,
   redirectOnAdminAuthError,
@@ -47,10 +48,14 @@ export function AdminKitchenClient() {
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15000);
 
     async function loadSettings() {
       try {
-        const settings = await api<KitchenSettingsResponse>("/admin/settings");
+        const settings = await api<KitchenSettingsResponse>("/admin/settings", {
+          signal: controller.signal,
+        });
         if (active) {
           setSiteContent({ ...brandConfig, ...settings.siteContent });
           setTicketPrintConfig({
@@ -62,42 +67,39 @@ export function AdminKitchenClient() {
         if (active) {
           handleAdminError(requestError, "No se pudo cargar la impresora.");
         }
+      } finally {
+        window.clearTimeout(timeout);
       }
     }
 
     loadSettings();
     return () => {
       active = false;
+      window.clearTimeout(timeout);
+      controller.abort();
     };
   }, []);
 
-  useEffect(() => {
-    let active = true;
-
-    async function loadOrders() {
-      try {
-        const data = await api<OrderSummary[]>("/admin/orders/kitchen");
-        if (active) {
+  useEffect(
+    () =>
+      startPolling(
+        async (signal) => {
+          const data = await api<OrderSummary[]>("/admin/orders/kitchen", {
+            signal,
+          });
+          signal.throwIfAborted();
           setOrders(data);
           setError(undefined);
-        }
-      } catch (requestError) {
-        if (active) {
+        },
+        2000,
+        (error) =>
           handleAdminError(
-            requestError,
+            error,
             "No se pudieron cargar los pedidos de cocina.",
-          );
-        }
-      }
-    }
-
-    loadOrders();
-    const id = window.setInterval(loadOrders, 2000);
-    return () => {
-      active = false;
-      window.clearInterval(id);
-    };
-  }, []);
+          ),
+      ),
+    [],
+  );
 
   const ordersByStatus = useMemo(
     () =>

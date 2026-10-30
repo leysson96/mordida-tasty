@@ -22,6 +22,7 @@ interface CookieConsentFixture {
 }
 
 interface MockMordidaOptions {
+  imageUrl?: string;
   cookieConsent?: "analytics" | "technical" | CookieConsentFixture;
   trackingPayment?: "paid" | "pendingThenPaid";
   promotions?:
@@ -76,12 +77,19 @@ export async function mockMordidaApi(
     }
 
     if (method === "GET" && pathname === "/menu") {
-      await json(route, menuFixtureForScenario(promotionScenario));
+      const menu = menuFixtureForScenario(promotionScenario);
+      await json(route, options.imageUrl ? menu.map(category => ({
+        ...category, products: category.products.map(product => ({ ...product, imageUrl: options.imageUrl })),
+      })) : menu);
       return;
     }
 
     if (method === "GET" && pathname === "/settings/public") {
-      await json(route, publicSettingsFixtureForScenario(promotionScenario));
+      const settings = publicSettingsFixtureForScenario(promotionScenario);
+      await json(route, options.imageUrl ? {
+        ...settings, siteContent: { ...settings.siteContent, heroImage: options.imageUrl,
+          brandSquareLogoUrl: options.imageUrl },
+      } : settings);
       return;
     }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "../site-image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertTriangle, ImagePlus, Save } from "lucide-react";

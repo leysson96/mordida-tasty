@@ -5,6 +5,7 @@ import {
   type ComponentPropsWithoutRef,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -29,6 +30,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { api, formatMoney } from "../lib/api";
+import { startPolling } from "../lib/polling";
 import {
   readableErrorMessage,
   redirectOnAdminAuthError,
@@ -198,55 +200,86 @@ export function AdminOrdersClient() {
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>("service");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const dirtySettings = useRef(new Set<SettingsSection>());
+  const settingsRevision = useRef(0);
+
+  function settingsSaved(section: SettingsSection, revision: number) {
+    if (revision === settingsRevision.current)
+      dirtySettings.current.delete(section);
+    settingsRevision.current++;
+  }
 
   useEffect(() => {
-    let active = true;
-
-    async function load() {
-      try {
-        const [ordersData, dashboardData, settingsData] = await Promise.all([
-          api<OrderSummary[]>(adminOrdersPath(orderFilters, orderPage)),
-          api<DashboardResponse>("/admin/dashboard"),
-          api<SettingsResponse>("/admin/settings"),
+    return startPolling(
+      async (signal) => {
+        // Settle every request before allowing another round, even if one fails.
+        const results = await Promise.allSettled([
+          api<OrderSummary[]>(adminOrdersPath(orderFilters, orderPage), {
+            signal,
+          }),
+          api<DashboardResponse>("/admin/dashboard", { signal }),
         ]);
+        signal.throwIfAborted();
+        const [ordersResult, dashboardResult] = results;
+        if (ordersResult.status === "rejected") throw ordersResult.reason;
+        if (dashboardResult.status === "rejected") throw dashboardResult.reason;
+        const ordersData = ordersResult.value;
+        const dashboardData = dashboardResult.value;
+        setOrders(ordersData);
+        setDashboard(dashboardData);
+        setError(undefined);
+      },
+      8000,
+      (error) => handleAdminError(error, "No se pudo cargar."),
+    );
+  }, [orderFilters, orderPage]);
 
-        if (active) {
-          setOrders(ordersData);
-          setDashboard(dashboardData);
-          setTaxRatePercent(String(settingsData.taxRate * 100));
-          setDeliveryFeeEuros((settingsData.deliveryFeeCents / 100).toFixed(2));
-          setOpeningHours(normalizeOpeningHours(settingsData.openingHours));
+  useEffect(
+    () =>
+      startPolling(
+        async (signal) => {
+          const revision = settingsRevision.current;
+          const settingsData = await api<SettingsResponse>("/admin/settings", {
+            signal,
+          });
+          signal.throwIfAborted();
           setOpenNow(settingsData.openNow);
-          setOrdersPause(
-            settingsData.ordersPause ?? settingsData.serviceStatus.pause,
-          );
           setSpecialClosures(settingsData.specialClosures ?? []);
           setDeliveryZones(settingsData.deliveryZones ?? []);
           setSiteContent({ ...brandConfig, ...settingsData.siteContent });
-          setLoyaltyProgram({
-            ...defaultLoyaltyProgram,
-            ...settingsData.loyaltyProgram,
-          });
-          setTicketPrintConfig({
-            ...defaultTicketPrintConfig(),
-            ...settingsData.ticketPrintConfig,
-          });
-          setError(undefined);
-        }
-      } catch (requestError) {
-        if (active) {
-          handleAdminError(requestError, "No se pudo cargar.");
-        }
-      }
-    }
-
-    load();
-    const id = window.setInterval(load, 8000);
-    return () => {
-      active = false;
-      window.clearInterval(id);
-    };
-  }, [orderFilters, orderPage]);
+          if (revision !== settingsRevision.current) return;
+          if (!dirtySettings.current.has("business")) {
+            setTaxRatePercent(String(settingsData.taxRate * 100));
+            setDeliveryFeeEuros(
+              (settingsData.deliveryFeeCents / 100).toFixed(2),
+            );
+          }
+          if (!dirtySettings.current.has("hours"))
+            setOpeningHours(normalizeOpeningHours(settingsData.openingHours));
+          if (!dirtySettings.current.has("service")) {
+            setOrdersPause(
+              settingsData.ordersPause ?? settingsData.serviceStatus.pause,
+            );
+          }
+          if (!dirtySettings.current.has("loyalty")) {
+            setLoyaltyProgram({
+              ...defaultLoyaltyProgram,
+              ...settingsData.loyaltyProgram,
+            });
+          }
+          if (!dirtySettings.current.has("printer")) {
+            setTicketPrintConfig({
+              ...defaultTicketPrintConfig(),
+              ...settingsData.ticketPrintConfig,
+            });
+          }
+        },
+        30000,
+        (error) =>
+          handleAdminError(error, "No se pudieron cargar los ajustes."),
+      ),
+    [],
+  );
 
   const activeOrders = useMemo(
     () =>
@@ -423,6 +456,7 @@ export function AdminOrdersClient() {
   }
 
   async function saveTicketPrintConfig(event: FormEvent<HTMLFormElement>) {
+    const revision = settingsRevision.current;
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const payload: TicketPrintConfig = {
@@ -447,11 +481,11 @@ export function AdminOrdersClient() {
           body: JSON.stringify(payload),
         },
       );
-      setTicketPrintConfig({
-        ...defaultTicketPrintConfig(),
-        ...saved,
-      });
+      if (revision === settingsRevision.current) {
+        setTicketPrintConfig({ ...defaultTicketPrintConfig(), ...saved });
+      }
       setSettingsMessage("Formato de ticket guardado.");
+      settingsSaved("printer", revision);
       setError(undefined);
     } catch (requestError) {
       handleAdminError(
@@ -462,6 +496,7 @@ export function AdminOrdersClient() {
   }
 
   async function saveBusinessSettings(event: FormEvent<HTMLFormElement>) {
+    const revision = settingsRevision.current;
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const taxRate = Number(form.get("taxRate")) / 100;
@@ -479,15 +514,19 @@ export function AdminOrdersClient() {
           body: JSON.stringify({ deliveryFeeCents }),
         }),
       ]);
-      setTaxRatePercent(String(taxRate * 100));
-      setDeliveryFeeEuros((deliveryFeeCents / 100).toFixed(2));
+      if (revision === settingsRevision.current) {
+        setTaxRatePercent(String(taxRate * 100));
+        setDeliveryFeeEuros((deliveryFeeCents / 100).toFixed(2));
+      }
       setSettingsMessage("Ajustes guardados.");
+      settingsSaved("business", revision);
     } catch (requestError) {
       handleAdminError(requestError, "No se pudo guardar.");
     }
   }
 
   async function saveLoyaltySettings(event: FormEvent<HTMLFormElement>) {
+    const revision = settingsRevision.current;
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const rewardType = String(
@@ -507,8 +546,9 @@ export function AdminOrdersClient() {
           description: String(form.get("description") ?? ""),
         }),
       });
-      setLoyaltyProgram(response);
+      if (revision === settingsRevision.current) setLoyaltyProgram(response);
       setSettingsMessage("Fidelidad guardada.");
+      settingsSaved("loyalty", revision);
       setError(undefined);
     } catch (requestError) {
       handleAdminError(requestError, "No se pudo guardar fidelidad.");
@@ -516,6 +556,7 @@ export function AdminOrdersClient() {
   }
 
   async function saveOrdersPause(event: FormEvent<HTMLFormElement>) {
+    const revision = settingsRevision.current;
     event.preventDefault();
     const form = new FormData(event.currentTarget);
 
@@ -531,8 +572,10 @@ export function AdminOrdersClient() {
           reason: String(form.get("reason") ?? ""),
         }),
       });
-      setOrdersPause(response.ordersPause);
+      if (revision === settingsRevision.current)
+        setOrdersPause(response.ordersPause);
       setOpenNow(response.openNow);
+      settingsSaved("service", revision);
       setSettingsMessage(
         response.ordersPause.paused
           ? "Pedidos pausados."
@@ -631,6 +674,7 @@ export function AdminOrdersClient() {
   }
 
   async function saveOpeningHours(event: FormEvent<HTMLFormElement>) {
+    const revision = settingsRevision.current;
     event.preventDefault();
     try {
       await api("/admin/settings/opening-hours", {
@@ -642,6 +686,7 @@ export function AdminOrdersClient() {
       );
       setOpenNow(publicSettings.openNow);
       setSettingsMessage("Horarios guardados.");
+      settingsSaved("hours", revision);
     } catch (requestError) {
       handleAdminError(requestError, "No se pudieron guardar los horarios.");
     }
@@ -1152,6 +1197,10 @@ export function AdminOrdersClient() {
 
         <aside
           id="admin-settings-panel"
+          onChangeCapture={() => {
+            dirtySettings.current.add(settingsSection);
+            settingsRevision.current++;
+          }}
           className={`settings-panel admin-settings-panel ${
             settingsOpen ? "open" : ""
           }`}
@@ -1709,8 +1758,8 @@ export function AdminOrdersClient() {
                   impresion.
                 </p>
                 <p>
-                  Si Android se queda en "buscando impresora", el ticket ya
-                  esta listo: falta que la tablet tenga un servicio/driver de
+                  Si Android se queda en "buscando impresora", el ticket ya esta
+                  listo: falta que la tablet tenga un servicio/driver de
                   impresion compatible con esa impresora Bluetooth.
                 </p>
                 <div className="printer-settings-grid">
@@ -1863,9 +1912,8 @@ export function AdminOrdersClient() {
                   <li>Prueba de impresion hecha desde otra app Android.</li>
                 </ol>
                 <p>
-                  Si Android no lista la impresora, no es un fallo de la web:
-                  la siguiente fase es una app puente ESC/POS o impresora
-                  WiFi/LAN.
+                  Si Android no lista la impresora, no es un fallo de la web: la
+                  siguiente fase es una app puente ESC/POS o impresora WiFi/LAN.
                 </p>
               </div>
             </section>
@@ -2046,9 +2094,7 @@ export function AdminOrdersClient() {
                 required
               >
                 <option value="NO_PICKUP">No recogio en local</option>
-                <option value="NO_SHOW_DELIVERY">
-                  No aparecio en entrega
-                </option>
+                <option value="NO_SHOW_DELIVERY">No aparecio en entrega</option>
               </select>
             </label>
             <label>

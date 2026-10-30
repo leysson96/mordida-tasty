@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
-import Image from "next/image";
+import Image from "./site-image";
 import {
   ArrowRight,
   CalendarDays,
