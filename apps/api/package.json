@@ -31,7 +31,7 @@
     "cookie-parser": "^1.4.7",
     "helmet": "^8.0.0",
     "libphonenumber-js": "1.13.15",
-    "nodemailer": "10.0.13",
+    "nodemailer": "10.1.4",
     "otplib": "^12.0.1",
     "prisma": "^6.14.0",
     "proxy-addr": "2.0.8",
