@@ -15,6 +15,7 @@ import {
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
+import { UploadErrorInterceptor } from "../uploads/upload-error.interceptor";
 import {
   DeliveryMethod,
   OrderPaymentMethod,
@@ -701,6 +702,7 @@ export class AdminController {
 
   @Post("uploads/images")
   @UseInterceptors(
+    UploadErrorInterceptor,
     FileInterceptor("file", { limits: { fileSize: 10_485_760 } }),
   )
   async uploadImage(
@@ -727,6 +729,7 @@ export class AdminController {
 
   @Post("uploads/brand-logos/:variant")
   @UseInterceptors(
+    UploadErrorInterceptor,
     FileInterceptor("file", { limits: { fileSize: 5_242_880 } }),
   )
   async uploadBrandLogo(
