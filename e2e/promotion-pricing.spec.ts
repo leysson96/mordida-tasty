@@ -4,6 +4,8 @@ import { mockMordidaApi } from "./mordida-fixtures";
 test("active promotion appears in menu and keeps discounted price in cart", async ({
   page,
 }) => {
+  // Keep the browser clock inside the fixture's validity window.
+  await page.clock.setFixedTime(new Date("2026-10-30T12:00:00.000Z"));
   await mockMordidaApi(page, { promotions: true });
   await page.goto("/");
 
