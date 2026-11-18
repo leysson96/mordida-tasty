@@ -15,6 +15,7 @@
     "build": "npm run build -w @mordida/api && npm run build -w @mordida/web",
     "lint": "npm run lint -w @mordida/api && npm run lint -w @mordida/web",
     "test": "npm run test -w @mordida/api",
+    "test:toolchain": "node scripts/verify-minimatch-security.cjs && node scripts/verify-deepmerge-security.cjs && node scripts/verify-glob-security.cjs && node scripts/verify-nest-assets.cjs",
     "test:e2e": "node e2e/run-e2e.mjs",
     "start:api": "npm run start -w @mordida/api",
     "start:web": "npm run start -w @mordida/web",
@@ -31,11 +32,14 @@
     "admin:reset-2fa": "node scripts/admin-reset-2fa.mjs"
   },
   "overrides": {
+    "glob@13.0.6": "14.0.5",
     "argparse": "2.0.1",
     "deepmerge-ts": "^8.0.2",
+    "deepmerge": "npm:@stackline/deepmerge@1.1.2",
     "fast-uri": "3.1.9",
     "handlebars": "4.7.10",
     "multer": "2.5.0",
+    "minimatch@>=10 <11": "11.0.4",
     "postcss": "8.5.24",
     "proxy-addr": "2.0.8",
     "qs": "6.17.1",
@@ -44,6 +48,7 @@
     "source-map-js": "1.2.2"
   },
   "devDependencies": {
+    "@next/eslint-plugin-next": "16.4.6",
     "concurrently": "^9.2.0",
     "prettier": "^3.3.3"
   }
