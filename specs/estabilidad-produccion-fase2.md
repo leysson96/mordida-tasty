@@ -1,6 +1,15 @@
 # Estabilidad de produccion: fase 2
 
+Actualizacion documental: 2026-11-19 10:03:19 +01:00 (Europe/Madrid).
+Orden ratificado: cierre npm en commit local -> CRM T7 -> audio T9.
+No se ha implementado T7/T9 por esta edicion ni se han probado sus optimizaciones.
+
 ## Contexto
+
+- ORDEN VIGENTE 2026-11-18: Seguridad-S5 picomatch -> esta hoja T7 CRM ->
+  esta hoja T9 audio. T5/T6/T8 y migraciones de herramientas quedan en espera.
+  Esta instruccion sustituye el orden historico al final de la hoja.
+  Ver [indice activo](../docs/ESTADO_TRABAJO.md).
 
 - Actualizacion de estado 2026-11-04: el parche de seguridad se subio a main en 267fa01. La consulta de GitHub del 2026-11-02 mostro solo #42 minimatch y #40 deepmerge abiertas. Reportes/CRM pausados por el usuario; plan especifico de continuacion en specs/seguridad-herramientas-desarrollo.md. Las notas posteriores de T4 conservan su contexto historico local.
 
@@ -96,6 +105,18 @@ Documentar limites -> revision de usuario
 
 ### T7: Paginacion de invitados del CRM
 
+- **Inicio autorizado en el orden:** despues de cerrar S5. Alcance: optimizar
+  CRM existente, no crear otro CRM, segmentaciones ni campanas comerciales.
+- **Tecnologia:** TypeScript/Nest y Prisma ya instalados; PostgreSQL para
+  agregacion/paginacion, libphonenumber-js actual para identidad. No cambiar
+  librerias salvo necesidad demostrada y compatibilidad verificada.
+- **Pasos:** capturar resultados de referencia -> disenar consulta equivalente
+  -> implementar una pieza -> comparar resultados/recursos -> revisar UI.
+- **BD de prueba:** verificar primero instancia aislada y autorizada. Si no
+  existe, preparar fixtures y solicitar el dato necesario sin pedir secretos
+  en chat; no instalar servicios, WSL/Docker ni usar datos reales por defecto.
+  Sin BD aislada no cerrar validacion SQL ni prometer rendimiento probado.
+
 - **Estado:** pendiente; separada de reportes para no mezclar reglas.
 - **Hacer:** conservar la identidad normalizada y el ultimo nombre/codigo postal relevante. Actualmente se agrupa en BD pero se ordenan todos los grupos en JS antes de slice.
 - **Solucion:** trasladar agregacion, orden estable y paginacion a PostgreSQL manteniendo exactamente las reglas del servicio. Evitar normalizacion SQL simplificada que deje de equivaler a libphonenumber-js. Si exige columnas normalizadas/migracion, documentar primero backfill idempotente, compatibilidad y rollback; no ejecutar migraciones de produccion durante esta tarea.
@@ -118,6 +139,14 @@ Documentar limites -> revision de usuario
 
 ### T9: Ciclo de vida del audio de cocina
 
+- **Inicio autorizado en el orden:** despues de T7; si T7 queda bloqueada,
+  informar y solicitar cambio de orden, no saltarla automaticamente.
+- **Tecnologia:** React/TypeScript existentes, Web Audio API nativa,
+  AbortController o bandera de ciclo de vida segun patron actual; Playwright
+  instrumenta AudioContext/nodos/timers. No instalar libreria de audio.
+- **Pasos:** medir ciclo actual -> corregir cleanup y carreras de resume ->
+  probar montaje/desmontaje/cambios -> revision audible del usuario.
+
 - **Estado:** pendiente.
 - **Hacer:** revisar KitchenAlarm y sus instancias; cerrar AudioContext al desmontar, detener y desconectar oscillator/gain al terminar, limpiar timers y evitar crear nodos despues del desmontaje si resume() seguia pendiente.
 - **Semantica:** silenciar no rompe la siguiente alerta; no cerrar el contexto que utiliza otra instancia; mantener permisos/gesto del usuario y preferencia persistida. No pausar alertas de cocina solo por ocultar la pestaña.
@@ -127,13 +156,18 @@ Documentar limites -> revision de usuario
 
 ## Orden de trabajo
 
+Orden vigente: S5 -> T7 -> T9. La lista siguiente es historica (octubre),
+no autoriza intercalar reportes, favicon o mediciones nuevas de Render.
+
 1. T4 seguridad.
 2. T5 recoger evidencias en paralelo, sin detener trabajo local por falta de metricas.
 3. T6 reportes y T7 CRM, uno a uno con comparacion de resultados.
 4. T8 favicon.
 5. T9 audio.
 
-Si T6/T7 necesitan PostgreSQL de prueba que no este disponible, dejar ese bloqueo explicito y avanzar en T8/T9; nunca sustituir una prueba SQL por un mock y darla por completada.
+Si T7 necesita PostgreSQL de prueba que no este disponible, dejar el bloqueo
+explicito y consultar antes de cambiar el orden vigente; nunca sustituir una
+prueba SQL por un mock y darla por completada.
 
 ## Done (validacion por tarea y final)
 

@@ -1,5 +1,49 @@
 # S3: diagnostico de glob
 
+Actualizacion documental: 2026-11-19 10:03:19 +01:00 (Europe/Madrid).
+El ajuste posterior del 18 se incluye en el cierre local del 19, pendiente de
+push. Ver [cierre npm](./CIERRE_NPM_2026-11-19.md) para pruebas actuales y
+anteriores diferenciadas. Las secciones siguientes son evidencia historica.
+
+## Correccion posterior: 2026-11-18
+
+La revision completa `npm ls --all --json` detecto dos rangos incumplidos que
+`npm ls glob --all` no habia detectado: glob 14.0.5 exige minimatch ^11.0.5 y
+path-scurry ^3.0.0, pero el lock anterior conservaba 11.0.4 y 2.0.2.
+Las pruebas funcionales anteriores pasaron, pero no certificaban coherencia
+del arbol entero. Se reconoce esta carencia; no se atribuyen caidas a ella sin
+logs y evidencia de runtime.
+
+Se ejecuta `npm update minimatch path-scurry --ignore-scripts --no-audit
+--no-fund`, sin forzar rangos. Resultado: minimatch 11.0.9 para glob y
+path-scurry 3.0.0, ambos compatibles con Node 22. Estree conserva el override
+11.0.4; la rama invocable 3.1.5 se mantiene. npm deduplica copias antiguas,
+resuelve brace-expansion 1.1.22 para esa rama y nonrecursive-glob-match 1.1.0
+para minimatch moderno. Se preservan los metadatos glibc de Sharp Linux.
+
+El test de minimatch ahora distingue la version esperada por cada consumidor,
+manteniendo todas las aserciones de comportamiento. Se agrega
+`scripts/verify-dependency-tree.cjs` al comienzo de `npm run test:toolchain`:
+ejecuta npm ls completo, comprueba su exit code y problems, y detiene la cadena
+si encuentra incoherencias. No oculta problemas ni descarta avisos de audit.
+
+Estado de esta correccion: local, sin commit/push. Lint, test:toolchain,
+303 tests API y builds API/web aprobados. E2E: 40 aprobados (1.7m), con
+API/pagos simulados y los avisos de recursos ficticios ya documentados.
+Instalacion limpia: npm ci --ignore-scripts instala 872 paquetes; npm ls
+completo exit 0, sin problems. Cancelacion, assets y watcher pasan tambien
+en esa copia. No se ejecutaron scripts de instalacion en la copia temporal.
+Audit completo y runtime finales: ambos 0, exit 0. Picomatch no cambio;
+la retirada de su aviso es independiente de esta correccion de rangos.
+No se demuestra que el cambio resuelva incidentes OOM/502 de Render.
+La evidencia historica siguiente corresponde al arbol previo, no sustituye
+las pruebas de este ajuste.
+
+## Archivo historico del 12 (primera entrega publicada despues en 0d34e9f)
+
+Los estados siguientes son los de sus respectivas ejecuciones. El pendiente
+actual es solo la correccion posterior del 18 descrita al principio.
+
 Fecha: 2026-11-12. Estado: S3 integrada y verificada localmente; sin publicar.
 Sin commit, push ni cambios en Render. S2 permanece intacta.
 La primera seccion conserva el diagnostico inicial; la integracion posterior

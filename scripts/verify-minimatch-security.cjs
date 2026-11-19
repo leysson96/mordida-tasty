@@ -22,7 +22,8 @@ if (process.argv[2] === 'stress') {
   for (const consumer of consumers) {
     const r = createRequire(rootRequire.resolve(consumer + '/package.json'));
     const { minimatch, Minimatch } = r('minimatch');
-    assert.equal(r('minimatch/package.json').version, '11.0.4');
+    const expectedVersion = consumer === 'glob' ? '11.0.9' : '11.0.4';
+    assert.equal(r('minimatch/package.json').version, expectedVersion);
     for (const [file, pattern, options, expected] of [
       ['src/a.ts', '**/*.ts', {}, true],
       ['src/a.js', '**/*.ts', {}, false],

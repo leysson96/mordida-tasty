@@ -1,8 +1,17 @@
 # Evaluacion de herramientas del proyecto
 
+Actualizacion documental: 2026-11-19 10:03:19 +01:00 (Europe/Madrid).
+Se conserva la pausa de T11-T14; proxima tarea activa CRM T7 tras cierre npm.
+No se repiten los experimentos de esta hoja en esta actualizacion.
+
 Fecha: 2026-11-05. Base funcional publicada: 267fa01. Los experimentos locales de S1 siguen sin publicar.
 
 ## Objetivo y autorizacion
+
+PRIORIDAD VIGENTE 2026-11-18: el usuario ordena primero Seguridad-S5 picomatch,
+despues Estabilidad-T7 CRM y Estabilidad-T9 audio. T11-T14 de esta hoja quedan
+pausadas; las notas siguientes conservan el estado anterior, no ordenan retomarlas.
+Referencia prevalente: [indice activo](../docs/ESTADO_TRABAJO.md).
 
 Estado 2026-11-17: T10 ya publicada en e4a6a10. T12 conserva Nest/ESLint/Jest
 por falta de evidencia para una sustitucion segura; no implica completar T11,

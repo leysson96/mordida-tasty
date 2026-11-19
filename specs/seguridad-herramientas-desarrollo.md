@@ -1,6 +1,16 @@
 # Seguridad de herramientas: minimatch, deepmerge y glob
 
+Actualizacion documental: 2026-11-19 10:03:19 +01:00 (Europe/Madrid).
+Audit completo/runtime del 19 entre 10:02:58 y 10:03:03 +01:00: ambos 0.
+Cierre local del ajuste npm, sin push; [informe](../docs/CIERRE_NPM_2026-11-19.md).
+Seguir despues con Estabilidad-T7 CRM y T9 audio, sin reabrir migraciones.
+
 ## Contexto
+
+- Orden aprobado 2026-11-18: completar S5 picomatch antes de Estabilidad-T7 CRM
+  y Estabilidad-T9 audio. Herramientas-T11-T14 pausadas. S1-S4 publicadas en
+  0d34e9f; usuario comunica despliegue activo. Las prioridades historicas de
+  esta hoja no sustituyen este orden. Ver [indice](../docs/ESTADO_TRABAJO.md).
 
 - Actualizacion 2026-11-17: S1-S3 pasan localmente, pero una auditoria nueva
   detecta Next (S4) y picomatch (S5). No reutilizar el cero de avisos del dia 12
@@ -142,6 +152,66 @@ oficial. Mantener T11/T13/T14 como evaluaciones, no reemplazos automaticos.
 - Separar auditoria runtime de completa. Sin commit/push sin autorizacion.
 
 ### S5: picomatch / GHSA-fc5q-39xc-vjpf
+
+Consulta posterior del 18: audit completo/runtime 0, ambos exit 0; el aviso
+retirado ya no aparece en la respuesta de npm, sin modificar picomatch.
+Discrepancia local despejada; cierre remoto no consultado. Se conserva la
+evidencia historica abajo. Correccion separada del arbol de glob aun local,
+documentada en S3; no describirla como parche de picomatch.
+
+Actualizacion S5.1 2026-11-18: aviso retirado oficialmente por GitHub hoy;
+npm aun devuelve 50 nodos high y runtime 0. Diagnostico de copias y contratos
+completado, sin modificar dependencias. No aplicar un parche no aprobado para
+silenciar esta discrepancia. Ver [informe S5](../docs/VERIFICACION_S5_PICOMATCH.md).
+El cierre remoto no esta verificado y no se avanza automaticamente a CRM.
+
+#### S5.1: diagnostico actualizado
+
+- Reconsultar aviso oficial, npm view y npm audit completo/runtime. El dato
+  "sin parche" y los 50 nodos son la ultima consulta, no una certeza futura.
+- npm ls/explain y parser JSON del lock identifican cada copia 2.x/4.x y
+  consumidor. createRequire comprueba la version y API que realmente carga.
+- Revisar llamadas, opciones y procedencia de patrones en Jest/ts-jest,
+  Angular devkit/Nest, tinyglobby/fdir y micromatch/plugin Next. Separar build,
+  tests, desarrollo y runtime; no inferir explotacion de la web por el contador.
+- Herramientas: npm/Git en lectura, fuentes oficiales del mantenedor, Node
+  estandar. Sin instalar analizadores nuevos ni ejecutar patrones en Render.
+
+#### S5.2: correccion minima probada
+
+- Prioridad: parche oficial de cada rama o actualizacion compatible del
+  consumidor que incorpore la correccion. Verificar Node 22, exports y peers.
+- Si no existe, evaluar un parche upstream revisable o alternativa mantenida
+  en copia aislada. No adoptar fork/alias o migrar Jest/Nest sin demostrar
+  equivalencia y exponer al usuario el cambio de mantenimiento y alcance.
+- No aplicar override global entre ramas, downgrade para escapar de un aviso,
+  audit fix --force, editar node_modules ni descartar alertas.
+- Version exacta, integridad y justificacion se anotan al elegir la solucion;
+  no se fija ahora una version inexistente ni se actualiza todo por "latest".
+- Archivos posibles: manifests del consumidor, lockfile y
+  scripts/verify-picomatch-security.cjs; sin tocar codigo comercial.
+
+#### S5.3: seguridad, compatibilidad y cierre
+
+- Repro ReDoS minimo en proceso hijo con heap limitado y timeout estricto,
+  usando solo fixtures. Comparar version anterior/candidata. Un timeout del
+  ensayo no es exito; controlar crecimiento del coste sin bloquear el equipo.
+- Contrato: exportacion invocable, parse/makeRe/scan si las usa el consumidor,
+  arrays, negacion, extglobs, braces, globstar, dotfiles, opciones de ignore,
+  rutas Windows/POSIX y descubrimiento real de archivos/tests.
+- Casos legitimos deben conservar resultados; no desactivar extglobs a
+  escondidas ni reducir discovery para lograr verde.
+- npm ci en copia limpia sin secretos; resolucion efectiva de todas las
+  cadenas, metadatos Sharp Linux preservados y npm ls sin errores.
+- Verify: npm run test:toolchain, npm run lint, suite API completa, build
+  API/web y E2E de imagenes/sondeo/promociones/smoke. No omitir suites.
+- Repetir audit completo/runtime; informar remanentes y exposicion. Cierre
+  local exige corregir las rutas afectadas y pasar regresiones; cierre remoto
+  solo tras publicacion autorizada y reevaluacion de GitHub confirmada.
+- Informe: docs/VERIFICACION_S5_PICOMATCH.md con evidencia, versiones,
+  diferencias, limites y rollback acotado. No crear informe de exito anticipado.
+- Si no hay solucion segura: informar bloqueo y alternativas. No avanzar al
+  CRM sin decision del usuario; una mitigacion no cierra S5.
 
 - Estado 2026-11-17: abierto, sin parche oficial; 50 nodos high de desarrollo
   en audit completo. No descartado ni sustituido por una version vulnerable.
